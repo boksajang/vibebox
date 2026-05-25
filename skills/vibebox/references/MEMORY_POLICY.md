@@ -74,6 +74,8 @@ Fallback:
 node bin/vibebox.mjs <command>
 ```
 
+On Windows PowerShell, use `vibebox.cmd <command>` if the npm `.ps1` shim is blocked.
+
 ## Sensitive Data Policy
 
 Sensitive data must not enter active memory, wiki pages, or Context Packs.
@@ -118,3 +120,7 @@ When uncertain:
 ## Current Request Vs Past Memory
 
 The user's current explicit request wins over past memory. If active memory warns against the current request, mention the warning and follow the user's current instruction unless it creates a safety or feasibility issue.
+
+## Runtime State Exclusion Policy
+
+`.vibebox/` is runtime state created inside each user project. It contains local memory config, wiki pages, JSON indexes, raw events, and pending candidates. It should usually be ignored in public repositories. VibeBox source packaging excludes `.vibebox/`, `.vscode/`, `node_modules/`, temp output, logs, and local env files.

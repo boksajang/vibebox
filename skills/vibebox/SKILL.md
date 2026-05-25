@@ -139,6 +139,12 @@ Preferred:
 vibebox <command>
 ```
 
+Windows PowerShell may block npm's `.ps1` shim through execution policy. In that case, use:
+
+```bash
+vibebox.cmd <command>
+```
+
 Fallback inside the VibeBox repository:
 
 ```bash
@@ -155,6 +161,8 @@ If neither works:
 ## Obsidian-Compatible Wiki Notes
 
 VibeBox writes human-readable Markdown in `.vibebox/wiki/`. Use it for inspection and review, not as a raw transcript store. VibeBox managed sections are bounded by `<!-- VIBEBOX:BEGIN -->` and `<!-- VIBEBOX:END -->`; user-written notes outside managed blocks should be preserved.
+
+`.vibebox/` is runtime state created inside user projects. It should usually stay out of public repositories unless the project intentionally publishes sanitized sample memory.
 
 ## Troubleshooting
 

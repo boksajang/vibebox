@@ -22,6 +22,12 @@ Preferred:
 vibebox <command>
 ```
 
+Windows PowerShell fallback:
+
+```bash
+vibebox.cmd <command>
+```
+
 Fallback inside the VibeBox repository:
 
 ```bash
@@ -55,3 +61,4 @@ vibebox reject <candidate-id>
 - This is a compatibility guide and local skeleton, not a claim of registry availability.
 - VibeBox memory behavior comes from the Core CLI and shared skill, not from this adapter.
 - Agents should not treat pending memory as active memory.
+- `.vibebox/` is user-project runtime state and should usually not be committed to public repositories.

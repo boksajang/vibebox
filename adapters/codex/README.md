@@ -22,6 +22,12 @@ Preferred:
 vibebox <command>
 ```
 
+Windows PowerShell fallback:
+
+```bash
+vibebox.cmd <command>
+```
+
 Fallback inside the VibeBox repository:
 
 ```bash
@@ -54,3 +60,4 @@ vibebox approve <candidate-id>
 - This repository includes a local plugin wrapper, not a marketplace publication claim.
 - Agents still need shell access to run the VibeBox CLI.
 - The shared skill is the source of usage behavior; the adapter should not fork memory policy.
+- `.vibebox/` is user-project runtime state and should usually not be committed to public repositories.

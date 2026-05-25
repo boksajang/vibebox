@@ -24,20 +24,39 @@ VibeBox makes that memory local, inspectable, and reusable.
 
 ## Quick Start
 
+From a clone with Node.js 20 or newer:
+
+```bash
+npm install
+```
+
+Use it from another project:
+
+```bash
+npm link
+cd path/to/your-project
+vibebox init
+vibebox pretask --task "Fix dashboard table scrolling"
+```
+
+Direct fallback from the VibeBox repository also works:
+
 ```bash
 node bin/vibebox.mjs init
 node bin/vibebox.mjs pretask --task "Fix dashboard table scrolling"
 ```
 
+On Windows PowerShell, if the npm `.ps1` shim is blocked by execution policy, use `vibebox.cmd <command>` or the direct `node bin/vibebox.mjs <command>` form.
+
 After the agent finishes:
 
 ```bash
-node bin/vibebox.mjs aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling and kept package.json unchanged." --files "src/table.mjs" --commands "npm.cmd test" --outcome success
-node bin/vibebox.mjs review
-node bin/vibebox.mjs approve <candidate-id>
+vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling and kept package.json unchanged." --files "src/table.mjs" --commands "npm.cmd test" --outcome success
+vibebox review
+vibebox approve <candidate-id>
 ```
 
-## Common Workflow
+## Basic Workflow
 
 1. Run `init` once in a repository.
 2. Run `pretask` before the AI agent starts.
@@ -85,6 +104,8 @@ VibeBox writes human-readable Markdown under `.vibebox/wiki/`. The wiki uses nor
 
 VibeBox stores data locally in `.vibebox/`. It does not send memory anywhere by itself. Sensitive-looking values such as API keys, tokens, passwords, bearer tokens, and connection strings are redacted before they reach active memory, wiki pages, or context output.
 
+`.vibebox/` is runtime state created inside user projects. It is ignored by this repository and should usually not be committed to public repositories.
+
 ## Documentation
 
 - [Concept](docs/CONCEPT.md): AI coding blackbox and local memory model
@@ -94,8 +115,10 @@ VibeBox stores data locally in `.vibebox/`. It does not send memory anywhere by 
 - [Common Agent Workflow](skills/vibebox/references/WORKFLOW.md): agent-neutral pre-task and after-task flow
 - [Memory Policy](skills/vibebox/references/MEMORY_POLICY.md): review-first policy, conflicts, and sensitive data
 
-## License / Author
+## License
 
 MIT License.
+
+## Author
 
 Created by **Boksajang**.

@@ -87,3 +87,16 @@ Secrets should not become active memory. VibeBox redacts common API keys, tokens
 ## Classification Notes
 
 Classification is deterministic and heuristic-based. It considers permanence, scope, certainty, intent, evidence, and relation to existing memory. It is intentionally conservative and does not use an LLM.
+
+## Conflict Handling Notes
+
+- `duplicate`: do not auto-promote; review or reject as noise.
+- `refinement`: approve only when it usefully narrows an existing memory; keep related links.
+- `exception`: approve only when the exception scope is clear.
+- `direct_conflict`: keep pending until a human decides.
+- `supersedes`: approving the new memory should mark the older memory superseded.
+- `needs_user_review`: keep pending until the missing context is clarified.
+
+## Runtime State Policy
+
+Memory records, raw logs, pending candidates, indexes, and wiki pages live under `.vibebox/` in each user project. That folder is runtime state and should usually be excluded from public source repositories. VibeBox source packaging excludes `.vibebox/` with `.gitignore`.

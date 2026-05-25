@@ -1,138 +1,208 @@
 # VibeBox Usage
 
-Run commands from the project root.
+This is the practical guide for installing and running VibeBox.
+
+## Requirements
+
+- Node.js `>=20`
+- npm for `npm install` and `npm link`
+
+## Installation
+
+From a clone:
+
+```bash
+npm install
+```
+
+To create a global development command:
+
+```bash
+npm link
+vibebox --help
+```
+
+On Windows PowerShell, npm's `.ps1` shim can be blocked by execution policy. Use the generated command shim instead:
+
+```bash
+vibebox.cmd --help
+```
+
+The direct Node fallback works from the VibeBox repository root:
 
 ```bash
 node bin/vibebox.mjs <command>
 ```
 
-If installed or linked as a package, the same commands can be run as `vibebox <command>`.
+## Runtime Storage
 
-## Initialize
+`vibebox init` creates `.vibebox/` inside the current project. That folder is runtime state: config, local wiki pages, JSON indexes, raw logs, and pending memory candidates.
+
+For public repositories, `.vibebox/` should usually stay uncommitted. This repository ignores `.vibebox/`, `.vscode/`, `node_modules/`, temp output, and common log files.
+
+## Project Initialization
+
+```bash
+vibebox init
+```
+
+Fallback:
 
 ```bash
 node bin/vibebox.mjs init
 ```
 
-Creates `.vibebox/` with config, wiki pages, JSON indexes, logs, and pending candidate storage. Existing files are not overwritten.
+Initialization creates missing VibeBox files and preserves existing ones.
 
-## Before a Task
+## Pre-Task Usage
+
+Run before non-trivial coding or design work:
 
 ```bash
-node bin/vibebox.mjs pretask --task "Fix dashboard table scrolling"
+vibebox pretask --task "Fix dashboard table scrolling"
 ```
 
 or:
 
 ```bash
-node bin/vibebox.mjs pretask "Fix dashboard table scrolling"
+vibebox pretask "Fix dashboard table scrolling"
 ```
 
-`pretask` prints a Pre-Task Brief for the AI coding agent. It emphasizes failure risks, success patterns, project guardrails, and potential conflicts.
+`pretask` prints a Pre-Task Brief with relevant active memory, known failure risks, success patterns, project guardrails, potential conflicts, and instructions for the agent.
 
-## After a Task
+## After-Task Usage
+
+Run after meaningful work:
 
 ```bash
-node bin/vibebox.mjs aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling and kept package.json unchanged." --files "src/table.mjs" --commands "npm.cmd test" --outcome success
+vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling and kept package.json unchanged." --files "src/table.mjs" --commands "npm.cmd test" --outcome success
 ```
 
 For longer notes:
 
 ```bash
-node bin/vibebox.mjs aftertask --from-file task-result.txt
+vibebox aftertask --from-file task-result.txt
 ```
 
 `aftertask` writes a blackbox event and creates pending memory candidates. It does not create active memory.
 
-## Review and Approval
+## Capture And Extract
+
+`capture` records a raw event supplied by the user or agent:
 
 ```bash
-node bin/vibebox.mjs review
-node bin/vibebox.mjs approve <candidate-id>
-node bin/vibebox.mjs reject <candidate-id>
+vibebox capture --request "..." --summary "..." --outcome partial
 ```
 
-Safe approval promotes only candidates that have no known conflict and sufficient confidence:
+`extract` turns text or event context into pending candidates:
 
 ```bash
-node bin/vibebox.mjs approve --safe
+vibebox extract --text "Do not modify package.json unless explicitly requested."
 ```
 
-Conflict, exception, supersede, duplicate, and low-confidence candidates stay pending for explicit review.
+## Review And Approval
+
+```bash
+vibebox review
+vibebox approve <candidate-id>
+vibebox reject <candidate-id>
+```
+
+Safe approval promotes only candidates with sufficient confidence and no known conflict:
+
+```bash
+vibebox approve --safe
+```
+
+Conflict, exception, supersede, duplicate, low-confidence, and review-needed candidates remain pending for explicit review.
 
 ## Context Pack
 
 ```bash
-node bin/vibebox.mjs context --task "Update dashboard dependency handling"
+vibebox context --task "Update dashboard dependency handling"
 ```
 
 `context` prints a compact memory pack. `pretask` is usually better before coding because it is more instruction-oriented.
 
-## Capture and Extract
-
-`capture` stores a raw event supplied by the user or agent:
-
-```bash
-node bin/vibebox.mjs capture --request "..." --summary "..." --outcome partial
-```
-
-`extract` turns text into pending candidates:
-
-```bash
-node bin/vibebox.mjs extract --text "Do not modify package.json unless explicitly requested."
-```
-
 ## Reports
 
 ```bash
-node bin/vibebox.mjs report
-node bin/vibebox.mjs blackbox --limit 10
+vibebox report
+vibebox blackbox --limit 10
 ```
 
-`report` summarizes active and pending memory. `blackbox` summarizes recent task events, failed approaches, successful approaches, changed files, and prevention rules.
+`report` summarizes active and pending memory. `blackbox` summarizes recent task events, failed approaches, successful approaches, changed files, decisions, and prevention rules.
 
 ## Doctor
 
 ```bash
-node bin/vibebox.mjs doctor
+vibebox doctor
 ```
 
-Checks required files, JSON parsing, index consistency, wiki references, and suspicious unredacted secrets in raw logs.
+`doctor` checks required files, JSON parsing, index consistency, wiki references, and suspicious unredacted secrets in raw logs.
+
+## External Project Workflow
+
+After `npm link`, VibeBox can be used from another repository:
+
+```bash
+cd path/to/another-project
+vibebox init
+vibebox pretask --task "Check project memory before editing"
+vibebox aftertask --request "Check project memory before editing" --summary "Inspected project state." --outcome success
+vibebox extract --text "Do not modify package.json unless explicitly requested."
+vibebox review
+vibebox approve <candidate-id>
+vibebox context --task "Change dependency handling"
+vibebox report
+vibebox blackbox --limit 5
+vibebox doctor
+```
+
+On Windows PowerShell, use `vibebox.cmd` for the same commands if `vibebox` is blocked.
+
+## Troubleshooting
+
+- If `vibebox` is not found, run `npm link` from the VibeBox repository or use `node bin/vibebox.mjs <command>`.
+- If PowerShell blocks `vibebox.ps1`, use `vibebox.cmd <command>`.
+- If pre-task output is empty, approve relevant pending memory first with `review` and `approve`.
+- If indexes or wiki files look inconsistent, run `vibebox doctor`.
+- Do not fix runtime state by committing `.vibebox/` to a public repository.
 
 ## Examples
 
 Dashboard database preference:
 
 ```bash
-node bin/vibebox.mjs extract --text "For dashboard reporting modules, MSSQL fits better because the reporting views already live there."
+vibebox extract --text "For dashboard reporting modules, MSSQL fits better because the reporting views already live there."
 ```
 
 App database preference:
 
 ```bash
-node bin/vibebox.mjs extract --text "For small app prototypes, Supabase is usually fine unless this project has a database decision."
+vibebox extract --text "For small app prototypes, Supabase is usually fine unless this project has a database decision."
 ```
 
 Package avoid rule:
 
 ```bash
-node bin/vibebox.mjs extract --text "Do not modify package.json unless explicitly requested; dependency churn has broken reviews before."
+vibebox extract --text "Do not modify package.json unless explicitly requested; dependency churn has broken reviews before."
 ```
 
 Failed layout approach:
 
 ```bash
-node bin/vibebox.mjs aftertask --request "Fix table scroll" --summary "Tried changing global body overflow." --errors "Global overflow caused layout regressions." --outcome failure
+vibebox aftertask --request "Fix table scroll" --summary "Tried changing global body overflow." --errors "Global overflow caused layout regressions." --outcome failure
 ```
 
 Successful table scroll pattern:
 
 ```bash
-node bin/vibebox.mjs aftertask --request "Fix wide table scroll" --summary "Wrapper-based table scrolling worked without global layout changes." --outcome success
+vibebox aftertask --request "Fix wide table scroll" --summary "Wrapper-based table scrolling worked without global layout changes." --outcome success
 ```
 
 Project decision:
 
 ```bash
-node bin/vibebox.mjs extract --text "We decided this project uses ECharts for dashboard visualization after rejecting Chart.js."
+vibebox extract --text "We decided this project uses ECharts for dashboard visualization after rejecting Chart.js."
 ```

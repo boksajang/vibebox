@@ -28,6 +28,8 @@ Fallback:
 node bin/vibebox.mjs pretask --task "Fix dashboard table scrolling"
 ```
 
+On Windows PowerShell, use `vibebox.cmd pretask --task "..."` if the npm `.ps1` shim is blocked.
+
 The brief should guide attention, not replace codebase analysis. Apply active memory as constraints, risk warnings, and project context.
 
 ## After-Task Blackbox Workflow
@@ -105,6 +107,31 @@ Fallback inside this repository:
 ```bash
 node bin/vibebox.mjs <command>
 ```
+
+Windows PowerShell fallback:
+
+```bash
+vibebox.cmd <command>
+```
+
+## External Project Workflow
+
+After `npm link`, run VibeBox from another project:
+
+```bash
+vibebox init
+vibebox pretask --task "Check project memory before editing"
+vibebox aftertask --request "Check project memory before editing" --summary "Inspected project state." --outcome success
+vibebox extract --text "Do not modify package.json unless explicitly requested."
+vibebox review
+vibebox approve <candidate-id>
+vibebox context --task "Change dependency handling"
+vibebox report
+vibebox blackbox --limit 5
+vibebox doctor
+```
+
+The generated `.vibebox/` folder belongs to that external project and should usually remain out of public source control.
 
 ## Current User Request Priority Rule
 

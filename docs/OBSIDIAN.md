@@ -4,6 +4,8 @@ VibeBox creates a Markdown wiki in `.vibebox/wiki/`.
 
 The wiki is meant for humans. JSON indexes under `.vibebox/index/` are meant for retrieval.
 
+`.vibebox/` is runtime state created inside each user project. The VibeBox source repository ignores it, and public projects should usually avoid committing generated wiki, index, log, or pending files unless they are intentionally publishing sanitized examples.
+
 ## Default Pages
 
 ```text
