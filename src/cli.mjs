@@ -1,10 +1,15 @@
 import { readFile } from 'node:fs/promises';
 import {
+  afterTask,
+  approveSafeMemories,
   approveMemory,
   captureEvent,
   extractMemoryCandidates,
+  generateBlackboxReport,
   formatDoctorReport,
   generateContextPack,
+  generatePreTaskBrief,
+  generateReport,
   initVibeBox,
   rejectMemory,
   reviewPending,
@@ -61,6 +66,19 @@ function parseChangedFiles(value) {
     .filter(Boolean);
 }
 
+function parseList(value) {
+  if (!value) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value;
+  }
+  return String(value)
+    .split(/\r?\n|[,;]/u)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function help() {
   return `VibeBox
 
@@ -70,8 +88,13 @@ Usage:
   vibebox extract --text <text>
   vibebox review
   vibebox approve <candidate-id>
+  vibebox approve --safe
   vibebox reject <candidate-id>
   vibebox context --task <text>
+  vibebox pretask --task <text>
+  vibebox aftertask --request <text> --summary <text> [--files a,b] [--commands <text>] [--outcome success|failure|partial|unknown]
+  vibebox report
+  vibebox blackbox [--limit 10] [--type success|failure|task_summary] [--since YYYY-MM-DD]
   vibebox doctor
 `;
 }
@@ -121,6 +144,10 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
       return reviewPending(root);
 
     case 'approve': {
+      if (flags.safe || args[0] === '--safe' || args[0] === 'safe') {
+        const result = await approveSafeMemories(root);
+        return `Approved ${result.approved.length} safe candidate(s).\nSkipped ${result.skipped.length} candidate(s) requiring review.`;
+      }
       const id = args[0];
       if (!id) throw new Error('approve requires a candidate id.');
       const memory = await approveMemory(root, id);
@@ -136,7 +163,45 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
 
     case 'context': {
       const task = flags.task || args.join(' ') || await readStdin();
-      return generateContextPack(root, { task });
+      return generateContextPack(root, { task, debug: Boolean(flags.debug) });
+    }
+
+    case 'pretask': {
+      const task = flags.task || args.join(' ') || await readStdin();
+      return generatePreTaskBrief(root, { task, debug: Boolean(flags.debug) });
+    }
+
+    case 'aftertask': {
+      let fileText = '';
+      if (flags['from-file']) {
+        fileText = await readFile(flags['from-file'], 'utf8');
+      }
+      if (!fileText && !process.stdin.isTTY) {
+        fileText = await readStdin();
+      }
+      const result = await afterTask(root, {
+        userRequest: flags.request || flags.userRequest || '',
+        aiActionSummary: flags.summary || flags.aiActionSummary || fileText,
+        changedFiles: parseList(flags.files || flags['changed-files'] || flags.changedFiles),
+        commands: parseList(flags.commands || flags.command),
+        commandResults: parseList(flags['command-results'] || flags['command-result'] || flags.commandResult),
+        errors: parseList(flags.errors || flags.error),
+        userFeedback: flags.feedback || flags.userFeedback || '',
+        outcome: flags.outcome || 'unknown',
+        notes: flags.notes || fileText
+      });
+      return result.message;
+    }
+
+    case 'report':
+      return generateReport(root);
+
+    case 'blackbox': {
+      return generateBlackboxReport(root, {
+        limit: flags.limit,
+        type: flags.type,
+        since: flags.since
+      });
     }
 
     case 'doctor': {

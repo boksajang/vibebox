@@ -4,6 +4,7 @@ import {
   appendFile,
   mkdir,
   readFile,
+  readdir,
   rename,
   stat,
   writeFile
@@ -207,12 +208,59 @@ function defaultConfig(root) {
     projectName: path.basename(root),
     projectId: hashId('project', path.resolve(root).toLowerCase()),
     rootPath: '.',
+    repositoryName: path.basename(root),
+    primaryDomain: 'general',
+    techStackHints: [],
     memoryMode: 'review',
     obsidianCompatible: true,
     maxContextItems: 8,
     maxContextChars: 6000,
     createdAt: timestamp,
     updatedAt: timestamp
+  };
+}
+
+async function detectProjectIdentity(root) {
+  const identity = {
+    projectName: path.basename(root),
+    repositoryName: path.basename(root),
+    primaryDomain: 'general',
+    techStackHints: []
+  };
+
+  const packagePath = path.join(root, 'package.json');
+  try {
+    const packageData = JSON.parse(await readFile(packagePath, 'utf8'));
+    if (packageData.name) {
+      identity.projectName = packageData.name;
+      identity.repositoryName = packageData.name;
+    }
+    const dependencyNames = Object.keys({
+      ...(packageData.dependencies || {}),
+      ...(packageData.devDependencies || {})
+    });
+    identity.techStackHints = dependencyNames
+      .filter((name) => ['react', 'vue', 'svelte', 'next', 'vite', 'express', 'fastify', 'echarts', 'chart.js', 'typescript'].includes(name))
+      .sort();
+    const searchable = `${packageData.name || ''} ${packageData.description || ''} ${dependencyNames.join(' ')}`;
+    if (textHasAny(searchable, ['dashboard', 'echarts', 'chart.js', 'reporting'])) {
+      identity.primaryDomain = 'dashboard';
+    } else if (textHasAny(searchable, ['api', 'express', 'fastify', 'backend'])) {
+      identity.primaryDomain = 'backend';
+    } else if (textHasAny(searchable, ['react', 'vue', 'svelte', 'frontend', 'ui'])) {
+      identity.primaryDomain = 'frontend';
+    }
+  } catch {
+    // package.json is optional for agent-neutral VibeBox workspaces.
+  }
+
+  return identity;
+}
+
+async function createDefaultConfig(root) {
+  return {
+    ...defaultConfig(root),
+    ...(await detectProjectIdentity(root))
   };
 }
 
@@ -277,6 +325,7 @@ function initialWikiPage(pageName) {
 export async function initVibeBox(root = process.cwd()) {
   const base = vibeboxPath(root);
   const created = [];
+  const config = await createDefaultConfig(root);
 
   for (const dir of ['', 'wiki', 'index', 'logs', 'pending']) {
     const dirPath = vibeboxPath(root, dir);
@@ -287,7 +336,7 @@ export async function initVibeBox(root = process.cwd()) {
   }
 
   const files = [
-    ['config.json', `${JSON.stringify(defaultConfig(root), null, 2)}\n`],
+    ['config.json', `${JSON.stringify(config, null, 2)}\n`],
     ['index/memory-index.json', `${JSON.stringify(defaultMemoryIndex(), null, 2)}\n`],
     ['index/keyword-index.json', `${JSON.stringify(defaultKeywordIndex(), null, 2)}\n`],
     ['index/relation-index.json', `${JSON.stringify(defaultRelationIndex(), null, 2)}\n`],
@@ -307,11 +356,36 @@ export async function initVibeBox(root = process.cwd()) {
     }
   }
 
+  await ensureConfigFields(root);
+
   return {
     root: path.resolve(root),
     vibeboxPath: base,
     created
   };
+}
+
+async function ensureConfigFields(root) {
+  const configPath = vibeboxPath(root, 'config.json');
+  const existing = await loadJson(configPath, {});
+  const defaults = await createDefaultConfig(root);
+  const merged = { ...defaults, ...existing };
+  let changed = false;
+
+  for (const key of ['repositoryName', 'primaryDomain', 'techStackHints', 'rootPath', 'maxContextItems', 'maxContextChars', 'memoryMode', 'obsidianCompatible']) {
+    if (existing[key] === undefined) {
+      merged[key] = defaults[key];
+      changed = true;
+    }
+  }
+  if (existing.rootPath && path.isAbsolute(existing.rootPath)) {
+    merged.rootPath = '.';
+    changed = true;
+  }
+  if (changed) {
+    merged.updatedAt = nowIso();
+    await saveJson(configPath, merged);
+  }
 }
 
 function normalizeText(text) {
@@ -383,9 +457,13 @@ export async function captureEvent(root = process.cwd(), input = {}) {
     aiActionSummary: input.aiActionSummary || '',
     command: input.command || '',
     commandResult: input.commandResult || '',
+    commands: Array.isArray(input.commands) ? input.commands : [],
+    commandResults: Array.isArray(input.commandResults) ? input.commandResults : [],
+    errors: Array.isArray(input.errors) ? input.errors : [],
     changedFiles: Array.isArray(input.changedFiles) ? input.changedFiles : [],
     userFeedback: input.userFeedback || '',
     outcome: input.outcome || 'unknown',
+    notes: input.notes || '',
     createdAt: input.createdAt || timestamp
   });
 
@@ -504,18 +582,20 @@ function inferType(statement) {
   const hasSuccess = textHasAny(statement, ['worked successfully', 'successful', 'approved', 'confirmed', 'reuse', 'should be reused']);
   const hasDecision = textHasAny(statement, ['we decided', 'decided this project', 'this project uses', 'uses echarts', 'after rejecting']);
   const hasPreference = textHasAny(statement, ['prefer', 'usually prefer', 'i prefer']);
+  const hasDurableUseInstruction = textHasAny(statement, ['for dashboard projects, use', 'dashboard projects use', 'for app projects, use', 'app projects use', 'this project uses']);
   const hasWorkflow = textHasAny(statement, ['review first', 'approval', 'workflow']);
   const hasArchitecture = textHasAny(statement, ['architecture', 'component-level', 'preserve existing behavior']);
 
   if (hasRejection) return 'avoid_rule';
   if (hasFailure) return 'failure_memory';
-  if (hasSuccess) return 'success_pattern';
   if (hasDecision) return 'project_decision';
+  if (hasSuccess) return 'success_pattern';
   if (hasTemporaryAllowance) return 'workflow_rule';
   if (hasWorkflow) return 'workflow_rule';
   if (hasArchitecture) return 'architecture_rule';
   if (hasPreference && normalized.includes('tool')) return 'tooling_preference';
   if (hasPreference) return 'user_preference';
+  if (hasDurableUseInstruction) return textHasAny(statement, ['this project']) ? 'project_decision' : 'user_preference';
   return null;
 }
 
@@ -702,8 +782,13 @@ export async function extractMemoryCandidates(root = process.cwd(), input = {}) 
       text = [
         event.userRequest,
         event.aiActionSummary,
+        ...(event.commands || []),
         event.commandResult,
-        event.userFeedback
+        ...(event.commandResults || []),
+        ...(event.errors || []),
+        event.userFeedback,
+        event.notes,
+        event.outcome ? `Outcome: ${event.outcome}` : ''
       ].filter(Boolean).join('\n');
     }
   }
@@ -715,13 +800,19 @@ export async function extractMemoryCandidates(root = process.cwd(), input = {}) 
       text = [
         event.userRequest,
         event.aiActionSummary,
+        ...(event.commands || []),
         event.commandResult,
-        event.userFeedback
+        ...(event.commandResults || []),
+        ...(event.errors || []),
+        event.userFeedback,
+        event.notes,
+        event.outcome ? `Outcome: ${event.outcome}` : ''
       ].filter(Boolean).join('\n');
     }
   }
 
   const memories = await activeMemories(root);
+  const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig(root));
   const existingPending = await readJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl'));
   const existingIds = new Set(existingPending.map((candidate) => candidate.id));
   const newCandidates = [];
@@ -729,6 +820,8 @@ export async function extractMemoryCandidates(root = process.cwd(), input = {}) 
   for (const statement of splitStatements(redactSensitive(text))) {
     const candidate = buildCandidate(statement, source, memories);
     if (candidate && !existingIds.has(candidate.id)) {
+      candidate.projectId = config.projectId;
+      candidate.repositoryName = config.repositoryName || config.projectName;
       newCandidates.push(candidate);
       existingIds.add(candidate.id);
     }
@@ -802,10 +895,6 @@ export function classifyCandidateConflict(activeMemoryRecords = [], candidate) {
     }
   }
 
-  if (candidate.confidence === 'low') {
-    return { status: 'needs_user_review', related, supersedes: [], reason: 'Low-confidence candidate overlaps existing memory.' };
-  }
-
   if (textHasAny(candidateText, ['except', 'exception', 'unless', 'only when', 'apart from'])) {
     return { status: 'exception', related, supersedes: [], reason: 'Candidate defines an exception to existing memory.' };
   }
@@ -816,6 +905,10 @@ export function classifyCandidateConflict(activeMemoryRecords = [], candidate) {
 
   if (relatedMemories.some((memory) => hasOpposingChoice(memory, candidate))) {
     return { status: 'direct_conflict', related, supersedes: [], reason: 'Candidate points to a different mutually exclusive technology choice.' };
+  }
+
+  if (candidate.confidence === 'low') {
+    return { status: 'needs_user_review', related, supersedes: [], reason: 'Low-confidence candidate overlaps existing memory.' };
   }
 
   if (relatedMemories.some((memory) => isMoreSpecific(memory, candidate))) {
@@ -844,10 +937,30 @@ function toPendingIndexEntry(candidate) {
     confidence: candidate.confidence,
     status: candidate.status,
     conflictStatus: candidate.conflictStatus,
+    recommendedAction: recommendCandidateAction(candidate).action,
     related: candidate.related || [],
     supersedes: candidate.supersedes || [],
     updatedAt: candidate.updatedAt
   };
+}
+
+function recommendCandidateAction(candidate) {
+  if (candidate.status !== 'pending') {
+    return { action: candidate.status, reason: `Candidate is already ${candidate.status}.` };
+  }
+  if (containsSensitive(candidate)) {
+    return { action: 'reject', reason: 'Sensitive value suspected.' };
+  }
+  if (candidate.conflictStatus === 'duplicate') {
+    return { action: 'merge', reason: 'Candidate appears to duplicate active memory.' };
+  }
+  if (['direct_conflict', 'exception', 'supersedes', 'needs_user_review'].includes(candidate.conflictStatus)) {
+    return { action: candidate.conflictStatus === 'supersedes' ? 'supersede' : 'keep pending', reason: `Requires review because conflictStatus is ${candidate.conflictStatus}.` };
+  }
+  if (candidate.confidence === 'low') {
+    return { action: 'keep pending', reason: 'Low-confidence candidate needs confirmation.' };
+  }
+  return { action: 'approve', reason: 'No conflict detected and confidence is sufficient.' };
 }
 
 function toMemoryIndexEntry(memory) {
@@ -862,6 +975,8 @@ function toMemoryIndexEntry(memory) {
     tags: memory.tags || [],
     domains: memory.domains || [],
     appliesTo: memory.appliesTo || [],
+    projectId: memory.projectId,
+    repositoryName: memory.repositoryName,
     source: memory.source || {},
     evidence: memory.evidence || [],
     confidence: memory.confidence,
@@ -897,7 +1012,7 @@ export async function reviewPending(root = process.cwd()) {
     return 'No pending VibeBox memory candidates.';
   }
 
-  const header = ['ID', 'TYPE', 'SCOPE', 'TOPIC', 'TITLE', 'SUMMARY', 'CONFIDENCE', 'CONFLICT'].join('  ');
+  const header = ['ID', 'TYPE', 'SCOPE', 'TOPIC', 'TITLE', 'SUMMARY', 'CONFIDENCE', 'CONFLICT', 'RECOMMENDED_ACTION'].join('  ');
   const rows = candidates.map((candidate) => [
     candidate.id,
     candidate.type,
@@ -906,9 +1021,29 @@ export async function reviewPending(root = process.cwd()) {
     candidate.title,
     candidate.summary,
     candidate.confidence,
-    candidate.conflictStatus
+    candidate.conflictStatus,
+    recommendCandidateAction(candidate).action
   ].map((value) => String(value ?? '').replace(/\s+/gu, ' ').trim()).join('  '));
   return [header, ...rows].join('\n');
+}
+
+export async function approveSafeMemories(root = process.cwd()) {
+  await initVibeBox(root);
+  const candidates = (await readJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl')))
+    .filter((candidate) => candidate.status === 'pending');
+  const approved = [];
+  const skipped = [];
+
+  for (const candidate of candidates) {
+    const recommendation = recommendCandidateAction(candidate);
+    if (recommendation.action === 'approve') {
+      approved.push(await approveMemory(root, candidate.id));
+    } else {
+      skipped.push({ ...candidate, recommendedAction: recommendation.action, recommendationReason: recommendation.reason });
+    }
+  }
+
+  return { approved, skipped };
 }
 
 export async function approveMemory(root = process.cwd(), candidateId) {
@@ -1025,8 +1160,23 @@ function memoryKeywords(memory) {
   ].join(' ');
   return normalizeText(text)
     .split(/\s+/u)
+    .map(normalizeKeywordToken)
     .filter((token) => token.length >= 3 && !STOP_WORDS.has(token))
     .slice(0, 60);
+}
+
+function normalizeKeywordToken(token) {
+  const aliases = {
+    dependencies: 'dependency',
+    deps: 'dependency',
+    packages: 'package',
+    scrolling: 'scroll',
+    scrolls: 'scroll',
+    changed: 'change',
+    changing: 'change',
+    changes: 'change'
+  };
+  return aliases[token] || token;
 }
 
 function pageTitle(pageName) {
@@ -1050,6 +1200,7 @@ async function rebuildWiki(root) {
     const pageMemories = active.filter((memory) => TYPE_TO_PAGE[memory.type] === page);
     await writeManagedWikiPage(root, page, renderMemoryShell(page), renderMemoryManaged(pageMemories));
   }
+  await writeConceptWikiPages(root, active);
 }
 
 function managedBlock(content) {
@@ -1130,10 +1281,8 @@ function renderMemoryManaged(memories) {
 }
 
 function renderMemoryMarkdown(memory) {
-  const links = [
-    ...(memory.tags || []).slice(0, 8),
-    ...(memory.domains || []).slice(0, 5)
-  ].map(wikiLink).filter(Boolean).join(' ');
+  const concepts = conceptsForMemory(memory);
+  const links = concepts.map(wikiLink).filter(Boolean).join(' ');
 
   const lines = [
     `## ${memory.title}`,
@@ -1164,29 +1313,127 @@ function renderMemoryMarkdown(memory) {
     }
   }
   if (links) {
-    lines.push(`- Links: ${links}`);
+    lines.push('', '## Related', '', links);
   }
   return lines.join('\n');
 }
 
-function scoreMemory(memory, task) {
+async function writeConceptWikiPages(root, memories) {
+  const concepts = new Map();
+  for (const memory of memories) {
+    for (const concept of conceptsForMemory(memory)) {
+      if (!concepts.has(concept)) concepts.set(concept, []);
+      concepts.get(concept).push(memory);
+    }
+  }
+
+  for (const [concept, relatedMemories] of concepts) {
+    const pageName = `${safeWikiPageName(concept)}.md`;
+    const shell = `${wikiFrontmatter(concept)}# ${concept}
+
+Back to [[Home]].`;
+    const managed = [
+      '## Related memories',
+      '',
+      ...relatedMemories.map((memory) => `- \`${memory.id}\` ${wikiLink(pageTitle(TYPE_TO_PAGE[memory.type]))}: ${memory.summary}`)
+    ].join('\n');
+    await writeManagedWikiPage(root, pageName, shell, managed);
+  }
+}
+
+function safeWikiPageName(name) {
+  return String(name || 'Concept')
+    .replace(/[<>:"/\\|?*\x00-\x1F]/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .slice(0, 80) || 'Concept';
+}
+
+function conceptsForMemory(memory) {
+  const concepts = new Set();
+  const terms = [
+    memory.topic,
+    ...(memory.domains || []),
+    ...(memory.tags || [])
+  ];
+  for (const term of terms) {
+    const concept = conceptNameForTerm(term);
+    if (concept) concepts.add(concept);
+  }
+  if (memory.type === 'failure_memory') concepts.add('Failure Patterns');
+  if (memory.type === 'success_pattern') concepts.add('Success Patterns');
+  if (memory.type === 'workflow_rule') concepts.add('Agent Workflow');
+  return [...concepts].slice(0, 8);
+}
+
+function conceptNameForTerm(term) {
+  const normalized = normalizeText(term);
+  if (!normalized || STOP_WORDS.has(normalized) || normalized.length < 3) return '';
+  if (['dependency', 'dependencies', 'package.json', 'package dependency changes'].includes(normalized)) return 'Dependency Management';
+  if (['database', 'mssql', 'supabase', 'postgresql', 'dashboard database'].includes(normalized)) return 'Database Selection';
+  if (['dashboard', 'dashboard development'].includes(normalized)) return 'Dashboard Development';
+  if (['app', 'app development'].includes(normalized)) return 'App Development';
+  if (['ui', 'ux', 'layout', 'scrolling', 'table layout scrolling', 'layout scrolling'].includes(normalized)) return 'UI Design Rules';
+  if (['workflow', 'agent', 'tooling'].includes(normalized)) return 'Agent Workflow';
+  if (/^[a-z0-9_.#+/-]+$/u.test(normalized) && (normalized.includes('.') || normalized.includes('/'))) return '';
+  return normalized
+    .split(/\s+/u)
+    .slice(0, 4)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function scoreMemoryDetailed(memory, task, config = {}) {
   const taskTokens = new Set(memoryKeywords({ summary: task, tags: [], domains: [], appliesTo: [] }));
   const memoryTokenSet = new Set(memoryKeywords(memory));
+  let matchScore = 0;
   let score = (SCOPE_PRIORITY[memory.scope] || 0)
     + (TYPE_PRIORITY[memory.type] || 0)
     + (CONFIDENCE_PRIORITY[memory.confidence] || 0);
 
   for (const token of taskTokens) {
-    if (memoryTokenSet.has(token)) score += 12;
+    if (memoryTokenSet.has(token)) {
+      score += 12;
+      matchScore += 12;
+    }
   }
-  if (normalizeText(task).includes(normalizeText(memory.topic))) score += 25;
-  if ((memory.domains || []).some((domain) => normalizeText(task).includes(normalizeText(domain)))) score += 20;
-  if ((memory.tags || []).some((tag) => normalizeText(task).includes(normalizeText(tag)))) score += 16;
+  if (normalizeText(task).includes(normalizeText(memory.topic))) {
+    score += 32;
+    matchScore += 32;
+  }
+  if ((memory.domains || []).some((domain) => normalizeText(task).includes(normalizeText(domain)))) {
+    score += 24;
+    matchScore += 24;
+  }
+  if ((memory.tags || []).some((tag) => normalizeText(task).includes(normalizeText(tag)))) {
+    score += 18;
+    matchScore += 18;
+  }
+  if (memory.scope === 'project' && memory.projectId && memory.projectId === config.projectId) score += 25;
+  if (memory.scope === 'project') score += 16;
+  if (memory.scope === 'global') score -= 6;
+  if (['avoid_rule', 'failure_memory'].includes(memory.type) && matchScore > 0) score += 35;
+  score += Math.min(20, Number(memory.usageCount || 0) * 2);
   const ageMs = Date.now() - Date.parse(memory.updatedAt || memory.createdAt || nowIso());
   if (Number.isFinite(ageMs)) {
     score += Math.max(0, 8 - Math.floor(ageMs / 86_400_000));
   }
-  return score;
+  return { score, matchScore };
+}
+
+function scoreMemory(memory, task) {
+  return scoreMemoryDetailed(memory, task).score;
+}
+
+function selectRelevantMemories(memories, task, config) {
+  const maxItems = config.maxContextItems || 8;
+  return memories
+    .filter((memory) => memory.status === 'active')
+    .map((memory) => ({ memory, ...scoreMemoryDetailed(memory, task, config) }))
+    .filter((item) => item.matchScore > 0)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, maxItems)
+    .map((item) => ({ ...item.memory, retrievalScore: item.score, retrievalMatchScore: item.matchScore, lastUsedAt: nowIso() }));
 }
 
 export async function generateContextPack(root = process.cwd(), input = {}) {
@@ -1195,18 +1442,14 @@ export async function generateContextPack(root = process.cwd(), input = {}) {
   const task = input.task || input.text || '';
   const index = await loadJson(vibeboxPath(root, 'index/memory-index.json'), defaultMemoryIndex());
   const active = index.memories.filter((memory) => memory.status === 'active');
-  const scored = active
-    .map((memory) => ({ memory, score: scoreMemory(memory, task) }))
-    .filter((item) => item.score > 0)
-    .sort((left, right) => right.score - left.score)
-    .slice(0, config.maxContextItems || 8)
-    .map((item) => ({ ...item.memory, lastUsedAt: nowIso() }));
+  const scored = selectRelevantMemories(active, task, config);
 
   const pendingIndex = await loadJson(vibeboxPath(root, 'index/pending-index.json'), defaultPendingIndex());
   const conflicts = pendingIndex.candidates
     .filter((candidate) => candidate.status === 'pending' && !['no_conflict', 'duplicate'].includes(candidate.conflictStatus))
-    .filter((candidate) => scoreMemory(candidate, task) > 0)
+    .filter((candidate) => scoreMemoryDetailed(candidate, task, config).matchScore > 0)
     .slice(0, 4);
+  const activeConflicts = findActiveMemoryConflicts(scored);
 
   const sections = [
     'VibeBox Context Pack',
@@ -1220,7 +1463,7 @@ export async function generateContextPack(root = process.cwd(), input = {}) {
     renderContextSection('Relevant Avoid Rules', scored.filter((memory) => memory.type === 'avoid_rule')),
     renderContextSection('Relevant Failure Memory', scored.filter((memory) => memory.type === 'failure_memory')),
     renderContextSection('Relevant Success Patterns', scored.filter((memory) => memory.type === 'success_pattern')),
-    renderConflictSection(conflicts),
+    renderConflictSection([...conflicts, ...activeConflicts]),
     'Guidance for AI Agent:',
     '- Use the memory context as constraints.',
     '- Do not treat low-confidence memory as a final fact.',
@@ -1247,9 +1490,249 @@ function renderContextSection(title, memories) {
 function renderConflictSection(conflicts) {
   return [
     'Potential Conflicts:',
-    ...(conflicts.length > 0 ? conflicts.map((candidate) => `- ${candidate.summary} [${candidate.id}; ${candidate.conflictStatus}; ${candidate.confidence}]`) : ['- None.']),
+    ...(conflicts.length > 0 ? conflicts.map((candidate) => `- ${candidate.summary} [${candidate.id}; ${candidate.conflictStatus || 'active_conflict'}; ${candidate.confidence || 'medium'}]`) : ['- None.']),
     ''
   ].join('\n');
+}
+
+function findActiveMemoryConflicts(memories) {
+  const conflicts = [];
+  for (let leftIndex = 0; leftIndex < memories.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < memories.length; rightIndex += 1) {
+      const left = memories[leftIndex];
+      const right = memories[rightIndex];
+      const scopePair = new Set([left.scope, right.scope]);
+      if (!scopePair.has('project') || left.scope === right.scope) continue;
+      if (!hasTargetOverlap(left, right) || !hasOpposingChoice(left, right)) continue;
+      const projectMemory = left.scope === 'project' ? left : right;
+      const broaderMemory = left.scope === 'project' ? right : left;
+      conflicts.push({
+        id: `${projectMemory.id}_vs_${broaderMemory.id}`,
+        summary: `Project memory "${projectMemory.summary}" conflicts with broader memory "${broaderMemory.summary}". Follow current user request and verify repository reality.`,
+        conflictStatus: 'direct_conflict',
+        confidence: projectMemory.confidence,
+        related: [projectMemory.id, broaderMemory.id],
+        broaderMemoryId: broaderMemory.id,
+        projectMemoryId: projectMemory.id
+      });
+    }
+  }
+  return conflicts;
+}
+
+export async function generatePreTaskBrief(root = process.cwd(), input = {}) {
+  await initVibeBox(root);
+  const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig(root));
+  const task = input.task || input.text || '';
+  const index = await loadJson(vibeboxPath(root, 'index/memory-index.json'), defaultMemoryIndex());
+  const relevant = selectRelevantMemories(index.memories, task, config);
+  const pendingIndex = await loadJson(vibeboxPath(root, 'index/pending-index.json'), defaultPendingIndex());
+  const conflicts = [
+    ...pendingIndex.candidates
+      .filter((candidate) => candidate.status === 'pending' && !['no_conflict', 'duplicate'].includes(candidate.conflictStatus))
+      .filter((candidate) => scoreMemoryDetailed(candidate, task, config).matchScore > 0),
+    ...findActiveMemoryConflicts(relevant)
+  ].slice(0, 6);
+  const broaderConflictIds = new Set(conflicts.map((conflict) => conflict.broaderMemoryId).filter(Boolean));
+
+  const memoryContext = relevant.filter((memory) => !broaderConflictIds.has(memory.id) && !['failure_memory', 'success_pattern', 'avoid_rule', 'architecture_rule', 'project_decision'].includes(memory.type));
+  const projectGuardrails = relevant.filter((memory) => ['avoid_rule', 'architecture_rule', 'project_decision'].includes(memory.type));
+  const lines = [
+    'VibeBox Pre-Task Brief',
+    '',
+    'User Task:',
+    redactSensitive(task),
+    '',
+    renderBriefSection('Relevant Memory Context', memoryContext),
+    renderBriefSection('Known Failure Risks', relevant.filter((memory) => memory.type === 'failure_memory')),
+    renderBriefSection('Known Success Patterns', relevant.filter((memory) => memory.type === 'success_pattern')),
+    renderBriefSection('Project Guardrails', projectGuardrails),
+    renderConflictSection(conflicts).trim(),
+    '',
+    'Instruction for AI Agent:',
+    '- Analyze the repository before editing.',
+    '- Use the memory context as constraints.',
+    "- Do not override the user's current explicit request.",
+    '- If memory conflicts with repository reality, report the conflict.',
+    '- Do not treat low-confidence memory as final fact.',
+    '- Preserve existing project behavior unless the task explicitly changes it.',
+    '- Avoid repeating known failed approaches.',
+    "- Keep the implementation scope aligned with the user's request."
+  ];
+
+  let brief = lines.join('\n');
+  if (input.debug) {
+    brief += `\n\nRetrieval Debug:\n${relevant.map((memory) => `- ${memory.id}: score=${memory.retrievalScore}, match=${memory.retrievalMatchScore}`).join('\n') || '- No selected memory.'}`;
+  }
+  if (brief.length > (config.maxContextChars || 6000)) {
+    brief = `${brief.slice(0, config.maxContextChars || 6000)}\n[Brief truncated by VibeBox maxContextChars]`;
+  }
+  return redactSensitive(brief);
+}
+
+function renderBriefSection(title, memories) {
+  return [
+    `${title}:`,
+    ...(memories.length > 0
+      ? memories.map((memory) => `- ${memory.confidence === 'low' ? '[low confidence] ' : ''}${memory.summary} [${memory.id}; ${memory.scope}; ${memory.confidence}]`)
+      : ['- None.']),
+    ''
+  ].join('\n');
+}
+
+export async function afterTask(root = process.cwd(), input = {}) {
+  await initVibeBox(root);
+  const event = await captureEvent(root, {
+    eventType: 'task_summary',
+    userRequest: input.userRequest || input.request || '',
+    aiActionSummary: input.aiActionSummary || input.summary || '',
+    command: input.command || '',
+    commandResult: input.commandResult || '',
+    commands: input.commands || [],
+    commandResults: input.commandResults || [],
+    errors: input.errors || [],
+    changedFiles: input.changedFiles || input.files || [],
+    userFeedback: input.userFeedback || input.feedback || '',
+    outcome: input.outcome || 'unknown',
+    notes: input.notes || ''
+  });
+
+  const extractionText = [
+    input.userRequest || input.request ? `User requested: ${input.userRequest || input.request}` : '',
+    input.aiActionSummary || input.summary ? `AI action summary: ${input.aiActionSummary || input.summary}` : '',
+    ...(input.errors || []).map((error) => `The approach failed: ${error}. Prevent this by avoiding the failed approach unless the user explicitly asks for it.`),
+    input.userFeedback && textHasAny(input.userFeedback, ['reject', 'rejected', 'instead'])
+      ? `User rejected this direction: ${input.userFeedback}. Do not repeat it without confirmation.`
+      : '',
+    input.outcome === 'success'
+      ? `This approach worked successfully: ${input.aiActionSummary || input.summary}. Reuse when the task is similar to: ${input.userRequest || input.request}.`
+      : '',
+    input.outcome === 'failure'
+      ? `This task failed: ${input.aiActionSummary || input.summary}. Failure reason: ${(input.errors || []).join('; ') || input.commandResult || 'unknown'}.`
+      : '',
+    input.notes || ''
+  ].filter(Boolean).join('\n');
+
+  const candidates = await extractMemoryCandidates(root, {
+    text: extractionText,
+    source: { kind: 'aftertask', id: event.id }
+  });
+
+  return {
+    event,
+    candidates,
+    message: [
+      `Captured blackbox event ${event.id}.`,
+      `Created ${candidates.length} pending memory candidate(s).`,
+      'Review pending memory with `vibebox review`, then approve or reject candidate ids.'
+    ].join('\n')
+  };
+}
+
+export async function generateReport(root = process.cwd()) {
+  await initVibeBox(root);
+  const memoryIndex = await loadJson(vibeboxPath(root, 'index/memory-index.json'), defaultMemoryIndex());
+  const pendingIndex = await loadJson(vibeboxPath(root, 'index/pending-index.json'), defaultPendingIndex());
+  const events = await readJsonl(vibeboxPath(root, 'logs/events.jsonl'));
+  const active = memoryIndex.memories.filter((memory) => memory.status === 'active');
+  const conflicts = pendingIndex.candidates.filter((candidate) => candidate.status === 'pending' && !['no_conflict', 'duplicate'].includes(candidate.conflictStatus));
+
+  return redactSensitive([
+    'VibeBox Memory Report',
+    '',
+    `Active Memory: ${active.length}`,
+    `Pending Candidates: ${pendingIndex.candidates.filter((candidate) => candidate.status === 'pending').length}`,
+    `Recent Blackbox Events: ${events.length}`,
+    '',
+    renderReportType('User Preferences', active, ['user_preference', 'coding_style', 'design_preference']),
+    renderReportType('Project Decisions', active, ['project_decision']),
+    renderReportType('Architecture Rules', active, ['architecture_rule']),
+    renderReportType('Avoid Rules', active, ['avoid_rule']),
+    renderReportType('Failure Memory', active, ['failure_memory']),
+    renderReportType('Success Patterns', active, ['success_pattern']),
+    renderReportType('Tooling Preferences', active, ['tooling_preference']),
+    renderReportType('Workflow Rules', active, ['workflow_rule']),
+    'Pending Candidates:',
+    ...(pendingIndex.candidates.filter((candidate) => candidate.status === 'pending').slice(0, 12).map((candidate) => `- ${candidate.id} ${candidate.type}/${candidate.scope}: ${candidate.summary} [${candidate.conflictStatus}; ${candidate.recommendedAction || recommendCandidateAction(candidate).action}]`) || []),
+    pendingIndex.candidates.filter((candidate) => candidate.status === 'pending').length === 0 ? '- None.' : '',
+    '',
+    'Potential Conflicts:',
+    ...(conflicts.length > 0 ? conflicts.map((candidate) => `- ${candidate.id}: ${candidate.summary} [${candidate.conflictStatus}]`) : ['- None.'])
+  ].filter((line) => line !== '').join('\n'));
+}
+
+function renderReportType(title, memories, types) {
+  const selected = memories.filter((memory) => types.includes(memory.type));
+  return [
+    `${title}:`,
+    ...(selected.length > 0 ? selected.map((memory) => `- ${memory.summary} [${memory.id}; ${memory.scope}; ${memory.confidence}]`) : ['- None.']),
+    ''
+  ].join('\n');
+}
+
+export async function generateBlackboxReport(root = process.cwd(), input = {}) {
+  await initVibeBox(root);
+  const limit = Number(input.limit || 10);
+  const since = input.since ? Date.parse(input.since) : null;
+  const type = input.type || '';
+  let events = await readJsonl(vibeboxPath(root, 'logs/events.jsonl'));
+  if (type) events = events.filter((event) => event.eventType === type || event.outcome === type);
+  if (Number.isFinite(since)) events = events.filter((event) => Date.parse(event.createdAt) >= since);
+  events = events.slice(-limit);
+
+  const memoryIndex = await loadJson(vibeboxPath(root, 'index/memory-index.json'), defaultMemoryIndex());
+  const active = memoryIndex.memories.filter((memory) => memory.status === 'active');
+  const changedFiles = countValues(events.flatMap((event) => event.changedFiles || []));
+  const recurringFailureTypes = countValues(active.filter((memory) => memory.type === 'failure_memory').map((memory) => memory.failureType || 'unclear_requirement'));
+
+  return redactSensitive([
+    'VibeBox Blackbox Report',
+    '',
+    'Task Timeline:',
+    ...(events.length > 0 ? events.map((event) => `- ${event.createdAt} ${event.outcome || 'unknown'}: ${event.userRequest || event.aiActionSummary || event.id}`) : ['- No events recorded.']),
+    '',
+    'Failed Approaches:',
+    ...reportEventApproaches(events, 'failure'),
+    '',
+    'Successful Approaches:',
+    ...reportEventApproaches(events, 'success'),
+    '',
+    'Rejected Directions:',
+    ...events.filter((event) => textHasAny(event.userFeedback || '', ['reject', 'rejected', 'instead'])).map((event) => `- ${event.userFeedback}`),
+    events.some((event) => textHasAny(event.userFeedback || '', ['reject', 'rejected', 'instead'])) ? '' : '- None.',
+    '',
+    'Confirmed Decisions:',
+    ...(active.filter((memory) => memory.type === 'project_decision').map((memory) => `- ${memory.summary}`) || []),
+    active.some((memory) => memory.type === 'project_decision') ? '' : '- None.',
+    '',
+    'Recurring Failure Types:',
+    ...formatCounts(recurringFailureTypes),
+    '',
+    'Frequently Changed Files:',
+    ...formatCounts(changedFiles),
+    '',
+    'Prevention Rules:',
+    ...(active.filter((memory) => ['failure_memory', 'avoid_rule'].includes(memory.type)).map((memory) => `- ${memory.preventionRule || memory.forbiddenAction || memory.summary}`) || []),
+    active.some((memory) => ['failure_memory', 'avoid_rule'].includes(memory.type)) ? '' : '- None.'
+  ].filter((line) => line !== '').join('\n'));
+}
+
+function reportEventApproaches(events, outcome) {
+  const selected = events.filter((event) => event.outcome === outcome);
+  if (selected.length === 0) return ['- None.'];
+  return selected.map((event) => `- ${event.aiActionSummary || event.commandResult || event.userRequest || event.id}`);
+}
+
+function countValues(values) {
+  const counts = new Map();
+  for (const value of values.filter(Boolean)) {
+    counts.set(value, (counts.get(value) || 0) + 1);
+  }
+  return [...counts.entries()].sort((left, right) => right[1] - left[1]);
+}
+
+function formatCounts(counts) {
+  return counts.length > 0 ? counts.map(([value, count]) => `- ${value} (${count})`) : ['- None.'];
 }
 
 export async function runDoctor(root = process.cwd()) {
@@ -1309,6 +1792,10 @@ export async function runDoctor(root = process.cwd()) {
 
   try {
     const memoryIndex = await loadJson(vibeboxPath(root, 'index/memory-index.json'));
+    if (!Array.isArray(memoryIndex.memories)) {
+      errors.push('memory-index.json must contain memories array.');
+      return { ok: false, errors, warnings };
+    }
     const ids = new Set(memoryIndex.memories.map((memory) => memory.id));
     for (const memory of memoryIndex.memories) {
       for (const relatedId of [...(memory.related || []), ...(memory.supersedes || [])]) {
@@ -1316,9 +1803,77 @@ export async function runDoctor(root = process.cwd()) {
           warnings.push(`Memory ${memory.id} references missing related memory ${relatedId}.`);
         }
       }
+      if (memory.status === 'active') {
+        const wikiPage = TYPE_TO_PAGE[memory.type];
+        if (!wikiPage || !(await exists(vibeboxPath(root, 'wiki', wikiPage)))) {
+          warnings.push(`Active memory ${memory.id} has no known wiki page.`);
+        } else {
+          const pageText = await readFile(vibeboxPath(root, 'wiki', wikiPage), 'utf8');
+          if (!pageText.includes(memory.id)) {
+            warnings.push(`Active memory ${memory.id} is not linked from .vibebox/wiki/${wikiPage}.`);
+          }
+        }
+      }
+      if (memory.status === 'superseded' && memory.lastUsedAt) {
+        warnings.push(`Superseded memory ${memory.id} has a lastUsedAt value and should not be retrieved.`);
+      }
     }
-  } catch {
-    // Invalid JSON is already reported above.
+
+    const pendingRecords = await readJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl'));
+    const pendingIndex = await loadJson(vibeboxPath(root, 'index/pending-index.json'));
+    const pendingRecordIds = new Set(pendingRecords.map((candidate) => `${candidate.id}:${candidate.status}`));
+    const pendingIndexIds = new Set((pendingIndex.candidates || []).map((candidate) => `${candidate.id}:${candidate.status}`));
+    if (pendingRecordIds.size !== pendingIndexIds.size || [...pendingRecordIds].some((id) => !pendingIndexIds.has(id))) {
+      warnings.push('pending-index.json does not match pending/memory-candidates.jsonl.');
+    }
+
+    const keywordIndex = await loadJson(vibeboxPath(root, 'index/keyword-index.json'));
+    for (const memory of memoryIndex.memories.filter((item) => item.status === 'active')) {
+      for (const tag of memory.tags || []) {
+        if (!(keywordIndex.tags?.[normalizeText(tag)] || []).includes(memory.id)) {
+          warnings.push(`keyword-index missing tag ${tag} for memory ${memory.id}.`);
+        }
+      }
+      if (!(keywordIndex.types?.[normalizeText(memory.type)] || []).includes(memory.id)) {
+        warnings.push(`keyword-index missing type ${memory.type} for memory ${memory.id}.`);
+      }
+      if (!(keywordIndex.scopes?.[normalizeText(memory.scope)] || []).includes(memory.id)) {
+        warnings.push(`keyword-index missing scope ${memory.scope} for memory ${memory.id}.`);
+      }
+      if (!(keywordIndex.topics?.[normalizeText(memory.topic)] || []).includes(memory.id)) {
+        warnings.push(`keyword-index missing topic ${memory.topic} for memory ${memory.id}.`);
+      }
+    }
+    for (const [sectionName, section] of Object.entries(keywordIndex)) {
+      if (!section || typeof section !== 'object' || Array.isArray(section)) continue;
+      for (const [key, referencedIds] of Object.entries(section)) {
+        if (!Array.isArray(referencedIds)) continue;
+        for (const referencedId of referencedIds) {
+          if (!ids.has(referencedId)) {
+            warnings.push(`keyword-index ${sectionName}.${key} references missing memory ${referencedId}.`);
+          }
+        }
+      }
+    }
+
+    const relationIndex = await loadJson(vibeboxPath(root, 'index/relation-index.json'));
+    for (const relation of relationIndex.relations || []) {
+      if (!ids.has(relation.from) || !ids.has(relation.to)) {
+        warnings.push(`relation-index references missing memory: ${relation.from} -> ${relation.to}.`);
+      }
+    }
+
+    const wikiFiles = await listMarkdownFiles(vibeboxPath(root, 'wiki'));
+    for (const wikiFile of wikiFiles) {
+      const text = await readFile(wikiFile, 'utf8');
+      for (const match of text.matchAll(/`(mem_[a-f0-9]+)`/giu)) {
+        if (!ids.has(match[1])) {
+          warnings.push(`Wiki file ${path.basename(wikiFile)} references missing memory ${match[1]}.`);
+        }
+      }
+    }
+  } catch (error) {
+    warnings.push(`Doctor consistency checks skipped: ${error.message}`);
   }
 
   return {
@@ -1326,6 +1881,17 @@ export async function runDoctor(root = process.cwd()) {
     errors,
     warnings
   };
+}
+
+async function listMarkdownFiles(dirPath) {
+  try {
+    const entries = await readdir(dirPath, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+      .map((entry) => path.join(dirPath, entry.name));
+  } catch {
+    return [];
+  }
 }
 
 export function formatDoctorReport(report) {

@@ -1,385 +1,302 @@
 # VibeBox
 
-**A local blackbox for AI coding sessions.**
+VibeBox is a local-first memory middleware and blackbox recorder for AI coding sessions.
 
-VibeBox is a local-first memory middleware for AI coding agents.
+It helps an AI coding agent look up the user's project decisions, preferences, avoid rules, failure memories, and successful patterns before it starts answering, designing, or editing code. After the task, it records what happened as a blackbox event and creates pending memory candidates for review.
 
-It records important development decisions, failed approaches, successful patterns, user preferences, and project-specific rules, then turns them into a reusable context layer for future AI coding tasks.
+VibeBox is agent-neutral. It can sit in front of Codex, Claude Code, Gemini CLI, Cursor-style agents, or any workflow that can run a local command.
 
-AI coding agents are powerful, but they often forget why a decision was made, which approach failed before, or what the user explicitly rejected.
+## Core Concept
 
-VibeBox is designed to solve that problem.
+AI coding agents often repeat the same mistakes:
 
----
+- They forget project decisions.
+- They suggest tools the user already rejected.
+- They repeat failed approaches.
+- They touch files that should stay stable.
+- They force the user to explain the same rules again.
 
-## Why VibeBox Exists
+VibeBox reduces that loop with a review-first local memory layer.
 
-AI coding often repeats the same mistakes.
+```text
+User task
+-> vibebox pretask
+-> Pre-Task Brief
+-> AI coding agent works
+-> vibebox aftertask
+-> Blackbox Event
+-> pending memory candidates
+-> review / approve / reject
+-> active memory for future tasks
+```
 
-- It forgets previous project decisions.
-- It suggests technologies the user already rejected.
-- It touches files that should not be changed.
-- It repeats failed approaches.
-- It loses context between sessions.
-- It forces the user to explain the same rules again and again.
+## Local Storage
 
-VibeBox acts like a **blackbox recorder** for AI-assisted development.
+`vibebox init` creates a local `.vibebox/` directory:
 
-It does not try to replace the coding agent.  
-It helps the agent remember what matters before it starts working.
-
----
-
-## Core Idea
-
-Before an AI coding agent answers, designs, or writes code, VibeBox can provide a focused memory context.
-
-After a task is completed, VibeBox can record what happened, what worked, what failed, and what should be remembered next time.
-
-
-User Request
-↓
-VibeBox Memory Search
-↓
-Context Pack
-↓
-AI Coding Agent
-↓
-Task Result
-↓
-Blackbox Event
-↓
-Memory Candidate
-↓
-Review / Approval
-↓
-Reusable Project Memory
-
-
----
-
-## What VibeBox Stores
-
-VibeBox focuses on useful development memory, not raw conversation history.
-
-It can store:
-
-- User development preferences
-- Project decisions
-- Architecture rules
-- Avoid rules
-- Failure memory
-- Success patterns
-- Tooling preferences
-- Coding style preferences
-- Design preferences
-- Workflow rules
-
-Examples:
-
-
-For dashboard projects, prefer MSSQL.
-Do not modify package.json unless explicitly requested.
-Global body overflow changes caused layout regressions before.
-Wrapper-based table scrolling worked successfully.
-This project uses ECharts for dashboard visualization.
-
-
----
-
-## What VibeBox Does Not Do
-
-VibeBox is not a chat log archive.
-
-It does not aim to store every conversation line.  
-It only extracts and stores reusable development knowledge.
-
-VibeBox should not preserve noise.  
-It should preserve decisions, failures, constraints, and patterns.
-
----
-
-## Local-First Design
-
-VibeBox stores everything locally inside the project workspace.
-
-
+```text
 .vibebox/
   config.json
   wiki/
   index/
   logs/
   pending/
+```
 
+The wiki is for humans. The JSON indexes are for retrieval. The raw event log is evidence. Pending candidates are not active memory until approved.
 
-This makes the memory portable, inspectable, and versionable.
+## Quick Start
 
-No hidden database.  
-No remote dependency.  
-No forced platform lock-in.
+Run commands from the project root:
 
----
+```bash
+node bin/vibebox.mjs init
+node bin/vibebox.mjs pretask --task "Fix dashboard table scrolling"
+```
 
-## Obsidian-Compatible Wiki
+After the AI agent finishes:
 
-VibeBox generates Markdown files that can be opened as an Obsidian vault.
+```powershell
+node bin/vibebox.mjs aftertask `
+  --request "Fix dashboard table scrolling" `
+  --summary "Used wrapper-based table scrolling and kept dependencies unchanged." `
+  --files "src/table.mjs,src/layout.css" `
+  --commands "npm.cmd test" `
+  --outcome success
+```
 
-The wiki layer is for humans.
+Then review and approve useful memory:
 
-It helps users visually inspect how decisions, failures, tools, and preferences are connected.
+```bash
+node bin/vibebox.mjs review
+node bin/vibebox.mjs approve <candidate-id>
+node bin/vibebox.mjs reject <candidate-id>
+```
 
+Safe batch approval skips conflict and low-confidence candidates:
 
-.vibebox/wiki/
-  Home.md
-  User Preferences.md
-  Project Decisions.md
-  Architecture Rules.md
-  Avoid Rules.md
-  Failure Memory.md
-  Success Patterns.md
-  Tooling Preferences.md
-  Workflow Rules.md
+```bash
+node bin/vibebox.mjs approve --safe
+```
 
+## Common Workflow
 
-VibeBox also uses wiki-style links such as:
+1. Initialize VibeBox once with `init`.
+2. Before work, run `pretask` with the user's task.
+3. Give the Pre-Task Brief to the AI coding agent.
+4. After work, run `aftertask` with the result summary.
+5. Run `review` to inspect pending memory candidates.
+6. Approve only memories that should affect future sessions.
+7. Use `report`, `context`, `blackbox`, and `doctor` to inspect state.
 
-markdown
-[[MSSQL]]
-[[FastAPI]]
-[[Dashboard Development]]
-[[Failure Memory]]
-[[Avoid Rules]]
+## Commands
 
+```bash
+node bin/vibebox.mjs init
+node bin/vibebox.mjs pretask --task "Fix dashboard table scrolling"
+node bin/vibebox.mjs context --task "Fix dashboard table scrolling"
+node bin/vibebox.mjs aftertask --request "..." --summary "..." --outcome success
+node bin/vibebox.mjs capture --request "..." --summary "..."
+node bin/vibebox.mjs extract --text "..."
+node bin/vibebox.mjs review
+node bin/vibebox.mjs approve <candidate-id>
+node bin/vibebox.mjs approve --safe
+node bin/vibebox.mjs reject <candidate-id>
+node bin/vibebox.mjs report
+node bin/vibebox.mjs blackbox --limit 10
+node bin/vibebox.mjs doctor
+```
 
-This allows the project memory to become a connected knowledge graph.
+## Pre-Task Brief
 
----
+`pretask` produces an execution-oriented brief:
 
-## Fast JSON Index
+```text
+VibeBox Pre-Task Brief
 
-The Markdown wiki is for humans.  
-The JSON index is for AI agents.
+User Task:
+Fix dashboard table scrolling.
 
+Known Failure Risks:
+- Global body overflow changes caused layout regressions before.
 
-.vibebox/index/
-  memory-index.json
-  keyword-index.json
-  relation-index.json
-  pending-index.json
+Known Success Patterns:
+- Wrapper-based table scrolling worked successfully for wide dashboard tables.
 
+Project Guardrails:
+- Do not modify package.json unless explicitly requested.
 
-The index allows VibeBox to quickly retrieve relevant memory for a task and generate a compact Context Pack.
+Instruction for AI Agent:
+- Analyze the repository before editing.
+- Do not override the user's current explicit request.
+- Avoid repeating known failed approaches.
+```
 
----
+Current project memory is ranked above global memory. If project memory conflicts with broader memory, VibeBox shows the conflict and instructs the agent to follow the current user request and repository reality.
 
-## Context Pack
+## After-Task Capture
 
-A Context Pack is the short, focused memory brief that an AI coding agent should read before starting a task.
+`aftertask` stores a blackbox event and then conservatively extracts pending candidates. It does not create active memory automatically.
 
 Example:
 
+```powershell
+node bin/vibebox.mjs aftertask `
+  --request "Improve dashboard table scrolling" `
+  --summary "Wrapper scrolling worked; global overflow was avoided." `
+  --files "src/components/Table.mjs" `
+  --commands "npm.cmd test" `
+  --outcome success `
+  --feedback "Confirmed."
+```
 
-VibeBox Context Pack
+For longer result notes:
 
-Task:
-Improve dashboard table scrolling.
+```bash
+node bin/vibebox.mjs aftertask --from-file task-result.txt
+```
 
-Relevant Avoid Rules:
-- Do not solve layout scrolling by changing global body overflow.
+## Reports
 
-Relevant Failure Memory:
-- Global body overflow changes previously caused layout regressions.
+`report` summarizes current memory:
 
-Relevant Success Patterns:
-- Wrapper-based table scrolling worked successfully for wide tables.
+- User Preferences
+- Project Decisions
+- Architecture Rules
+- Avoid Rules
+- Failure Memory
+- Success Patterns
+- Tooling Preferences
+- Workflow Rules
+- Pending Candidates
+- Potential Conflicts
 
-Guidance for AI Agent:
-- Preserve existing layout behavior.
-- Avoid repeating known failed approaches.
-- Use the memory context as constraints.
+`blackbox` summarizes recent task history:
 
+- Task Timeline
+- Failed Approaches
+- Successful Approaches
+- Rejected Directions
+- Confirmed Decisions
+- Recurring Failure Types
+- Frequently Changed Files
+- Prevention Rules
 
----
+## Memory Types
 
-## Review-First Memory
+VibeBox stores reviewed memory as:
 
-VibeBox does not automatically turn every extracted memory into permanent truth.
+- `user_preference`
+- `project_decision`
+- `architecture_rule`
+- `avoid_rule`
+- `failure_memory`
+- `success_pattern`
+- `tooling_preference`
+- `coding_style`
+- `design_preference`
+- `workflow_rule`
 
-New memory is first stored as a pending candidate.
+Scopes are `global`, `domain`, `project`, `task`, and `temporary`.
 
+## Review-First Policy
 
-capture
-↓
-extract
-↓
-pending memory
-↓
-review
-↓
-approve / reject
-↓
-active memory
+Extraction is conservative. New memory goes to pending first.
 
+VibeBox does not treat a one-time comment as permanent truth. It also does not let old memory override the user's current explicit request. Low-confidence, conflicting, exception, and superseding candidates remain review items.
 
-This prevents one-time comments, temporary decisions, or ambiguous statements from becoming permanent rules.
+`review` shows a recommended action:
 
----
+- `approve`
+- `reject`
+- `merge`
+- `supersede`
+- `keep pending`
 
-## Conflict-Aware Memory
+## Examples
 
-VibeBox is designed to detect whether a new memory candidate is:
+Dashboard database preference:
 
-- a duplicate
-- a refinement
-- an exception
-- a direct conflict
-- a replacement
-- unclear and requiring review
+```bash
+node bin/vibebox.mjs extract --text "For dashboard reporting modules, MSSQL fits better because the reporting views already live there."
+```
 
-This is important because real development memory is rarely simple.
+App database preference:
 
-For example:
+```bash
+node bin/vibebox.mjs extract --text "For small app prototypes, Supabase is usually fine unless this project has a database decision."
+```
 
+Package avoid rule:
 
-General app projects may prefer Supabase.
-Internal dashboard-style apps may prefer MSSQL.
+```bash
+node bin/vibebox.mjs extract --text "Do not modify package.json unless explicitly requested; dependency churn has broken reviews before."
+```
 
+Failed layout approach:
 
-That is not a simple conflict.  
-It is a conditional refinement.
+```bash
+node bin/vibebox.mjs aftertask --request "Fix table scroll" --summary "Tried changing global body overflow." --errors "Global overflow caused layout regressions." --outcome failure
+```
 
-VibeBox is built to preserve that nuance.
+Successful table scroll pattern:
 
----
+```bash
+node bin/vibebox.mjs aftertask --request "Fix wide table scroll" --summary "Wrapper-based table scrolling worked without global layout changes." --outcome success
+```
 
-## Blackbox Reports
+Project decision:
 
-VibeBox is not only about remembering preferences.
+```bash
+node bin/vibebox.mjs extract --text "We decided this project uses ECharts for dashboard visualization after rejecting Chart.js."
+```
 
-It is also about understanding why AI coding succeeded or failed.
+## Obsidian-Compatible Wiki
 
-A blackbox report can summarize:
+The wiki lives in `.vibebox/wiki/`. Each file is Markdown with YAML frontmatter and Obsidian-style links such as `[[Dependency Management]]`.
 
-- failed approaches
-- successful approaches
-- rejected directions
-- confirmed decisions
-- recurring failure types
-- frequently changed files
-- prevention rules
+VibeBox updates only the managed block:
 
-The goal is simple:
+```text
+<!-- VIBEBOX:BEGIN -->
+generated memory summary
+<!-- VIBEBOX:END -->
+```
 
-**Do not let the AI repeat the same mistake twice.**
+Human notes outside that block are preserved.
 
----
+## JSON Index
 
-## Planned Commands
+The index lives in `.vibebox/index/`:
 
-VibeBox is designed around simple commands.
+```text
+memory-index.json
+keyword-index.json
+relation-index.json
+pending-index.json
+```
 
-bash
-vibebox init
-vibebox capture
-vibebox extract
-vibebox review
-vibebox approve
-vibebox reject
-vibebox context
-vibebox doctor
+`doctor` checks JSON parsing, pending/index consistency, memory/wiki links, relation references, and suspicious raw secrets.
 
+## Local Privacy
 
-Future workflow commands may include:
+VibeBox is local-first. It does not send memory anywhere by itself.
 
-bash
-vibebox pretask
-vibebox aftertask
-vibebox report
-vibebox blackbox
+Sensitive-looking values such as API keys, tokens, passwords, bearer tokens, and connection strings are redacted before they can reach active memory, wiki pages, or context output. `doctor` warns if raw logs appear to contain unredacted secrets.
 
+## Known Limitations
 
----
+- Memory extraction is deterministic and heuristic-based, not an LLM.
+- Classification is conservative, but not perfect.
+- Interactive review editing is not implemented yet.
+- The executable is currently used as `node bin/vibebox.mjs ...` unless installed or linked as `vibebox`.
+- VibeBox records summaries and structured events; it is not a full chat transcript archive.
 
-## Typical Workflow
+## Development
 
+```bash
+npm.cmd run check
+npm.cmd test
+```
 
-1. Initialize VibeBox in a project.
-2. Capture important AI coding events.
-3. Extract memory candidates.
-4. Review and approve useful memories.
-5. Generate a Context Pack before the next AI task.
-6. Let the AI coding agent work with better context.
-
-
----
-
-## Example Use Case
-
-A user repeatedly works on dashboard projects.
-
-Over time, VibeBox learns that:
-
-
-Dashboard projects usually use MSSQL.
-FastAPI is preferred for backend services.
-ECharts is preferred for dashboard visualization.
-UI messages should use formal Korean.
-package.json should not be modified without approval.
-
-
-Later, when the user says:
-
-
-Create a new dashboard module.
-
-
-VibeBox can provide the AI agent with the relevant project memory before work begins.
-
-This reduces repeated explanations and wrong assumptions.
-
----
-
-## Philosophy
-
-Vibe coding should not mean starting from zero every time.
-
-A good AI coding agent should remember:
-
-- what the user prefers
-- what the project decided
-- what failed before
-- what worked before
-- what must not be touched
-- what should be preserved
-
-VibeBox exists to make that memory visible, reusable, and controllable.
-
----
-
-## Project Status
-
-VibeBox is currently in early development.
-
-The first goal is to build the local memory foundation:
-
-- local `.vibebox/` storage
-- Obsidian-compatible Markdown wiki
-- JSON search index
-- blackbox event log
-- memory candidate extraction
-- review-first approval flow
-- context pack generation
-
----
-
-## License
-
-License information will be added as the project matures.
-
----
-
-## Author
-
-Created by **Boksajang**.
-
-VibeBox is part of an open plugin ecosystem for AI-assisted development workflows.
+On shells without PowerShell execution restrictions, `npm run check` and `npm test` are equivalent.
