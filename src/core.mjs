@@ -9,6 +9,7 @@ import {
   stat,
   writeFile
 } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 
 export const VIBEBOX_VERSION = '0.1.0';
@@ -16,13 +17,12 @@ export const VIBEBOX_VERSION = '0.1.0';
 const WIKI_PAGES = [
   'Home.md',
   'User Preferences.md',
-  'Project Decisions.md',
-  'Architecture Rules.md',
-  'Avoid Rules.md',
+  'Global Avoid Rules.md',
   'Failure Memory.md',
   'Success Patterns.md',
   'Tooling Preferences.md',
-  'Workflow Rules.md'
+  'Workflow Rules.md',
+  'Project Index.md'
 ];
 
 const MEMORY_TYPES = new Set([
@@ -42,14 +42,60 @@ const TYPE_TO_PAGE = {
   user_preference: 'User Preferences.md',
   coding_style: 'User Preferences.md',
   design_preference: 'User Preferences.md',
-  project_decision: 'Project Decisions.md',
-  architecture_rule: 'Architecture Rules.md',
-  avoid_rule: 'Avoid Rules.md',
+  project_decision: 'Project Index.md',
+  architecture_rule: 'Project Index.md',
+  avoid_rule: 'Global Avoid Rules.md',
   failure_memory: 'Failure Memory.md',
   success_pattern: 'Success Patterns.md',
   tooling_preference: 'Tooling Preferences.md',
   workflow_rule: 'Workflow Rules.md'
 };
+
+const GLOBAL_MEMORY_FILES = {
+  user_preference: 'user-preferences.json',
+  avoid_rule: 'avoid-rules.json',
+  tooling_preference: 'tooling-preferences.json',
+  coding_style: 'coding-style.json',
+  workflow_rule: 'workflow-rules.json',
+  architecture_rule: 'architecture-patterns.json',
+  failure_memory: 'failure-memory.json',
+  success_pattern: 'success-patterns.json',
+  design_preference: 'user-preferences.json'
+};
+
+const PROJECT_MEMORY_FILES = {
+  project_decision: 'decisions.json',
+  architecture_rule: 'architecture-rules.json',
+  avoid_rule: 'avoid-rules.json',
+  failure_memory: 'failures.json',
+  success_pattern: 'successes.json',
+  tooling_preference: 'tooling-preferences.json',
+  workflow_rule: 'workflow-rules.json',
+  design_preference: 'design-preferences.json',
+  user_preference: 'workflow-rules.json',
+  coding_style: 'design-preferences.json'
+};
+
+const GLOBAL_MEMORY_FILE_NAMES = [
+  'user-preferences.json',
+  'avoid-rules.json',
+  'tooling-preferences.json',
+  'coding-style.json',
+  'workflow-rules.json',
+  'architecture-patterns.json'
+];
+
+const PROJECT_MEMORY_FILE_NAMES = [
+  'decisions.json',
+  'architecture-rules.json',
+  'avoid-rules.json',
+  'failures.json',
+  'successes.json',
+  'tooling-preferences.json',
+  'workflow-rules.json',
+  'design-preferences.json',
+  'task-history.json'
+];
 
 const SCOPE_PRIORITY = {
   project: 50,
@@ -127,8 +173,29 @@ const SENSITIVE_PATTERNS = [
 const MANAGED_BEGIN = '<!-- VIBEBOX:BEGIN -->';
 const MANAGED_END = '<!-- VIBEBOX:END -->';
 
-export function vibeboxPath(root, ...parts) {
-  return path.join(root, '.vibebox', ...parts);
+export function getVibeBoxHome(options = {}) {
+  return path.resolve(options.storeRoot || process.env.VIBEBOX_HOME || path.join(os.homedir(), '.vibebox'));
+}
+
+export function resolveGlobalStore(options = {}) {
+  const storeRoot = getVibeBoxHome(options);
+  return {
+    storeRoot,
+    configPath: path.join(storeRoot, 'config.json'),
+    registryPath: path.join(storeRoot, 'registry', 'projects.json')
+  };
+}
+
+export function vibeboxPath(_root = process.cwd(), ...parts) {
+  return path.join(getVibeBoxHome(), ...parts);
+}
+
+function projectNamespacePath(projectId, ...parts) {
+  return vibeboxPath(process.cwd(), 'projects', projectId, ...parts);
+}
+
+export function getProjectNamespacePath(projectId, ...parts) {
+  return projectNamespacePath(projectId, ...parts);
 }
 
 export function nowIso() {
@@ -201,16 +268,10 @@ async function writeJsonl(filePath, records) {
   await writeFile(filePath, text.length > 0 ? `${text}\n` : '', 'utf8');
 }
 
-function defaultConfig(root) {
+function defaultConfig() {
   const timestamp = nowIso();
   return {
     version: VIBEBOX_VERSION,
-    projectName: path.basename(root),
-    projectId: hashId('project', path.resolve(root).toLowerCase()),
-    rootPath: '.',
-    repositoryName: path.basename(root),
-    primaryDomain: 'general',
-    techStackHints: [],
     memoryMode: 'review',
     obsidianCompatible: true,
     maxContextItems: 8,
@@ -220,20 +281,149 @@ function defaultConfig(root) {
   };
 }
 
+function defaultRegistry() {
+  return {
+    version: VIBEBOX_VERSION,
+    updatedAt: nowIso(),
+    projects: []
+  };
+}
+
+function defaultMemoryFile() {
+  return {
+    version: VIBEBOX_VERSION,
+    updatedAt: nowIso(),
+    memories: []
+  };
+}
+
+async function findGitRoot(cwd) {
+  let current = path.resolve(cwd);
+  while (true) {
+    if (await exists(path.join(current, '.git'))) {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return null;
+    }
+    current = parent;
+  }
+}
+
+async function readGitConfigPath(gitRoot) {
+  const dotGit = path.join(gitRoot, '.git');
+  try {
+    const info = await stat(dotGit);
+    if (info.isDirectory()) {
+      return path.join(dotGit, 'config');
+    }
+    if (info.isFile()) {
+      const text = await readFile(dotGit, 'utf8');
+      const match = text.match(/gitdir:\s*(.+)/iu);
+      if (match) {
+        const gitDir = path.isAbsolute(match[1].trim())
+          ? match[1].trim()
+          : path.resolve(gitRoot, match[1].trim());
+        return path.join(gitDir, 'config');
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+async function readGitRemoteOrigin(gitRoot) {
+  if (!gitRoot) return '';
+  const configPath = await readGitConfigPath(gitRoot);
+  if (!configPath) return '';
+  try {
+    const text = await readFile(configPath, 'utf8');
+    const lines = text.split(/\r?\n/u);
+    let inOrigin = false;
+    for (const line of lines) {
+      const section = line.match(/^\s*\[remote\s+"([^"]+)"\]\s*$/u);
+      if (section) {
+        inOrigin = section[1] === 'origin';
+        continue;
+      }
+      if (inOrigin) {
+        const url = line.match(/^\s*url\s*=\s*(.+?)\s*$/u);
+        if (url) return url[1];
+      }
+    }
+  } catch {
+    return '';
+  }
+  return '';
+}
+
+function parseRemoteRepository(gitRemote = '') {
+  const value = String(gitRemote).trim();
+  if (!value) return {};
+  const withoutSuffix = value.replace(/\.git$/iu, '');
+  const scpLike = withoutSuffix.match(/^[^@]+@[^:]+:([^/]+)\/(.+)$/u);
+  if (scpLike) {
+    return { owner: scpLike[1], repositoryName: path.basename(scpLike[2]) };
+  }
+  try {
+    const parsed = new URL(withoutSuffix);
+    const parts = parsed.pathname.split('/').filter(Boolean);
+    if (parts.length >= 2) {
+      return { owner: parts.at(-2), repositoryName: parts.at(-1) };
+    }
+  } catch {
+    // Fall through to path-like parsing.
+  }
+  const parts = withoutSuffix.split(/[\\/]/u).filter(Boolean);
+  if (parts.length >= 2) {
+    return { owner: parts.at(-2), repositoryName: parts.at(-1) };
+  }
+  return { repositoryName: parts.at(-1) || '' };
+}
+
+function slugProjectId(value) {
+  const slug = String(value || '')
+    .replace(/^@/u, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, '-')
+    .replace(/^-+|-+$/gu, '')
+    .slice(0, 80);
+  return slug || 'project';
+}
+
 async function detectProjectIdentity(root) {
+  const cwd = path.resolve(root);
+  const gitRoot = await findGitRoot(cwd);
+  const projectRoot = gitRoot || cwd;
+  const gitRemote = await readGitRemoteOrigin(gitRoot);
+  const remote = parseRemoteRepository(gitRemote);
   const identity = {
-    projectName: path.basename(root),
-    repositoryName: path.basename(root),
+    projectId: slugProjectId(remote.repositoryName || path.basename(projectRoot)),
+    projectName: remote.repositoryName || path.basename(projectRoot),
+    rootPath: projectRoot,
+    gitRemote,
+    repositoryName: remote.repositoryName || path.basename(projectRoot),
+    packageName: '',
     primaryDomain: 'general',
-    techStackHints: []
+    techStackHints: [],
+    aliases: [],
+    status: 'active'
   };
 
-  const packagePath = path.join(root, 'package.json');
+  const packagePath = path.join(projectRoot, 'package.json');
   try {
     const packageData = JSON.parse(await readFile(packagePath, 'utf8'));
     if (packageData.name) {
-      identity.projectName = packageData.name;
-      identity.repositoryName = packageData.name;
+      identity.packageName = packageData.name;
+      if (!remote.repositoryName) {
+        identity.projectId = slugProjectId(packageData.name);
+        identity.projectName = packageData.name;
+        identity.repositoryName = packageData.name;
+      } else {
+        identity.projectName = packageData.name;
+      }
     }
     const dependencyNames = Object.keys({
       ...(packageData.dependencies || {}),
@@ -257,11 +447,58 @@ async function detectProjectIdentity(root) {
   return identity;
 }
 
-async function createDefaultConfig(root) {
-  return {
-    ...defaultConfig(root),
-    ...(await detectProjectIdentity(root))
+async function resolveCurrentProjectIdentity(root = process.cwd()) {
+  await ensureDir(vibeboxPath(root, 'registry'));
+  const registryPath = vibeboxPath(root, 'registry/projects.json');
+  const registry = await loadJson(registryPath, defaultRegistry());
+  registry.projects = Array.isArray(registry.projects) ? registry.projects : [];
+  const detected = await detectProjectIdentity(root);
+  const timestamp = nowIso();
+
+  const existing = registry.projects.find((project) => (
+    (detected.gitRemote && project.gitRemote === detected.gitRemote)
+    || (project.rootPath && path.resolve(project.rootPath) === detected.rootPath)
+  ));
+
+  let projectId = existing?.projectId || detected.projectId;
+  const collides = registry.projects.some((project) => project.projectId === projectId && project !== existing);
+  if (collides) {
+    const remote = parseRemoteRepository(detected.gitRemote);
+    const ownerRepo = remote.owner && remote.repositoryName
+      ? slugProjectId(`${remote.owner}-${remote.repositoryName}`)
+      : '';
+    projectId = ownerRepo && !registry.projects.some((project) => project.projectId === ownerRepo && project !== existing)
+      ? ownerRepo
+      : `${detected.projectId}-${createHash('sha256').update(`${detected.gitRemote}|${detected.rootPath}`).digest('hex').slice(0, 8)}`;
+  }
+
+  const aliases = new Set([...(existing?.aliases || []), ...(detected.aliases || [])]);
+  if (detected.projectId !== projectId) aliases.add(detected.projectId);
+  const project = {
+    ...existing,
+    ...detected,
+    projectId,
+    firstSeenAt: existing?.firstSeenAt || timestamp,
+    lastSeenAt: timestamp,
+    aliases: [...aliases].sort(),
+    status: existing?.status || detected.status || 'active'
   };
+
+  if (existing) {
+    registry.projects = registry.projects.map((item) => item.projectId === existing.projectId ? project : item);
+  } else {
+    registry.projects.push(project);
+  }
+  registry.updatedAt = timestamp;
+  registry.projects.sort((left, right) => left.projectId.localeCompare(right.projectId));
+  await saveJson(registryPath, registry);
+  return project;
+}
+
+export { resolveCurrentProjectIdentity };
+
+async function createDefaultConfig() {
+  return defaultConfig();
 }
 
 function defaultMemoryIndex() {
@@ -281,7 +518,8 @@ function defaultKeywordIndex() {
     topics: {},
     domains: {},
     types: {},
-    scopes: {}
+    scopes: {},
+    projects: {}
   };
 }
 
@@ -303,6 +541,28 @@ function defaultPendingIndex() {
   };
 }
 
+function defaultProjectIndex(projects = [], memories = []) {
+  return {
+    version: VIBEBOX_VERSION,
+    updatedAt: nowIso(),
+    projects: projects.map((project) => ({
+      projectId: project.projectId,
+      projectName: project.projectName,
+      rootPath: project.rootPath,
+      gitRemote: project.gitRemote,
+      repositoryName: project.repositoryName,
+      packageName: project.packageName,
+      primaryDomain: project.primaryDomain,
+      techStackHints: project.techStackHints || [],
+      firstSeenAt: project.firstSeenAt,
+      lastSeenAt: project.lastSeenAt,
+      aliases: project.aliases || [],
+      status: project.status || 'active',
+      memoryCount: memories.filter((memory) => memory.projectId === project.projectId).length
+    }))
+  };
+}
+
 function wikiFrontmatter(title) {
   return [
     '---',
@@ -318,48 +578,75 @@ function initialWikiPage(pageName) {
   if (pageName === 'Home.md') {
     return `${renderHomeShell()}\n\n${managedBlock(renderHomeManaged([]))}\n`;
   }
+  if (pageName === 'Project Index.md') {
+    return `${renderProjectIndexShell()}\n\n${managedBlock(renderProjectIndexManaged([]))}\n`;
+  }
 
   return `${renderMemoryShell(pageName)}\n\n${managedBlock(renderMemoryManaged([]))}\n`;
+}
+
+function initialProjectWikiPage(project) {
+  return `${renderProjectShell(project)}\n\n${managedBlock(renderProjectManaged(project, []))}\n`;
 }
 
 export async function initVibeBox(root = process.cwd()) {
   const base = vibeboxPath(root);
   const created = [];
-  const config = await createDefaultConfig(root);
+  const config = await createDefaultConfig();
 
-  for (const dir of ['', 'wiki', 'index', 'logs', 'pending']) {
+  await ensureDir(vibeboxPath(root, 'registry'));
+  await writeIfMissing(vibeboxPath(root, 'registry/projects.json'), `${JSON.stringify(defaultRegistry(), null, 2)}\n`);
+  const project = await resolveCurrentProjectIdentity(root);
+
+  for (const dir of ['', 'global', 'projects', `projects/${project.projectId}`, 'wiki', 'wiki/projects', 'index', 'logs', 'pending', 'registry']) {
     const dirPath = vibeboxPath(root, dir);
     if (!(await exists(dirPath))) {
-      created.push(path.relative(root, dirPath));
+      created.push(path.relative(base, dirPath) || '.');
     }
     await ensureDir(dirPath);
   }
 
   const files = [
     ['config.json', `${JSON.stringify(config, null, 2)}\n`],
-    ['index/memory-index.json', `${JSON.stringify(defaultMemoryIndex(), null, 2)}\n`],
+    ['index/global-memory-index.json', `${JSON.stringify(defaultMemoryIndex(), null, 2)}\n`],
+    ['index/project-index.json', `${JSON.stringify(defaultProjectIndex([], []), null, 2)}\n`],
     ['index/keyword-index.json', `${JSON.stringify(defaultKeywordIndex(), null, 2)}\n`],
     ['index/relation-index.json', `${JSON.stringify(defaultRelationIndex(), null, 2)}\n`],
     ['index/pending-index.json', `${JSON.stringify(defaultPendingIndex(), null, 2)}\n`],
     ['logs/events.jsonl', ''],
-    ['pending/memory-candidates.jsonl', '']
+    ['pending/memory-candidates.jsonl', ''],
+    [`projects/${project.projectId}/project.json`, `${JSON.stringify(project, null, 2)}\n`]
   ];
 
+  for (const fileName of GLOBAL_MEMORY_FILE_NAMES) {
+    files.push([`global/${fileName}`, `${JSON.stringify(defaultMemoryFile(), null, 2)}\n`]);
+  }
+  for (const fileName of PROJECT_MEMORY_FILE_NAMES) {
+    files.push([`projects/${project.projectId}/${fileName}`, `${JSON.stringify(defaultMemoryFile(), null, 2)}\n`]);
+  }
   for (const page of WIKI_PAGES) {
     files.push([`wiki/${page}`, initialWikiPage(page)]);
   }
+  files.push([`wiki/projects/${project.projectId}.md`, initialProjectWikiPage(project)]);
 
   for (const [relative, content] of files) {
     const didCreate = await writeIfMissing(vibeboxPath(root, relative), content);
     if (didCreate) {
-      created.push(path.join('.vibebox', relative));
+      created.push(relative);
     }
   }
 
   await ensureConfigFields(root);
+  await saveJson(vibeboxPath(root, `projects/${project.projectId}/project.json`), project);
+  await rebuildIndexes(root, { syncNamespaceFiles: false });
+  const registry = await loadJson(vibeboxPath(root, 'registry/projects.json'), defaultRegistry());
+  await writeManagedWikiPage(root, 'Project Index.md', renderProjectIndexShell(), renderProjectIndexManaged(registry.projects || []));
 
   return {
     root: path.resolve(root),
+    projectRoot: project.rootPath,
+    projectId: project.projectId,
+    storeRoot: base,
     vibeboxPath: base,
     created
   };
@@ -368,23 +655,25 @@ export async function initVibeBox(root = process.cwd()) {
 async function ensureConfigFields(root) {
   const configPath = vibeboxPath(root, 'config.json');
   const existing = await loadJson(configPath, {});
-  const defaults = await createDefaultConfig(root);
+  const defaults = await createDefaultConfig();
   const merged = { ...defaults, ...existing };
   let changed = false;
 
-  for (const key of ['repositoryName', 'primaryDomain', 'techStackHints', 'rootPath', 'maxContextItems', 'maxContextChars', 'memoryMode', 'obsidianCompatible']) {
+  for (const key of ['maxContextItems', 'maxContextChars', 'memoryMode', 'obsidianCompatible']) {
     if (existing[key] === undefined) {
       merged[key] = defaults[key];
       changed = true;
     }
   }
-  if (existing.rootPath && path.isAbsolute(existing.rootPath)) {
-    merged.rootPath = '.';
-    changed = true;
-  }
   if (changed) {
     merged.updatedAt = nowIso();
     await saveJson(configPath, merged);
+  }
+}
+
+async function ensureStoreForRead(root) {
+  if (!(await exists(vibeboxPath(root)))) {
+    throw new Error(`VibeBox global store not found at ${vibeboxPath(root)}. Run \`vibebox init\` first.`);
   }
 }
 
@@ -449,9 +738,12 @@ export function redactSensitive(value) {
 
 export async function captureEvent(root = process.cwd(), input = {}) {
   await initVibeBox(root);
+  const project = await resolveCurrentProjectIdentity(root);
   const timestamp = nowIso();
   const event = redactSensitive({
     id: input.id || `evt_${randomUUID()}`,
+    projectId: project.projectId,
+    projectRoot: project.rootPath,
     eventType: input.eventType || 'task_summary',
     userRequest: input.userRequest || '',
     aiActionSummary: input.aiActionSummary || '',
@@ -766,18 +1058,27 @@ function inferRejectedAlternatives(statement) {
 }
 
 async function activeMemories(root) {
-  const index = await loadJson(vibeboxPath(root, 'index/memory-index.json'), defaultMemoryIndex());
-  return index.memories.filter((memory) => memory.status === 'active');
+  const index = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
+  const project = await resolveCurrentProjectIdentity(root);
+  return index.memories.filter((memory) => memory.status === 'active' && isMemoryVisibleForProject(memory, project));
+}
+
+function isMemoryVisibleForProject(memory, project) {
+  if (!memory) return false;
+  if (memory.scope === 'global') return true;
+  if (memory.scope === 'domain') return !memory.projectId || memory.projectId === project.projectId;
+  return memory.projectId === project.projectId;
 }
 
 export async function extractMemoryCandidates(root = process.cwd(), input = {}) {
   await initVibeBox(root);
+  const project = await resolveCurrentProjectIdentity(root);
   let text = input.text || '';
   const source = input.source || { kind: 'manual_extract' };
 
   if (!text && input.eventId) {
     const events = await readJsonl(vibeboxPath(root, 'logs/events.jsonl'));
-    const event = events.find((item) => item.id === input.eventId);
+    const event = events.find((item) => item.id === input.eventId && item.projectId === project.projectId);
     if (event) {
       text = [
         event.userRequest,
@@ -795,7 +1096,7 @@ export async function extractMemoryCandidates(root = process.cwd(), input = {}) 
 
   if (!text && input.fromLastEvent) {
     const events = await readJsonl(vibeboxPath(root, 'logs/events.jsonl'));
-    const event = events.at(-1);
+    const event = events.filter((item) => item.projectId === project.projectId).at(-1);
     if (event) {
       text = [
         event.userRequest,
@@ -812,7 +1113,6 @@ export async function extractMemoryCandidates(root = process.cwd(), input = {}) 
   }
 
   const memories = await activeMemories(root);
-  const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig(root));
   const existingPending = await readJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl'));
   const existingIds = new Set(existingPending.map((candidate) => candidate.id));
   const newCandidates = [];
@@ -820,8 +1120,15 @@ export async function extractMemoryCandidates(root = process.cwd(), input = {}) 
   for (const statement of splitStatements(redactSensitive(text))) {
     const candidate = buildCandidate(statement, source, memories);
     if (candidate && !existingIds.has(candidate.id)) {
-      candidate.projectId = config.projectId;
-      candidate.repositoryName = config.repositoryName || config.projectName;
+      if (['project', 'task', 'temporary'].includes(candidate.scope)) {
+        candidate.projectId = project.projectId;
+        candidate.id = hashId('mem', `${candidate.id}|${project.projectId}`);
+      }
+      if (existingIds.has(candidate.id)) {
+        continue;
+      }
+      candidate.sourceProjectRoot = project.rootPath;
+      candidate.repositoryName = project.repositoryName || project.projectName;
       newCandidates.push(candidate);
       existingIds.add(candidate.id);
     }
@@ -934,6 +1241,8 @@ function toPendingIndexEntry(candidate) {
     topic: candidate.topic,
     title: candidate.title,
     summary: candidate.summary,
+    projectId: candidate.projectId || null,
+    sourceProjectRoot: candidate.sourceProjectRoot || null,
     confidence: candidate.confidence,
     status: candidate.status,
     conflictStatus: candidate.conflictStatus,
@@ -972,10 +1281,12 @@ function toMemoryIndexEntry(memory) {
     title: memory.title,
     rule: memory.rule,
     summary: memory.summary,
+    details: memory.details,
     tags: memory.tags || [],
     domains: memory.domains || [],
     appliesTo: memory.appliesTo || [],
     projectId: memory.projectId,
+    sourceProjectRoot: memory.sourceProjectRoot,
     repositoryName: memory.repositoryName,
     source: memory.source || {},
     evidence: memory.evidence || [],
@@ -1006,8 +1317,9 @@ function toMemoryIndexEntry(memory) {
 
 export async function reviewPending(root = process.cwd()) {
   await initVibeBox(root);
+  const project = await resolveCurrentProjectIdentity(root);
   const candidates = (await readJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl')))
-    .filter((candidate) => candidate.status === 'pending');
+    .filter((candidate) => candidate.status === 'pending' && isMemoryVisibleForProject(candidate, project));
   if (candidates.length === 0) {
     return 'No pending VibeBox memory candidates.';
   }
@@ -1029,8 +1341,9 @@ export async function reviewPending(root = process.cwd()) {
 
 export async function approveSafeMemories(root = process.cwd()) {
   await initVibeBox(root);
+  const project = await resolveCurrentProjectIdentity(root);
   const candidates = (await readJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl')))
-    .filter((candidate) => candidate.status === 'pending');
+    .filter((candidate) => candidate.status === 'pending' && isMemoryVisibleForProject(candidate, project));
   const approved = [];
   const skipped = [];
 
@@ -1048,6 +1361,7 @@ export async function approveSafeMemories(root = process.cwd()) {
 
 export async function approveMemory(root = process.cwd(), candidateId) {
   await initVibeBox(root);
+  const project = await resolveCurrentProjectIdentity(root);
   const records = await readJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl'));
   const candidate = records.find((record) => record.id === candidateId);
   if (!candidate) {
@@ -1055,6 +1369,9 @@ export async function approveMemory(root = process.cwd(), candidateId) {
   }
   if (candidate.status !== 'pending') {
     throw new Error(`Candidate is not pending: ${candidateId}`);
+  }
+  if (!isMemoryVisibleForProject(candidate, project)) {
+    throw new Error(`Pending candidate does not belong to current project: ${candidateId}`);
   }
   if (containsSensitive(candidate)) {
     candidate.status = 'rejected';
@@ -1065,10 +1382,14 @@ export async function approveMemory(root = process.cwd(), candidateId) {
     throw new Error(`Candidate contains suspected sensitive data and was rejected: ${candidateId}`);
   }
 
-  const memoryIndex = await loadJson(vibeboxPath(root, 'index/memory-index.json'), defaultMemoryIndex());
+  const memoryIndex = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
   const timestamp = nowIso();
   const memory = {
     ...candidate,
+    projectId: ['project', 'task', 'temporary'].includes(candidate.scope)
+      ? candidate.projectId || project.projectId
+      : candidate.projectId,
+    sourceProjectRoot: candidate.sourceProjectRoot || project.rootPath,
     status: 'active',
     updatedAt: timestamp
   };
@@ -1084,7 +1405,7 @@ export async function approveMemory(root = process.cwd(), candidateId) {
     memoryIndex.memories.push(toMemoryIndexEntry(memory));
   }
   memoryIndex.updatedAt = timestamp;
-  await saveJson(vibeboxPath(root, 'index/memory-index.json'), memoryIndex);
+  await saveJson(vibeboxPath(root, 'index/global-memory-index.json'), memoryIndex);
 
   candidate.status = 'active';
   candidate.updatedAt = timestamp;
@@ -1096,6 +1417,7 @@ export async function approveMemory(root = process.cwd(), candidateId) {
 
 export async function rejectMemory(root = process.cwd(), candidateId, reason = 'Rejected during review.') {
   await initVibeBox(root);
+  const project = await resolveCurrentProjectIdentity(root);
   const records = await readJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl'));
   const candidate = records.find((record) => record.id === candidateId);
   if (!candidate) {
@@ -1103,6 +1425,9 @@ export async function rejectMemory(root = process.cwd(), candidateId, reason = '
   }
   if (candidate.status !== 'pending') {
     throw new Error(`Candidate is not pending: ${candidateId}`);
+  }
+  if (!isMemoryVisibleForProject(candidate, project)) {
+    throw new Error(`Pending candidate does not belong to current project: ${candidateId}`);
   }
   candidate.status = 'rejected';
   candidate.rejectionReason = reason;
@@ -1112,32 +1437,83 @@ export async function rejectMemory(root = process.cwd(), candidateId, reason = '
   return candidate;
 }
 
-async function rebuildIndexes(root) {
-  const memoryIndex = await loadJson(vibeboxPath(root, 'index/memory-index.json'), defaultMemoryIndex());
+async function rebuildIndexes(root, options = {}) {
+  const syncNamespaceFiles = options.syncNamespaceFiles !== false;
+  const memoryIndex = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
   const keywordIndex = defaultKeywordIndex();
   const relationIndex = defaultRelationIndex();
+  const registry = await loadJson(vibeboxPath(root, 'registry/projects.json'), defaultRegistry());
 
   for (const memory of memoryIndex.memories) {
     indexValue(keywordIndex.types, memory.type, memory.id);
     indexValue(keywordIndex.scopes, memory.scope, memory.id);
     indexValue(keywordIndex.topics, memory.topic, memory.id);
+    if (memory.projectId) indexValue(keywordIndex.projects, memory.projectId, memory.id);
     for (const tag of memory.tags || []) indexValue(keywordIndex.tags, tag, memory.id);
     for (const domain of memory.domains || []) indexValue(keywordIndex.domains, domain, memory.id);
     for (const keyword of memoryKeywords(memory)) indexValue(keywordIndex.keywords, keyword, memory.id);
 
     for (const relatedId of memory.related || []) {
-      relationIndex.relations.push({ from: memory.id, to: relatedId, type: 'related' });
+      relationIndex.relations.push({ from: memory.id, to: relatedId, type: 'related', fromProjectId: memory.projectId || null });
       relationIndex.related[memory.id] = [...new Set([...(relationIndex.related[memory.id] || []), relatedId])];
     }
     for (const supersededId of memory.supersedes || []) {
-      relationIndex.relations.push({ from: memory.id, to: supersededId, type: 'supersedes' });
+      relationIndex.relations.push({ from: memory.id, to: supersededId, type: 'supersedes', fromProjectId: memory.projectId || null });
       relationIndex.supersedes[memory.id] = [...new Set([...(relationIndex.supersedes[memory.id] || []), supersededId])];
     }
   }
 
+  await saveJson(vibeboxPath(root, 'index/project-index.json'), defaultProjectIndex(registry.projects || [], memoryIndex.memories));
   await saveJson(vibeboxPath(root, 'index/keyword-index.json'), keywordIndex);
   await saveJson(vibeboxPath(root, 'index/relation-index.json'), relationIndex);
+  if (syncNamespaceFiles) {
+    await syncMemoryNamespaceFiles(root, memoryIndex.memories, registry.projects || []);
+  }
   await updatePendingIndex(root);
+}
+
+async function syncMemoryNamespaceFiles(root, memories, projects) {
+  const timestamp = nowIso();
+  const globalBuckets = new Map(GLOBAL_MEMORY_FILE_NAMES.map((fileName) => [fileName, []]));
+  const projectIds = new Set(projects.map((project) => project.projectId).filter(Boolean));
+  const projectBuckets = new Map();
+
+  function ensureProjectBuckets(projectId) {
+    if (!projectBuckets.has(projectId)) {
+      projectBuckets.set(projectId, new Map(PROJECT_MEMORY_FILE_NAMES.map((fileName) => [fileName, []])));
+    }
+    return projectBuckets.get(projectId);
+  }
+
+  for (const memory of memories) {
+    if (memory.projectId) projectIds.add(memory.projectId);
+    if (memoryScopeUsesGlobalNamespace(memory)) {
+      const fileName = GLOBAL_MEMORY_FILES[memory.type] || 'user-preferences.json';
+      if (!globalBuckets.has(fileName)) globalBuckets.set(fileName, []);
+      globalBuckets.get(fileName).push(memory);
+      continue;
+    }
+    if (!memory.projectId) continue;
+    const fileName = memory.scope === 'task' || memory.scope === 'temporary'
+      ? 'task-history.json'
+      : PROJECT_MEMORY_FILES[memory.type] || 'workflow-rules.json';
+    ensureProjectBuckets(memory.projectId).get(fileName).push(memory);
+  }
+
+  for (const [fileName, bucket] of globalBuckets.entries()) {
+    await saveJson(vibeboxPath(root, 'global', fileName), { version: VIBEBOX_VERSION, updatedAt: timestamp, memories: bucket });
+  }
+  for (const projectId of projectIds) ensureProjectBuckets(projectId);
+  for (const [projectId, buckets] of projectBuckets.entries()) {
+    await ensureDir(vibeboxPath(root, 'projects', projectId));
+    for (const [fileName, bucket] of buckets.entries()) {
+      await saveJson(vibeboxPath(root, 'projects', projectId, fileName), { version: VIBEBOX_VERSION, updatedAt: timestamp, memories: bucket });
+    }
+  }
+}
+
+function memoryScopeUsesGlobalNamespace(memory) {
+  return memory.scope === 'global' || (memory.scope === 'domain' && !memory.projectId);
 }
 
 function indexValue(index, value, id) {
@@ -1192,13 +1568,22 @@ function wikiLink(label) {
 }
 
 async function rebuildWiki(root) {
-  const memoryIndex = await loadJson(vibeboxPath(root, 'index/memory-index.json'), defaultMemoryIndex());
+  const memoryIndex = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
   const active = memoryIndex.memories.filter((memory) => memory.status === 'active');
+  const registry = await loadJson(vibeboxPath(root, 'registry/projects.json'), defaultRegistry());
 
   await writeManagedWikiPage(root, 'Home.md', renderHomeShell(), renderHomeManaged(active));
-  for (const page of WIKI_PAGES.filter((item) => item !== 'Home.md')) {
-    const pageMemories = active.filter((memory) => TYPE_TO_PAGE[memory.type] === page);
+  await writeManagedWikiPage(root, 'Project Index.md', renderProjectIndexShell(), renderProjectIndexManaged(registry.projects || []));
+  for (const page of WIKI_PAGES.filter((item) => !['Home.md', 'Project Index.md'].includes(item))) {
+    const pageMemories = active.filter((memory) => (
+      TYPE_TO_PAGE[memory.type] === page
+      && (['Failure Memory.md', 'Success Patterns.md'].includes(page) || memoryScopeUsesGlobalNamespace(memory))
+    ));
     await writeManagedWikiPage(root, page, renderMemoryShell(page), renderMemoryManaged(pageMemories));
+  }
+  for (const project of registry.projects || []) {
+    const projectMemories = active.filter((memory) => memory.projectId === project.projectId);
+    await writeManagedWikiPage(root, `projects/${project.projectId}.md`, renderProjectShell(project), renderProjectManaged(project, projectMemories));
   }
   await writeConceptWikiPages(root, active);
 }
@@ -1209,6 +1594,7 @@ function managedBlock(content) {
 
 async function writeManagedWikiPage(root, pageName, shell, managedContent) {
   const filePath = vibeboxPath(root, 'wiki', pageName);
+  await ensureDir(path.dirname(filePath));
   const block = managedBlock(managedContent);
   let existing = '';
   try {
@@ -1238,7 +1624,7 @@ function escapeRegExp(value) {
 function renderHomeShell() {
   return `${wikiFrontmatter('VibeBox Home')}# VibeBox Home
 
-Local memory vault for this project.`;
+Global local-first memory store for AI coding agents.`;
 }
 
 function renderHomeManaged(memories) {
@@ -1249,17 +1635,16 @@ function renderHomeManaged(memories) {
   return `## Wiki
 
 - [[User Preferences]] (${counts.user_preference || 0})
-- [[Project Decisions]] (${counts.project_decision || 0})
-- [[Architecture Rules]] (${counts.architecture_rule || 0})
-- [[Avoid Rules]] (${counts.avoid_rule || 0})
+- [[Global Avoid Rules]] (${counts.avoid_rule || 0})
 - [[Failure Memory]] (${counts.failure_memory || 0})
 - [[Success Patterns]] (${counts.success_pattern || 0})
 - [[Tooling Preferences]] (${counts.tooling_preference || 0})
 - [[Workflow Rules]] (${counts.workflow_rule || 0})
+- [[Project Index]]
 
 ## Recent Active Memory
 
-${memories.slice(-10).map((memory) => `- ${wikiLink(pageTitle(TYPE_TO_PAGE[memory.type]))} ${memory.title}: ${memory.summary}`).join('\n') || '- No approved memory yet.'}
+${memories.slice(-10).map((memory) => `- ${wikiLink(pageTitle(TYPE_TO_PAGE[memory.type] || 'Project Index.md'))} ${memory.title}: ${memory.summary}`).join('\n') || '- No approved memory yet.'}
 
 ## Storage
 
@@ -1267,6 +1652,47 @@ ${memories.slice(-10).map((memory) => `- ${wikiLink(pageTitle(TYPE_TO_PAGE[memor
 - Raw blackbox events live in \`../logs/events.jsonl\`.
 - Pending memory candidates live in \`../pending/memory-candidates.jsonl\`.
 `;
+}
+
+function renderProjectIndexShell() {
+  return `${wikiFrontmatter('Project Index')}# Project Index
+
+Back to [[Home]].`;
+}
+
+function renderProjectIndexManaged(projects) {
+  if (!projects.length) return 'No projects registered yet.';
+  return [
+    '## Projects',
+    '',
+    ...projects.map((project) => `- [[projects/${project.projectId}|${project.projectName || project.projectId}]] (${project.projectId})`)
+  ].join('\n');
+}
+
+function renderProjectShell(project) {
+  return `${wikiFrontmatter(project.projectName || project.projectId)}# ${project.projectName || project.projectId}
+
+Back to [[Project Index]].`;
+}
+
+function renderProjectManaged(project, memories) {
+  const lines = [
+    '## Project',
+    '',
+    `- Project ID: \`${project.projectId}\``,
+    `- Repository: ${project.repositoryName || 'Not detected'}`,
+    `- Primary domain: \`${project.primaryDomain || 'general'}\``,
+    `- Last seen: ${project.lastSeenAt || 'unknown'}`,
+    '',
+    '## Active Memory',
+    ''
+  ];
+  if (memories.length === 0) {
+    lines.push('- No approved project memory yet.');
+  } else {
+    lines.push(...memories.map((memory) => `- \`${memory.id}\` ${memory.title}: ${memory.summary}`));
+  }
+  return lines.join('\n');
 }
 
 function renderMemoryShell(pageName) {
@@ -1427,27 +1853,36 @@ function scoreMemory(memory, task) {
 
 function selectRelevantMemories(memories, task, config) {
   const maxItems = config.maxContextItems || 8;
-  return memories
+  const scored = memories
     .filter((memory) => memory.status === 'active')
     .map((memory) => ({ memory, ...scoreMemoryDetailed(memory, task, config) }))
     .filter((item) => item.matchScore > 0)
-    .sort((left, right) => right.score - left.score)
+    .sort((left, right) => right.score - left.score);
+  const currentProject = scored.filter((item) => memoryBelongsToCurrentProject(item.memory, config.projectId));
+  const broader = scored.filter((item) => !memoryBelongsToCurrentProject(item.memory, config.projectId));
+  return [...currentProject, ...broader]
     .slice(0, maxItems)
     .map((item) => ({ ...item.memory, retrievalScore: item.score, retrievalMatchScore: item.matchScore, lastUsedAt: nowIso() }));
 }
 
+function memoryBelongsToCurrentProject(memory, projectId) {
+  return Boolean(projectId && memory.projectId === projectId);
+}
+
 export async function generateContextPack(root = process.cwd(), input = {}) {
-  await initVibeBox(root);
-  const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig(root));
+  await ensureStoreForRead(root);
+  const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
+  const project = await resolveCurrentProjectIdentity(root);
   const task = input.task || input.text || '';
-  const index = await loadJson(vibeboxPath(root, 'index/memory-index.json'), defaultMemoryIndex());
-  const active = index.memories.filter((memory) => memory.status === 'active');
-  const scored = selectRelevantMemories(active, task, config);
+  const index = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
+  const active = index.memories.filter((memory) => memory.status === 'active' && isMemoryVisibleForProject(memory, project));
+  const scored = selectRelevantMemories(active, task, { ...config, projectId: project.projectId });
 
   const pendingIndex = await loadJson(vibeboxPath(root, 'index/pending-index.json'), defaultPendingIndex());
   const conflicts = pendingIndex.candidates
     .filter((candidate) => candidate.status === 'pending' && !['no_conflict', 'duplicate'].includes(candidate.conflictStatus))
-    .filter((candidate) => scoreMemoryDetailed(candidate, task, config).matchScore > 0)
+    .filter((candidate) => isMemoryVisibleForProject(candidate, project))
+    .filter((candidate) => scoreMemoryDetailed(candidate, task, { ...config, projectId: project.projectId }).matchScore > 0)
     .slice(0, 4);
   const activeConflicts = findActiveMemoryConflicts(scored);
 
@@ -1521,16 +1956,18 @@ function findActiveMemoryConflicts(memories) {
 }
 
 export async function generatePreTaskBrief(root = process.cwd(), input = {}) {
-  await initVibeBox(root);
-  const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig(root));
+  await ensureStoreForRead(root);
+  const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
+  const project = await resolveCurrentProjectIdentity(root);
   const task = input.task || input.text || '';
-  const index = await loadJson(vibeboxPath(root, 'index/memory-index.json'), defaultMemoryIndex());
-  const relevant = selectRelevantMemories(index.memories, task, config);
+  const index = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
+  const relevant = selectRelevantMemories(index.memories.filter((memory) => isMemoryVisibleForProject(memory, project)), task, { ...config, projectId: project.projectId });
   const pendingIndex = await loadJson(vibeboxPath(root, 'index/pending-index.json'), defaultPendingIndex());
   const conflicts = [
     ...pendingIndex.candidates
       .filter((candidate) => candidate.status === 'pending' && !['no_conflict', 'duplicate'].includes(candidate.conflictStatus))
-      .filter((candidate) => scoreMemoryDetailed(candidate, task, config).matchScore > 0),
+      .filter((candidate) => isMemoryVisibleForProject(candidate, project))
+      .filter((candidate) => scoreMemoryDetailed(candidate, task, { ...config, projectId: project.projectId }).matchScore > 0),
     ...findActiveMemoryConflicts(relevant)
   ].slice(0, 6);
   const broaderConflictIds = new Set(conflicts.map((conflict) => conflict.broaderMemoryId).filter(Boolean));
@@ -1631,17 +2068,21 @@ export async function afterTask(root = process.cwd(), input = {}) {
 
 export async function generateReport(root = process.cwd()) {
   await initVibeBox(root);
-  const memoryIndex = await loadJson(vibeboxPath(root, 'index/memory-index.json'), defaultMemoryIndex());
+  const project = await resolveCurrentProjectIdentity(root);
+  const memoryIndex = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
   const pendingIndex = await loadJson(vibeboxPath(root, 'index/pending-index.json'), defaultPendingIndex());
-  const events = await readJsonl(vibeboxPath(root, 'logs/events.jsonl'));
-  const active = memoryIndex.memories.filter((memory) => memory.status === 'active');
-  const conflicts = pendingIndex.candidates.filter((candidate) => candidate.status === 'pending' && !['no_conflict', 'duplicate'].includes(candidate.conflictStatus));
+  const events = (await readJsonl(vibeboxPath(root, 'logs/events.jsonl'))).filter((event) => event.projectId === project.projectId);
+  const active = memoryIndex.memories.filter((memory) => memory.status === 'active' && isMemoryVisibleForProject(memory, project));
+  const visiblePending = pendingIndex.candidates.filter((candidate) => candidate.status === 'pending' && isMemoryVisibleForProject(candidate, project));
+  const conflicts = visiblePending.filter((candidate) => !['no_conflict', 'duplicate'].includes(candidate.conflictStatus));
 
   return redactSensitive([
     'VibeBox Memory Report',
+    `Project: ${project.projectId}`,
+    `Global Store: ${vibeboxPath(root)}`,
     '',
     `Active Memory: ${active.length}`,
-    `Pending Candidates: ${pendingIndex.candidates.filter((candidate) => candidate.status === 'pending').length}`,
+    `Pending Candidates: ${visiblePending.length}`,
     `Recent Blackbox Events: ${events.length}`,
     '',
     renderReportType('User Preferences', active, ['user_preference', 'coding_style', 'design_preference']),
@@ -1653,8 +2094,8 @@ export async function generateReport(root = process.cwd()) {
     renderReportType('Tooling Preferences', active, ['tooling_preference']),
     renderReportType('Workflow Rules', active, ['workflow_rule']),
     'Pending Candidates:',
-    ...(pendingIndex.candidates.filter((candidate) => candidate.status === 'pending').slice(0, 12).map((candidate) => `- ${candidate.id} ${candidate.type}/${candidate.scope}: ${candidate.summary} [${candidate.conflictStatus}; ${candidate.recommendedAction || recommendCandidateAction(candidate).action}]`) || []),
-    pendingIndex.candidates.filter((candidate) => candidate.status === 'pending').length === 0 ? '- None.' : '',
+    ...(visiblePending.slice(0, 12).map((candidate) => `- ${candidate.id} ${candidate.type}/${candidate.scope}: ${candidate.summary} [${candidate.conflictStatus}; ${candidate.recommendedAction || recommendCandidateAction(candidate).action}]`) || []),
+    visiblePending.length === 0 ? '- None.' : '',
     '',
     'Potential Conflicts:',
     ...(conflicts.length > 0 ? conflicts.map((candidate) => `- ${candidate.id}: ${candidate.summary} [${candidate.conflictStatus}]`) : ['- None.'])
@@ -1672,21 +2113,23 @@ function renderReportType(title, memories, types) {
 
 export async function generateBlackboxReport(root = process.cwd(), input = {}) {
   await initVibeBox(root);
+  const project = await resolveCurrentProjectIdentity(root);
   const limit = Number(input.limit || 10);
   const since = input.since ? Date.parse(input.since) : null;
   const type = input.type || '';
-  let events = await readJsonl(vibeboxPath(root, 'logs/events.jsonl'));
+  let events = (await readJsonl(vibeboxPath(root, 'logs/events.jsonl'))).filter((event) => event.projectId === project.projectId);
   if (type) events = events.filter((event) => event.eventType === type || event.outcome === type);
   if (Number.isFinite(since)) events = events.filter((event) => Date.parse(event.createdAt) >= since);
   events = events.slice(-limit);
 
-  const memoryIndex = await loadJson(vibeboxPath(root, 'index/memory-index.json'), defaultMemoryIndex());
-  const active = memoryIndex.memories.filter((memory) => memory.status === 'active');
+  const memoryIndex = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
+  const active = memoryIndex.memories.filter((memory) => memory.status === 'active' && isMemoryVisibleForProject(memory, project));
   const changedFiles = countValues(events.flatMap((event) => event.changedFiles || []));
   const recurringFailureTypes = countValues(active.filter((memory) => memory.type === 'failure_memory').map((memory) => memory.failureType || 'unclear_requirement'));
 
   return redactSensitive([
     'VibeBox Blackbox Report',
+    `Project: ${project.projectId}`,
     '',
     'Task Timeline:',
     ...(events.length > 0 ? events.map((event) => `- ${event.createdAt} ${event.outcome || 'unknown'}: ${event.userRequest || event.aiActionSummary || event.id}`) : ['- No events recorded.']),
@@ -1739,18 +2182,47 @@ export async function runDoctor(root = process.cwd()) {
   const errors = [];
   const warnings = [];
   const base = vibeboxPath(root);
+  const legacyPath = path.join(path.resolve(root), '.vibebox');
+  let detectedProject = null;
+  try {
+    detectedProject = await detectProjectIdentity(root);
+  } catch (error) {
+    warnings.push(`Current project identity could not be fully detected: ${error.message}`);
+  }
+  if (await exists(legacyPath)) {
+    warnings.push('old project-local .vibebox detected; VibeBox now uses the global store. Migrate manually or wait for a future migration command.');
+  }
+
+  let registry = defaultRegistry();
+  try {
+    registry = await loadJson(vibeboxPath(root, 'registry/projects.json'), defaultRegistry());
+  } catch {
+    // Missing or invalid registry is reported in the required-file pass below.
+  }
+  const currentProject = detectedProject
+    ? (registry.projects || []).find((project) => (
+      (detectedProject.gitRemote && project.gitRemote === detectedProject.gitRemote)
+      || (project.rootPath && path.resolve(project.rootPath) === detectedProject.rootPath)
+      || project.projectId === detectedProject.projectId
+    ))
+    : null;
+  const currentProjectId = currentProject?.projectId || detectedProject?.projectId || 'unknown';
   const requiredFiles = [
     'config.json',
+    'registry/projects.json',
     ...WIKI_PAGES.map((page) => `wiki/${page}`),
-    'index/memory-index.json',
+    `wiki/projects/${currentProjectId}.md`,
+    'index/global-memory-index.json',
+    'index/project-index.json',
     'index/keyword-index.json',
     'index/relation-index.json',
     'index/pending-index.json',
     'logs/events.jsonl',
-    'pending/memory-candidates.jsonl'
+    'pending/memory-candidates.jsonl',
+    `projects/${currentProjectId}/project.json`
   ];
 
-  for (const dir of [base, vibeboxPath(root, 'wiki'), vibeboxPath(root, 'index'), vibeboxPath(root, 'logs'), vibeboxPath(root, 'pending')]) {
+  for (const dir of [base, vibeboxPath(root, 'global'), vibeboxPath(root, 'projects'), vibeboxPath(root, 'wiki'), vibeboxPath(root, 'wiki/projects'), vibeboxPath(root, 'index'), vibeboxPath(root, 'logs'), vibeboxPath(root, 'pending'), vibeboxPath(root, 'registry')]) {
     try {
       const info = await stat(dir);
       if (!info.isDirectory()) errors.push(`Missing directory: ${dir}`);
@@ -1762,21 +2234,21 @@ export async function runDoctor(root = process.cwd()) {
   for (const relative of requiredFiles) {
     const filePath = vibeboxPath(root, relative);
     if (!(await exists(filePath))) {
-      errors.push(`Missing file: .vibebox/${relative}`);
+      errors.push(`Missing file: ${relative}`);
       continue;
     }
     if (relative.endsWith('.json')) {
       try {
         await loadJson(filePath);
       } catch (error) {
-        errors.push(`Invalid JSON in .vibebox/${relative}: ${error.message}`);
+        errors.push(`Invalid JSON in ${relative}: ${error.message}`);
       }
     }
     if (relative.endsWith('.jsonl')) {
       try {
         await readJsonl(filePath);
       } catch (error) {
-        errors.push(`Invalid JSONL in .vibebox/${relative}: ${error.message}`);
+        errors.push(`Invalid JSONL in ${relative}: ${error.message}`);
       }
     }
   }
@@ -1791,10 +2263,10 @@ export async function runDoctor(root = process.cwd()) {
   }
 
   try {
-    const memoryIndex = await loadJson(vibeboxPath(root, 'index/memory-index.json'));
+    const memoryIndex = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'));
     if (!Array.isArray(memoryIndex.memories)) {
-      errors.push('memory-index.json must contain memories array.');
-      return { ok: false, errors, warnings };
+      errors.push('global-memory-index.json must contain memories array.');
+      return { ok: false, errors, warnings, storeRoot: base, projectIdentity: detectedProject || null };
     }
     const ids = new Set(memoryIndex.memories.map((memory) => memory.id));
     for (const memory of memoryIndex.memories) {
@@ -1804,13 +2276,15 @@ export async function runDoctor(root = process.cwd()) {
         }
       }
       if (memory.status === 'active') {
-        const wikiPage = TYPE_TO_PAGE[memory.type];
+        const wikiPage = memory.projectId && !memoryScopeUsesGlobalNamespace(memory)
+          ? `projects/${memory.projectId}.md`
+          : TYPE_TO_PAGE[memory.type];
         if (!wikiPage || !(await exists(vibeboxPath(root, 'wiki', wikiPage)))) {
           warnings.push(`Active memory ${memory.id} has no known wiki page.`);
         } else {
           const pageText = await readFile(vibeboxPath(root, 'wiki', wikiPage), 'utf8');
           if (!pageText.includes(memory.id)) {
-            warnings.push(`Active memory ${memory.id} is not linked from .vibebox/wiki/${wikiPage}.`);
+            warnings.push(`Active memory ${memory.id} is not linked from wiki/${wikiPage}.`);
           }
         }
       }
@@ -1839,6 +2313,9 @@ export async function runDoctor(root = process.cwd()) {
       }
       if (!(keywordIndex.scopes?.[normalizeText(memory.scope)] || []).includes(memory.id)) {
         warnings.push(`keyword-index missing scope ${memory.scope} for memory ${memory.id}.`);
+      }
+      if (memory.projectId && !(keywordIndex.projects?.[normalizeText(memory.projectId)] || []).includes(memory.id)) {
+        warnings.push(`keyword-index missing project ${memory.projectId} for memory ${memory.id}.`);
       }
       if (!(keywordIndex.topics?.[normalizeText(memory.topic)] || []).includes(memory.id)) {
         warnings.push(`keyword-index missing topic ${memory.topic} for memory ${memory.id}.`);
@@ -1879,16 +2356,22 @@ export async function runDoctor(root = process.cwd()) {
   return {
     ok: errors.length === 0,
     errors,
-    warnings
+    warnings,
+    storeRoot: base,
+    projectIdentity: detectedProject || null,
+    currentProjectId
   };
 }
 
 async function listMarkdownFiles(dirPath) {
   try {
     const entries = await readdir(dirPath, { withFileTypes: true });
-    return entries
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
-      .map((entry) => path.join(dirPath, entry.name));
+    const nested = await Promise.all(entries.map(async (entry) => {
+      const fullPath = path.join(dirPath, entry.name);
+      if (entry.isDirectory()) return listMarkdownFiles(fullPath);
+      return entry.isFile() && entry.name.endsWith('.md') ? [fullPath] : [];
+    }));
+    return nested.flat();
   } catch {
     return [];
   }
@@ -1896,6 +2379,12 @@ async function listMarkdownFiles(dirPath) {
 
 export function formatDoctorReport(report) {
   const lines = ['VibeBox Doctor', `Status: ${report.ok ? 'ok' : 'error'}`];
+  if (report.storeRoot) {
+    lines.push(`Global store: ${report.storeRoot}`);
+  }
+  if (report.currentProjectId || report.projectIdentity?.projectId) {
+    lines.push(`Current projectId: ${report.currentProjectId || report.projectIdentity.projectId}`);
+  }
   if (report.errors.length > 0) {
     lines.push('', 'Errors:', ...report.errors.map((error) => `- ${error}`));
   }

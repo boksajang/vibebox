@@ -36,9 +36,20 @@ node bin/vibebox.mjs <command>
 
 ## Runtime Storage
 
-`vibebox init` creates `.vibebox/` inside the current project. That folder is runtime state: config, local wiki pages, JSON indexes, raw logs, and pending memory candidates.
+`vibebox init` creates or updates one user-level global store. By default that store is `~/.vibebox` on macOS/Linux and `C:\Users\{USER}\.vibebox` on Windows. Set `VIBEBOX_HOME` or pass `--store <path>` to use a different store.
 
-For public repositories, `.vibebox/` should usually stay uncommitted. This repository ignores `.vibebox/`, `.vscode/`, `node_modules/`, temp output, and common log files.
+The current working project is identified from the current directory, using git remote origin first, then `package.json` name, then the git root folder name, then the current folder name. Project memory is stored under `projects/{projectId}/` inside the global store. VibeBox does not create `.vibebox/`, pointer files, or hidden metadata inside work repositories.
+
+The global store contains:
+
+- `config.json`
+- `global/` for user-wide preferences and rules
+- `projects/{projectId}/` for project decisions, failures, successes, and workflow rules
+- `wiki/` for the Obsidian-compatible cross-project wiki
+- `index/` for retrieval indexes
+- `logs/events.jsonl` for raw blackbox events with `projectId`
+- `pending/memory-candidates.jsonl` for review candidates with `projectId` or `scope`
+- `registry/projects.json` for known project identities
 
 ## Project Initialization
 
@@ -52,7 +63,7 @@ Fallback:
 node bin/vibebox.mjs init
 ```
 
-Initialization creates missing VibeBox files and preserves existing ones.
+Initialization creates missing global-store files, preserves existing ones, and registers or refreshes the current project identity. It does not write runtime state into the current project.
 
 ## Pre-Task Usage
 
@@ -139,7 +150,7 @@ vibebox blackbox --limit 10
 vibebox doctor
 ```
 
-`doctor` checks required files, JSON parsing, index consistency, wiki references, and suspicious unredacted secrets in raw logs.
+`doctor` checks the global store, current project identity, registry, JSON parsing, index consistency, wiki references, pending consistency, suspicious unredacted secrets in raw logs, and legacy project-local `.vibebox/` folders.
 
 ## External Project Workflow
 
@@ -165,9 +176,10 @@ On Windows PowerShell, use `vibebox.cmd` for the same commands if `vibebox` is b
 
 - If `vibebox` is not found, run `npm link` from the VibeBox repository or use `node bin/vibebox.mjs <command>`.
 - If PowerShell blocks `vibebox.ps1`, use `vibebox.cmd <command>`.
+- If you need an isolated store, set `VIBEBOX_HOME` before running commands.
 - If pre-task output is empty, approve relevant pending memory first with `review` and `approve`.
 - If indexes or wiki files look inconsistent, run `vibebox doctor`.
-- Do not fix runtime state by committing `.vibebox/` to a public repository.
+- If `doctor` reports an old project-local `.vibebox/`, treat it as legacy. No destructive migration is performed automatically.
 
 ## Examples
 

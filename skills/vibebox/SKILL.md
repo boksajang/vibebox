@@ -1,13 +1,13 @@
 ---
 name: vibebox
-description: Use this skill when an AI coding task should consult VibeBox project memory before work as an auto-intervention memory layer for meaningful repository work; consider VibeBox before planning or editing when prior decisions, failures, constraints, or user preferences could affect the task, run pre-task memory checks when `.vibebox/` exists, and capture after-task results unless the user explicitly opts out.
+description: Use this skill when an AI coding task should consult VibeBox memory before work as an auto-intervention memory layer for meaningful repository work; consider VibeBox before planning or editing when prior decisions, failures, constraints, or user preferences could affect the task, run pre-task memory checks when VibeBox is installed and the global store/project identity are available, and capture after-task results unless the user explicitly opts out.
 ---
 
 # VibeBox
 
 ## What VibeBox Is
 
-VibeBox is agent-neutral local-first blackbox memory middleware for AI coding agents.
+VibeBox is universal agent-neutral local-first blackbox memory middleware for AI coding agents.
 VibeBox Core is a local CLI and memory engine. This skill tells an AI coding agent when and how to call that CLI; it does not replace repository inspection or the user's current request.
 
 Past memory is context, not authority. Pending memory must not be treated as active memory.
@@ -20,7 +20,7 @@ For details, load these references only when needed:
 
 ## Auto-Intervention Principle
 
-Before starting repository-based work, judge whether the task could be affected by prior decisions, failures, preferences, constraints, project conventions, or blackbox history. If that possibility exists, or if `.vibebox/` already exists in the project, run VibeBox pre-task retrieval before planning or editing.
+Before starting repository-based work, judge whether the task could be affected by prior decisions, failures, preferences, constraints, project conventions, or blackbox history. If that possibility exists and VibeBox is available, the global store exists or can be initialized, and the current working directory identifies the project, run VibeBox pre-task retrieval before planning or editing.
 
 Use VibeBox memory as constraints, warnings, and context that narrow the working assumptions. Do not treat memory as a replacement for the user's current explicit request. The current request wins over past memory.
 
@@ -48,7 +48,7 @@ Use VibeBox when the task context suggests memory could reduce wrong assumptions
 - Could it affect existing design, structure, dependencies, documentation, packaging, tests, or release flow?
 - Could previous failures, user preferences, project decisions, or constraints affect the right approach?
 - Is the result likely to matter for a future coding session?
-- Does `.vibebox/` already exist for this project?
+- Is VibeBox installed, and can the current working directory be identified as a project?
 - Would the user reasonably expect the agent to avoid asking for repeated project context?
 
 Do not use VibeBox when:
@@ -57,14 +57,14 @@ Do not use VibeBox when:
 - The task has no file, design, architecture, workflow, or project-memory consequence.
 - Memory retrieval would add ceremony without reducing risk.
 - The user explicitly says not to use memory.
-- `.vibebox/` is absent and the task is not meaningful enough to justify initializing project memory.
+- VibeBox is unavailable and the task is not meaningful enough to justify initializing the global store.
 
 ## Pre-Task Workflow
 
 Before meaningful repository work:
 
 1. Judge whether prior memory could affect the task.
-2. Check whether `.vibebox/` exists in the project root.
+2. Check whether the VibeBox CLI is available, whether the global store has been initialized, and whether the current working directory identifies the project.
 3. Prefer `vibebox pretask --task "<task description>"`.
 4. If the global command is unavailable inside the VibeBox repository, try `node bin/vibebox.mjs pretask --task "<task description>"`.
 5. Read the Pre-Task Brief.
@@ -168,13 +168,15 @@ If neither works:
 
 ## Obsidian-Compatible Wiki Notes
 
-VibeBox writes human-readable Markdown in `.vibebox/wiki/`. Use it for inspection and review, not as a raw transcript store. VibeBox managed sections are bounded by `<!-- VIBEBOX:BEGIN -->` and `<!-- VIBEBOX:END -->`; user-written notes outside managed blocks should be preserved.
+VibeBox writes human-readable Markdown in the global store wiki, `~/.vibebox/wiki/` by default, or `$VIBEBOX_HOME/wiki` when configured. Use it for inspection and review, not as a raw transcript store. VibeBox managed sections are bounded by `<!-- VIBEBOX:BEGIN -->` and `<!-- VIBEBOX:END -->`; user-written notes outside managed blocks should be preserved.
 
-`.vibebox/` is runtime state created inside user projects. It should usually stay out of public repositories unless the project intentionally publishes sanitized sample memory.
+VibeBox uses one global user store. Global preferences and rules live under `global/`; project memory lives under `projects/{projectId}/`; wiki, index, logs, pending, and registry data live under the global store. Project identity comes from the current working directory using git remote `origin`, `package.json` name, git root folder name, then current folder name.
+
+VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects. Old project-local `.vibebox/` folders are legacy; `vibebox doctor` warns about them and no destructive migration is automatic.
 
 ## Troubleshooting
 
 - If `vibebox` is not found, use `node bin/vibebox.mjs <command>` from the repository root.
-- If `.vibebox/` is missing and the user wants VibeBox for this project, run `vibebox init` or `node bin/vibebox.mjs init`.
+- If the global store is missing and the user wants VibeBox, run `vibebox init` or `node bin/vibebox.mjs init`.
 - If pre-task output looks irrelevant, inspect active memory with `vibebox report` and pending memory with `vibebox review`.
 - If memory/index health is unclear, run `vibebox doctor`.

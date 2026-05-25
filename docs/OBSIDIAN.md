@@ -1,23 +1,23 @@
 # Obsidian-Compatible Wiki
 
-VibeBox creates a Markdown wiki in `.vibebox/wiki/`.
+VibeBox creates a Markdown wiki in the global store at `~/.vibebox/wiki/` by default. If `VIBEBOX_HOME` is set, use `$VIBEBOX_HOME/wiki`.
 
-The wiki is meant for humans. JSON indexes under `.vibebox/index/` are meant for retrieval.
+The wiki is meant for humans. JSON indexes under `~/.vibebox/index/` are meant for retrieval.
 
-`.vibebox/` is runtime state created inside each user project. The VibeBox source repository ignores it, and public projects should usually avoid committing generated wiki, index, log, or pending files unless they are intentionally publishing sanitized examples.
+Open `~/.vibebox/wiki/` in Obsidian to inspect the full cross-project memory graph. VibeBox does not create wiki files inside work repositories.
 
 ## Default Pages
 
 ```text
 Home.md
 User Preferences.md
-Project Decisions.md
-Architecture Rules.md
-Avoid Rules.md
+Global Avoid Rules.md
 Failure Memory.md
 Success Patterns.md
 Tooling Preferences.md
 Workflow Rules.md
+Project Index.md
+projects/{projectId}.md
 ```
 
 VibeBox may also create concept pages such as `Dependency Management.md` or `Dashboard Development.md` when approved memory links naturally to those topics.
@@ -28,7 +28,7 @@ Pages use YAML frontmatter:
 
 ```markdown
 ---
-title: Avoid Rules
+title: Global Avoid Rules
 vibebox: true
 obsidianCompatible: true
 ---
@@ -58,7 +58,7 @@ Human notes outside managed blocks are preserved.
 
 ## Raw Logs Stay Out of the Wiki
 
-The wiki stores summaries, rules, decisions, failure causes, prevention guidance, success patterns, and links. Raw event logs stay in `.vibebox/logs/events.jsonl`.
+The wiki stores summaries, rules, decisions, failure causes, prevention guidance, success patterns, and links. Raw event logs stay in `~/.vibebox/logs/events.jsonl` with `projectId` metadata.
 
 ## Index Consistency
 

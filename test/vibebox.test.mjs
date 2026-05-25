@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
+  access,
   appendFile,
   mkdir,
   mkdtemp,
@@ -30,7 +31,20 @@ import {
 } from '../src/core.mjs';
 
 async function makeWorkspace() {
-  return mkdtemp(path.join(os.tmpdir(), 'vibebox-test-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vibebox-test-'));
+  process.env.VIBEBOX_HOME = storePath(root);
+  return root;
+}
+
+function storePath(root, ...parts) {
+  return path.join(root, 'global-vibebox', ...parts);
+}
+
+async function assertNoLocalStore(root) {
+  await assert.rejects(
+    () => access(path.join(root, '.vibebox')),
+    /ENOENT/
+  );
 }
 
 function byType(candidates, type) {
@@ -39,40 +53,50 @@ function byType(candidates, type) {
 
 test('init creates the VibeBox storage layout and preserves existing wiki files', async () => {
   const root = await makeWorkspace();
-  await initVibeBox(root);
+  const result = await initVibeBox(root);
 
-  const config = await loadJson(path.join(root, '.vibebox', 'config.json'));
-  assert.equal(config.projectName, path.basename(root));
-  assert.equal(config.rootPath, '.');
+  const config = await loadJson(storePath(root, 'config.json'));
   assert.equal(config.memoryMode, 'review');
   assert.equal(config.obsidianCompatible, true);
   assert.equal(config.maxContextItems, 8);
   assert.equal(config.maxContextChars, 6000);
+  assert.equal(result.storeRoot, storePath(root));
+  assert.ok(result.projectId);
+  await assertNoLocalStore(root);
 
   for (const relative of [
     'wiki/Home.md',
     'wiki/User Preferences.md',
-    'wiki/Project Decisions.md',
-    'wiki/Architecture Rules.md',
-    'wiki/Avoid Rules.md',
+    'wiki/Global Avoid Rules.md',
     'wiki/Failure Memory.md',
     'wiki/Success Patterns.md',
     'wiki/Tooling Preferences.md',
     'wiki/Workflow Rules.md',
-    'index/memory-index.json',
+    'wiki/Project Index.md',
+    `wiki/projects/${result.projectId}.md`,
+    'index/global-memory-index.json',
+    'index/project-index.json',
     'index/keyword-index.json',
     'index/relation-index.json',
     'index/pending-index.json',
     'logs/events.jsonl',
-    'pending/memory-candidates.jsonl'
+    'pending/memory-candidates.jsonl',
+    'registry/projects.json',
+    `projects/${result.projectId}/project.json`
   ]) {
-    await readFile(path.join(root, '.vibebox', relative), 'utf8');
+    await readFile(storePath(root, relative), 'utf8');
   }
 
-  const homePath = path.join(root, '.vibebox', 'wiki', 'Home.md');
+  const registry = await loadJson(storePath(root, 'registry', 'projects.json'));
+  assert.ok(registry.projects.some((project) => project.projectId === result.projectId));
+  const projectIndex = await readFile(storePath(root, 'wiki', 'Project Index.md'), 'utf8');
+  assert.match(projectIndex, new RegExp(result.projectId));
+
+  const homePath = storePath(root, 'wiki', 'Home.md');
   await writeFile(homePath, 'custom home note\n', 'utf8');
   await initVibeBox(root);
   assert.equal(await readFile(homePath, 'utf8'), 'custom home note\n');
+  await assertNoLocalStore(root);
 });
 
 test('init enriches project identity without locking config to an absolute path', async () => {
@@ -83,14 +107,50 @@ test('init enriches project identity without locking config to an absolute path'
     'utf8'
   );
 
-  await initVibeBox(root);
+  const result = await initVibeBox(root);
 
-  const config = await loadJson(path.join(root, '.vibebox', 'config.json'));
-  assert.equal(config.projectName, 'dashboard-suite');
-  assert.equal(config.repositoryName, 'dashboard-suite');
-  assert.equal(config.rootPath, '.');
-  assert.equal(config.primaryDomain, 'dashboard');
-  assert.ok(config.techStackHints.includes('echarts'));
+  const registry = await loadJson(storePath(root, 'registry', 'projects.json'));
+  const project = registry.projects.find((item) => item.projectId === result.projectId);
+  assert.equal(project.projectName, 'dashboard-suite');
+  assert.equal(project.repositoryName, 'dashboard-suite');
+  assert.equal(project.rootPath, path.resolve(root));
+  assert.equal(project.primaryDomain, 'dashboard');
+  assert.ok(project.techStackHints.includes('echarts'));
+  await assertNoLocalStore(root);
+});
+
+test('project identity prefers git remote names and falls back to package or folder names', async () => {
+  const remoteRoot = await makeWorkspace();
+  await mkdir(path.join(remoteRoot, '.git'), { recursive: true });
+  await writeFile(
+    path.join(remoteRoot, '.git', 'config'),
+    '[remote "origin"]\n\turl = https://github.com/boksajang/flovix.git\n',
+    'utf8'
+  );
+  const remoteResult = await initVibeBox(remoteRoot);
+  assert.equal(remoteResult.projectId, 'flovix');
+
+  const packageRoot = await makeWorkspace();
+  await writeFile(path.join(packageRoot, 'package.json'), JSON.stringify({ name: '@acme/agent-kit' }), 'utf8');
+  const packageResult = await initVibeBox(packageRoot);
+  assert.equal(packageResult.projectId, 'acme-agent-kit');
+
+  const folderRoot = await makeWorkspace();
+  const folderResult = await initVibeBox(folderRoot);
+  assert.equal(folderResult.projectId, path.basename(folderRoot).toLowerCase());
+});
+
+test('project identity adds a hash suffix for non-remote project id collisions', async () => {
+  const first = await makeWorkspace();
+  await writeFile(path.join(first, 'package.json'), JSON.stringify({ name: 'duplicate-name' }), 'utf8');
+  const firstResult = await initVibeBox(first);
+
+  const second = await mkdtemp(path.join(os.tmpdir(), 'vibebox-test-duplicate-'));
+  await writeFile(path.join(second, 'package.json'), JSON.stringify({ name: 'duplicate-name' }), 'utf8');
+  const secondResult = await initVibeBox(second);
+
+  assert.equal(firstResult.projectId, 'duplicate-name');
+  assert.match(secondResult.projectId, /^duplicate-name-[a-f0-9]{8}$/);
 });
 
 test('capture appends redacted raw events without leaking secrets', async () => {
@@ -109,13 +169,16 @@ test('capture appends redacted raw events without leaking secrets', async () => 
   });
 
   assert.equal(event.outcome, 'success');
-  const events = await readJsonl(path.join(root, '.vibebox', 'logs', 'events.jsonl'));
+  const events = await readJsonl(storePath(root, 'logs', 'events.jsonl'));
   assert.equal(events.length, 1);
+  assert.ok(events[0].projectId);
+  assert.equal(events[0].projectRoot, path.resolve(root));
   const serialized = JSON.stringify(events[0]);
   assert.match(serialized, /\[REDACTED\]/);
   assert.doesNotMatch(serialized, /sk-live-1234567890abcdef/);
   assert.doesNotMatch(serialized, /secret-token-value/);
   assert.doesNotMatch(serialized, /my-secret-password/);
+  await assertNoLocalStore(root);
 });
 
 test('capture redacts common plain secret formats before raw log persistence', async () => {
@@ -130,7 +193,7 @@ test('capture redacts common plain secret formats before raw log persistence', a
     outcome: 'unknown'
   });
 
-  const events = await readJsonl(path.join(root, '.vibebox', 'logs', 'events.jsonl'));
+  const events = await readJsonl(storePath(root, 'logs', 'events.jsonl'));
   const serialized = JSON.stringify(events[0]);
   assert.match(serialized, /\[REDACTED\]/);
   assert.doesNotMatch(serialized, /plainsecretvalue12345/);
@@ -173,7 +236,7 @@ test('extract creates conservative pending candidates across memory types, scope
   assert.equal(candidates.every((candidate) => !JSON.stringify(candidate).includes('sk-test-1234567890abcdef')), true);
   assert.equal(candidates.some((candidate) => candidate.summary.includes('sidebar color')), false);
 
-  const pendingIndex = await loadJson(path.join(root, '.vibebox', 'index', 'pending-index.json'));
+  const pendingIndex = await loadJson(storePath(root, 'index', 'pending-index.json'));
   assert.equal(pendingIndex.candidates.length, candidates.length);
 
   const review = await reviewPending(root);
@@ -193,13 +256,13 @@ test('extract ignores one-off statements that only contain generic should or mus
   });
 
   assert.equal(candidates.length, 0);
-  const pendingIndex = await loadJson(path.join(root, '.vibebox', 'index', 'pending-index.json'));
+  const pendingIndex = await loadJson(storePath(root, 'index', 'pending-index.json'));
   assert.equal(pendingIndex.candidates.length, 0);
 });
 
 test('approve and reject move only reviewed memory into active indexes, wiki, and context packs', async () => {
   const root = await makeWorkspace();
-  await initVibeBox(root);
+  const { projectId } = await initVibeBox(root);
 
   const candidates = await extractMemoryCandidates(root, {
     text: [
@@ -218,14 +281,20 @@ test('approve and reject move only reviewed memory into active indexes, wiki, an
   }
   await rejectMemory(root, candidates.find((candidate) => candidate.scope === 'task' || candidate.scope === 'temporary').id);
 
-  const memoryIndex = await loadJson(path.join(root, '.vibebox', 'index', 'memory-index.json'));
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
   assert.deepEqual(memoryIndex.memories.map((memory) => memory.id).sort(), approvedIds.sort());
   assert.equal(memoryIndex.memories.every((memory) => memory.status === 'active'), true);
 
-  const pendingIndex = await loadJson(path.join(root, '.vibebox', 'index', 'pending-index.json'));
+  const pendingIndex = await loadJson(storePath(root, 'index', 'pending-index.json'));
   assert.equal(pendingIndex.candidates.some((candidate) => candidate.status === 'rejected'), true);
 
-  const avoidWiki = await readFile(path.join(root, '.vibebox', 'wiki', 'Avoid Rules.md'), 'utf8');
+  const globalAvoidRules = await loadJson(storePath(root, 'global', 'avoid-rules.json'));
+  assert.ok(globalAvoidRules.memories.some((memory) => memory.summary.includes('package.json')));
+
+  const projectDecisions = await loadJson(storePath(root, 'projects', projectId, 'decisions.json'));
+  assert.ok(projectDecisions.memories.some((memory) => memory.summary.includes('ECharts')));
+
+  const avoidWiki = await readFile(storePath(root, 'wiki', 'Global Avoid Rules.md'), 'utf8');
   assert.match(avoidWiki, /^---\n/m);
   assert.match(avoidWiki, /\[\[Home\]\]/);
   assert.match(avoidWiki, /package\.json/);
@@ -291,6 +360,55 @@ test('pretask retrieves dependency avoid rules for dependency wording variants',
   assert.match(brief, /Project Guardrails:\n- .*package\.json/s);
 });
 
+test('domain memory can support other projects while project memory stays namespaced', async () => {
+  const projectA = await makeWorkspace();
+  await initVibeBox(projectA);
+  const projectB = await mkdtemp(path.join(os.tmpdir(), 'vibebox-test-other-'));
+  await initVibeBox(projectB);
+
+  const domainCandidates = await extractMemoryCandidates(projectA, {
+    text: 'For dashboard projects, prefer MSSQL because reporting data lives there.'
+  });
+  assert.equal(domainCandidates[0].scope, 'domain');
+  assert.equal(domainCandidates[0].projectId, undefined);
+  await approveMemory(projectA, domainCandidates[0].id);
+
+  const projectCandidates = await extractMemoryCandidates(projectA, {
+    text: 'We decided this project uses ECharts for dashboard visualization after rejecting Chart.js.'
+  });
+  await approveMemory(projectA, projectCandidates[0].id);
+
+  const brief = await generatePreTaskBrief(projectB, {
+    task: 'Work on dashboard database and visualization.'
+  });
+
+  assert.match(brief, /MSSQL/);
+  assert.doesNotMatch(brief, /ECharts/);
+});
+
+test('project memory is not crowded out by matching global memory limits', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+  const globalTexts = Array.from({ length: 5 }, (_, index) => `Always avoid global dashboard database risky approach ${index} because dashboard database regressions are costly.`);
+  const candidates = await extractMemoryCandidates(root, {
+    text: [
+      ...globalTexts,
+      'We decided this project uses MSSQL for dashboard database modules after rejecting Supabase.'
+    ].join('\n')
+  });
+  for (const candidate of candidates) {
+    await approveMemory(root, candidate.id);
+  }
+
+  const brief = await generatePreTaskBrief(root, {
+    task: 'Fix dashboard database behavior.',
+    debug: true
+  });
+
+  assert.match(brief, /MSSQL/);
+  assert.ok(brief.indexOf('MSSQL') < brief.indexOf('risky approach'));
+});
+
 test('aftertask records a blackbox event and creates pending candidates without active promotion', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
@@ -312,12 +430,12 @@ test('aftertask records a blackbox event and creates pending candidates without 
   assert.ok(result.candidates.some((candidate) => candidate.type === 'failure_memory'));
   assert.ok(result.candidates.some((candidate) => candidate.type === 'avoid_rule'));
 
-  const events = await readJsonl(path.join(root, '.vibebox', 'logs', 'events.jsonl'));
+  const events = await readJsonl(storePath(root, 'logs', 'events.jsonl'));
   assert.equal(events.length, 1);
   assert.deepEqual(events[0].commands, ['npm.cmd test']);
   assert.deepEqual(events[0].changedFiles, ['src/table.mjs', 'src/layout.css']);
 
-  const memoryIndex = await loadJson(path.join(root, '.vibebox', 'index', 'memory-index.json'));
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
   assert.equal(memoryIndex.memories.length, 0);
 });
 
@@ -361,6 +479,57 @@ test('report and blackbox summarize reviewed memory and recent task outcomes wit
   assert.match(blackbox, /Confirmed Decisions/);
 });
 
+test('report scopes pending candidates to the current project and visible global memory', async () => {
+  const projectA = await makeWorkspace();
+  await initVibeBox(projectA);
+  const projectB = await mkdtemp(path.join(os.tmpdir(), 'vibebox-test-report-'));
+  await initVibeBox(projectB);
+
+  await extractMemoryCandidates(projectA, {
+    text: 'We decided this project uses ECharts for dashboard visualization after rejecting Chart.js.'
+  });
+  await extractMemoryCandidates(projectB, {
+    text: 'We decided this project uses React for frontend app development after rejecting Vue.'
+  });
+
+  const report = await generateReport(projectB);
+  assert.match(report, /React/);
+  assert.doesNotMatch(report, /ECharts/);
+});
+
+test('init preserves namespace memory files that are not yet present in the global index', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const memoryPath = storePath(root, 'global', 'avoid-rules.json');
+  const manualMemory = {
+    version: '0.1.0',
+    updatedAt: new Date().toISOString(),
+    memories: [{
+      id: 'mem_manual_preserved',
+      type: 'avoid_rule',
+      scope: 'global',
+      topic: 'manual preservation',
+      title: 'Manual preservation',
+      rule: 'Do not overwrite manually staged namespace files.',
+      summary: 'Do not overwrite manually staged namespace files.',
+      tags: ['manual'],
+      domains: [],
+      appliesTo: ['all projects'],
+      confidence: 'high',
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }]
+  };
+  await writeFile(memoryPath, `${JSON.stringify(manualMemory, null, 2)}\n`, 'utf8');
+
+  await initVibeBox(root);
+
+  const after = await loadJson(memoryPath);
+  assert.ok(after.memories.some((memory) => memory.id === 'mem_manual_preserved'));
+});
+
 test('review recommends actions and safe approval skips conflict candidates', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
@@ -386,7 +555,7 @@ test('review recommends actions and safe approval skips conflict candidates', as
   assert.equal(result.approved.length, 1);
   assert.equal(result.skipped.some((candidate) => candidate.conflictStatus === 'direct_conflict'), true);
 
-  const memoryIndex = await loadJson(path.join(root, '.vibebox', 'index', 'memory-index.json'));
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
   assert.equal(memoryIndex.memories.some((memory) => memory.summary.includes('package.json')), true);
   assert.equal(memoryIndex.memories.some((memory) => memory.summary.includes('Supabase as the database')), false);
   assert.equal(candidates.length, 2);
@@ -401,11 +570,11 @@ test('approval creates related concept wiki pages and doctor validates wiki/inde
   });
   await approveMemory(root, candidate.id);
 
-  const avoidWiki = await readFile(path.join(root, '.vibebox', 'wiki', 'Avoid Rules.md'), 'utf8');
+  const avoidWiki = await readFile(storePath(root, 'wiki', 'Global Avoid Rules.md'), 'utf8');
   assert.match(avoidWiki, /## Related/);
   assert.match(avoidWiki, /\[\[Dependency Management\]\]/);
 
-  const conceptWiki = await readFile(path.join(root, '.vibebox', 'wiki', 'Dependency Management.md'), 'utf8');
+  const conceptWiki = await readFile(storePath(root, 'wiki', 'Dependency Management.md'), 'utf8');
   assert.match(conceptWiki, /Related memories/);
   assert.match(conceptWiki, new RegExp(candidate.id));
 
@@ -438,12 +607,12 @@ test('doctor reports pending index and keyword index inconsistencies', async () 
   });
   await approveMemory(root, candidate.id);
 
-  const pendingIndexPath = path.join(root, '.vibebox', 'index', 'pending-index.json');
+  const pendingIndexPath = storePath(root, 'index', 'pending-index.json');
   await writeFile(pendingIndexPath, JSON.stringify({ version: '0.1.0', updatedAt: new Date().toISOString(), candidates: [] }, null, 2), 'utf8');
   let doctor = await runDoctor(root);
   assert.ok(doctor.warnings.some((warning) => warning.includes('pending-index')));
 
-  const keywordIndexPath = path.join(root, '.vibebox', 'index', 'keyword-index.json');
+  const keywordIndexPath = storePath(root, 'index', 'keyword-index.json');
   const keywordIndex = await loadJson(keywordIndexPath);
   keywordIndex.tags.bad = ['missing_memory'];
   await writeFile(keywordIndexPath, `${JSON.stringify(keywordIndex, null, 2)}\n`, 'utf8');
@@ -460,7 +629,7 @@ test('doctor reports malformed memory index and missing keyword coverage', async
   });
   await approveMemory(root, candidate.id);
 
-  const keywordIndexPath = path.join(root, '.vibebox', 'index', 'keyword-index.json');
+  const keywordIndexPath = storePath(root, 'index', 'keyword-index.json');
   const keywordIndex = await loadJson(keywordIndexPath);
   keywordIndex.tags = {};
   await writeFile(keywordIndexPath, `${JSON.stringify(keywordIndex, null, 2)}\n`, 'utf8');
@@ -468,11 +637,11 @@ test('doctor reports malformed memory index and missing keyword coverage', async
   let doctor = await runDoctor(root);
   assert.ok(doctor.warnings.some((warning) => warning.includes('keyword-index missing tag')));
 
-  const memoryIndexPath = path.join(root, '.vibebox', 'index', 'memory-index.json');
+  const memoryIndexPath = storePath(root, 'index', 'global-memory-index.json');
   await writeFile(memoryIndexPath, JSON.stringify({ version: '0.1.0' }, null, 2), 'utf8');
   doctor = await runDoctor(root);
   assert.equal(doctor.ok, false);
-  assert.ok(doctor.errors.some((error) => error.includes('memory-index.json must contain memories')));
+  assert.ok(doctor.errors.some((error) => error.includes('global-memory-index.json must contain memories')));
 });
 
 test('confirmed project technology statements become project decisions', async () => {
@@ -489,7 +658,7 @@ test('confirmed project technology statements become project decisions', async (
 test('approve updates only managed wiki sections and preserves human notes', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
-  const avoidWikiPath = path.join(root, '.vibebox', 'wiki', 'Avoid Rules.md');
+  const avoidWikiPath = storePath(root, 'wiki', 'Global Avoid Rules.md');
   await writeFile(
     avoidWikiPath,
     [
@@ -536,7 +705,7 @@ test('reject only applies to pending candidates and cannot silently reject appro
     /Candidate is not pending/
   );
 
-  const memoryIndex = await loadJson(path.join(root, '.vibebox', 'index', 'memory-index.json'));
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
   assert.equal(memoryIndex.memories[0].status, 'active');
 });
 
@@ -663,7 +832,7 @@ test('doctor validates structure and warns about suspicious raw secrets', async 
   assert.equal(report.errors.length, 0);
 
   await appendFile(
-    path.join(root, '.vibebox', 'logs', 'events.jsonl'),
+    storePath(root, 'logs', 'events.jsonl'),
     `${JSON.stringify({ id: 'evt_bad', eventType: 'task_summary', userRequest: 'token sk-live-rawsecret1234567890', createdAt: new Date().toISOString() })}\n`,
     'utf8'
   );
@@ -671,6 +840,16 @@ test('doctor validates structure and warns about suspicious raw secrets', async 
   report = await runDoctor(root);
   assert.equal(report.ok, true);
   assert.ok(report.warnings.some((warning) => warning.includes('sensitive')));
+});
+
+test('doctor warns about old project-local VibeBox stores without migrating them', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+  await mkdir(path.join(root, '.vibebox'), { recursive: true });
+
+  const report = await runDoctor(root);
+  assert.equal(report.ok, true);
+  assert.ok(report.warnings.some((warning) => warning.includes('project-local .vibebox')));
 });
 
 test('doctor does not warn for already redacted captured secret placeholders', async () => {
@@ -690,7 +869,7 @@ test('universal agent skill package files exist and declare shared skill metadat
   const skill = await readFile(path.resolve('skills/vibebox/SKILL.md'), 'utf8');
   assert.match(skill, /^---\n[\s\S]+?\n---\n/);
   assert.match(skill, /^name:\s*vibebox$/m);
-  assert.match(skill, /^description:\s*Use this skill when an AI coding task should consult VibeBox project memory before work/m);
+  assert.match(skill, /^description:\s*Use this skill when an AI coding task should consult VibeBox memory before work/m);
   assert.match(skill, /agent-neutral/i);
   assert.match(skill, /VibeBox Core is a local CLI/i);
   assert.match(skill, /Past memory is context, not authority/i);
@@ -779,7 +958,7 @@ test('CLI exposes init, capture, extract, review, approve, context, pretask, aft
   assert.equal(review.status, 0);
   assert.match(review.stdout, /avoid_rule/);
 
-  const pending = await loadJson(path.join(root, '.vibebox', 'index', 'pending-index.json'));
+  const pending = await loadJson(storePath(root, 'index', 'pending-index.json'));
   assert.equal(run(['approve', pending.candidates[0].id]).status, 0);
   assert.equal(run(['reject', pending.candidates[1].id, '--reason', 'CLI rejection test']).status, 0);
 
@@ -807,4 +986,5 @@ test('CLI exposes init, capture, extract, review, approve, context, pretask, aft
   const doctor = run(['doctor']);
   assert.equal(doctor.status, 0);
   assert.match(doctor.stdout, /VibeBox Doctor/);
+  await assertNoLocalStore(root);
 });

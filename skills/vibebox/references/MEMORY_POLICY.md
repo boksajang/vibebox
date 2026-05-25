@@ -123,4 +123,8 @@ The user's current explicit request wins over past memory. If active memory warn
 
 ## Runtime State Exclusion Policy
 
-`.vibebox/` is runtime state created inside each user project. It contains local memory config, wiki pages, JSON indexes, raw events, and pending candidates. It should usually be ignored in public repositories. VibeBox source packaging excludes `.vibebox/`, `.vscode/`, `node_modules/`, temp output, logs, and local env files.
+VibeBox runtime state lives in one global user store at `~/.vibebox` by default, or under `VIBEBOX_HOME` when configured. Global preferences and rules live under `global/`; project memory lives under `projects/{projectId}/`; wiki, index, logs, pending, and registry data live under the global store.
+
+The project id is derived from the current working directory using git remote `origin`, `package.json` name, git root folder name, then current folder name.
+
+VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects. Old project-local stores are legacy; `doctor` warns about them, and migration remains explicit and non-destructive.

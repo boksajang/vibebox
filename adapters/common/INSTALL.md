@@ -28,7 +28,7 @@ On Windows PowerShell, if the npm `.ps1` shim is blocked by execution policy, us
 
 ## Project Initialization
 
-Initialize VibeBox in a repository:
+Initialize the global VibeBox user store:
 
 ```bash
 vibebox init
@@ -42,10 +42,10 @@ node bin/vibebox.mjs init
 
 ## How An Agent Should Locate VibeBox
 
-1. Start from the current repository root.
-2. Look for `.vibebox/`.
-3. If it exists, run pre-task retrieval before non-trivial work.
-4. If it does not exist, initialize only when the user asks for VibeBox memory in that project.
+1. Start from the current working directory.
+2. Check whether VibeBox is available through `vibebox`, `vibebox.cmd`, or the local Node fallback.
+3. Let VibeBox derive project identity from git remote `origin`, `package.json` name, git root folder name, then current folder name.
+4. Run pre-task retrieval before meaningful repository work when memory could matter.
 5. Prefer `vibebox <command>`.
 6. Fall back to `node bin/vibebox.mjs <command>` inside the VibeBox repository.
 
@@ -55,4 +55,4 @@ Do not include API keys, tokens, passwords, bearer credentials, or private conne
 
 ## Runtime State
 
-`vibebox init` creates `.vibebox/` inside the current project. That folder is local runtime state and should usually remain out of public source control.
+`vibebox init` creates the global user store at `~/.vibebox` by default, or under `VIBEBOX_HOME` when configured. VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects.

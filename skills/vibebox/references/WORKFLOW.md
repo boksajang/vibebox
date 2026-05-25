@@ -6,8 +6,8 @@ VibeBox is agent-neutral. Any AI coding agent that can read files and run shell 
 
 1. Receive the user task.
 2. Judge whether it is meaningful repository work.
-3. Check whether VibeBox memory exists for the project.
-4. If memory exists and could affect the task, run `pretask` before planning or editing.
+3. Check whether VibeBox is available, the global store exists or can be initialized, and the current working directory identifies the project.
+4. If memory could affect the task, run `pretask` before planning or editing.
 5. Use the Pre-Task Brief to reduce wrong assumptions and avoid repeated failures.
 6. Perform the task within the current user request.
 7. After meaningful work, capture the result with `aftertask` unless the user opted out.
@@ -17,7 +17,7 @@ This is an auto-intervention policy, not a hardcoded trigger list. The agent sho
 
 ## Standard CLI Workflow
 
-1. Initialize a project once with `vibebox init`.
+1. Initialize the global user store once with `vibebox init`.
 2. Run `vibebox pretask --task "<task>"` before memory-relevant repository work.
 3. Read the Pre-Task Brief and inspect the repository.
 4. Perform the requested coding, design, or review work.
@@ -29,7 +29,7 @@ This is an auto-intervention policy, not a hardcoded trigger list. The agent sho
 
 ## Pre-Task Brief Workflow
 
-Use this before planning or editing when repository memory could affect the task, especially when `.vibebox/` already exists:
+Use this before planning or editing when repository memory could affect the task and VibeBox is available for the current working directory:
 
 ```bash
 vibebox pretask --task "Fix dashboard table scrolling"
@@ -144,7 +144,7 @@ vibebox blackbox --limit 5
 vibebox doctor
 ```
 
-The generated `.vibebox/` folder belongs to that external project and should usually remain out of public source control.
+These commands use the global user store at `~/.vibebox` by default, or `VIBEBOX_HOME` when configured. They do not create project-local `.vibebox` folders, pointer files, or hidden metadata in that project.
 
 ## Current User Request Priority Rule
 
@@ -153,3 +153,5 @@ The current explicit user request has priority over past memory. If past memory 
 ## Project Memory Vs Global Memory
 
 For the current repository, project memory should guide work before global memory. If project and global memory conflict, treat it as a potential conflict and avoid silently resolving it.
+
+Project identity is derived from the current working directory using git remote `origin`, `package.json` name, git root folder name, then current folder name. Project memory lives under `projects/{projectId}/` in the global store; global preferences and rules live under `global/`.

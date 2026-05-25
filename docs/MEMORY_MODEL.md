@@ -32,6 +32,8 @@ Active memory can use these types:
 
 Current project memory ranks above global memory. If project and global memory conflict, VibeBox reports the conflict instead of silently hiding it.
 
+`global` memory can omit `projectId`. `project`, `task`, and `temporary` memory must include a `projectId`. `domain` memory can be broad, or project-specific when it was learned from one project and should not override other projects.
+
 ## Confidence
 
 VibeBox uses:
@@ -99,4 +101,8 @@ Classification is deterministic and heuristic-based. It considers permanence, sc
 
 ## Runtime State Policy
 
-Memory records, raw logs, pending candidates, indexes, and wiki pages live under `.vibebox/` in each user project. That folder is runtime state and should usually be excluded from public source repositories. VibeBox source packaging excludes `.vibebox/` with `.gitignore`.
+Memory records, raw logs, pending candidates, indexes, registry entries, and wiki pages live under the user-level global store, `~/.vibebox` by default. `VIBEBOX_HOME` can override that location.
+
+Project memory is stored under `projects/{projectId}/`. User-wide preferences, tooling preferences, avoid rules, workflow rules, coding style, and architecture patterns are stored under `global/`. The Obsidian-compatible wiki under `wiki/` connects all projects into one graph. The current project folder remains clean.
+
+Existing project-local `.vibebox/` folders are legacy stores. VibeBox warns about them in `doctor` and does not run destructive automatic migration.

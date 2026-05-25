@@ -6,6 +6,7 @@ import {
   captureEvent,
   extractMemoryCandidates,
   generateBlackboxReport,
+  getVibeBoxHome,
   formatDoctorReport,
   generateContextPack,
   generatePreTaskBrief,
@@ -83,7 +84,7 @@ function help() {
   return `VibeBox
 
 Usage:
-  vibebox init
+  vibebox init [--store <path>]
   vibebox capture --request <text> --summary <text> [--command <text>] [--command-result <text>] [--changed-files a,b] [--feedback <text>] [--outcome success|failure|partial|unknown]
   vibebox extract --text <text>
   vibebox review
@@ -96,17 +97,28 @@ Usage:
   vibebox report
   vibebox blackbox [--limit 10] [--type success|failure|task_summary] [--since YYYY-MM-DD]
   vibebox doctor
+
+Global store:
+  Defaults to ~/.vibebox and can be overridden with VIBEBOX_HOME or --store <path>.
 `;
 }
 
 export async function runCli(argv = process.argv.slice(2), root = process.cwd()) {
   const [command, ...rest] = argv;
   const { args, flags } = parseArgs(rest);
+  if (flags.store) {
+    process.env.VIBEBOX_HOME = String(flags.store);
+  }
 
   switch (command) {
     case 'init': {
       const result = await initVibeBox(root);
-      return `VibeBox initialized at ${result.vibeboxPath}\nCreated ${result.created.length} missing item(s).`;
+      return [
+        `VibeBox global store initialized at ${result.storeRoot}`,
+        `Current projectId: ${result.projectId}`,
+        `Current project root: ${result.projectRoot}`,
+        `Created ${result.created.length} missing item(s).`
+      ].join('\n');
     }
 
     case 'capture': {
@@ -120,7 +132,7 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
         userFeedback: flags.feedback || flags.userFeedback || '',
         outcome: flags.outcome || 'unknown'
       });
-      return `Captured event ${event.id}`;
+      return `Captured event ${event.id}\nProject: ${event.projectId}\nGlobal store: ${getVibeBoxHome()}`;
     }
 
     case 'extract': {
@@ -137,7 +149,8 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
         fromLastEvent: flags['last-event'] || false,
         source: { kind: flags.event ? 'event' : 'cli_extract', id: flags.event || null }
       });
-      return `Extracted ${candidates.length} pending candidate(s).`;
+      const projectId = candidates.find((candidate) => candidate.projectId)?.projectId || 'global';
+      return `Extracted ${candidates.length} pending candidate(s).\nProject: ${projectId}`;
     }
 
     case 'review':

@@ -20,23 +20,30 @@ Fallback inside the VibeBox repository:
 node bin/vibebox.mjs <command>
 ```
 
+Global store override:
+
+```bash
+VIBEBOX_HOME=/path/to/store vibebox <command>
+vibebox <command> --store /path/to/store
+```
+
 ## `vibebox init`
 
-- Purpose: Create the local `.vibebox/` storage layout.
-- Typical usage: Run once at the root of a repository.
+- Purpose: Create the global VibeBox user store at `~/.vibebox` by default, or at `VIBEBOX_HOME` when configured.
+- Typical usage: Run once for the user store; it can be invoked from any project.
 - Example: `vibebox init`
-- Notes: Existing VibeBox files are preserved. `.vibebox/` is runtime state and should usually not be committed to public repositories.
+- Notes: Existing VibeBox files are preserved. VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects.
 
 ## `vibebox capture`
 
-- Purpose: Append a raw blackbox event from CLI options.
+- Purpose: Append a raw blackbox event from CLI options to the global log with the current `projectId`.
 - Typical usage: Record a request, summary, command result, changed files, feedback, and outcome.
 - Example: `vibebox capture --request "Fix table scrolling" --summary "Kept package.json unchanged" --changed-files "src/table.mjs" --outcome success`
 - Notes: Supports `--event-type`, `--request`, `--summary`, `--command`, `--command-result`, `--changed-files`, `--feedback`, and `--outcome`.
 
 ## `vibebox extract`
 
-- Purpose: Convert raw text or event context into pending memory candidates.
+- Purpose: Convert raw text or current-project event context into pending memory candidates in the global store.
 - Typical usage: Create candidates from a task summary or direct user statement.
 - Example: `vibebox extract --text "Do not modify package.json unless explicitly requested."`
 - Notes: Supports `--text`, `--file`, `--event`, and `--last-event`. Candidates are not active until approved.
@@ -53,7 +60,7 @@ node bin/vibebox.mjs <command>
 - Purpose: Promote one pending candidate into active memory.
 - Typical usage: Approve a reviewed candidate by id.
 - Example: `vibebox approve mem_abc123`
-- Notes: Approval updates active indexes and related wiki pages.
+- Notes: Approval updates active indexes, namespace memory files, and related wiki pages. `global` memory goes under `global/`; project/task memory goes under `projects/{projectId}/`.
 
 ## `vibebox approve --safe`
 
@@ -92,21 +99,21 @@ node bin/vibebox.mjs <command>
 
 ## `vibebox report`
 
-- Purpose: Summarize current active memory and pending candidates.
-- Typical usage: Inspect project memory state without dumping raw logs.
+- Purpose: Summarize current-project active memory, relevant global memory, and pending candidates.
+- Typical usage: Inspect memory state without dumping raw logs.
 - Example: `vibebox report`
 - Notes: Useful before cleanup, review, or sharing project memory state with an agent.
 
 ## `vibebox blackbox`
 
-- Purpose: Summarize recent task history as a blackbox report.
+- Purpose: Summarize recent current-project task history as a blackbox report.
 - Typical usage: Understand repeated failures, successful approaches, decisions, and frequently changed files.
 - Example: `vibebox blackbox --limit 10`
 - Notes: Supports `--limit`, `--type`, and `--since`.
 
 ## `vibebox doctor`
 
-- Purpose: Check VibeBox storage health.
+- Purpose: Check global-store health and current project identity.
 - Typical usage: Run after packaging changes, suspicious memory behavior, or manual edits.
 - Example: `vibebox doctor`
-- Notes: Checks storage layout, JSON parsing, index consistency, wiki links, and suspicious raw secrets. Risky repair remains manual.
+- Notes: Checks global storage layout, current project identity, JSON parsing, index consistency, wiki links, suspicious raw secrets, and legacy project-local stores. Risky repair and migration remain manual.

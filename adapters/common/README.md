@@ -12,7 +12,7 @@ Reference files live under:
 
 ## How Agents Should Use VibeBox
 
-1. Check for `.vibebox/` in the project root.
+1. Check whether VibeBox is available through `vibebox`, `vibebox.cmd`, or the local Node fallback.
 2. Run `vibebox pretask --task "<task>"` before non-trivial work.
 3. On Windows PowerShell, use `vibebox.cmd pretask --task "<task>"` if the npm `.ps1` shim is blocked.
 4. If needed inside the VibeBox repository, fall back to `node bin/vibebox.mjs pretask --task "<task>"`.
@@ -23,12 +23,15 @@ Reference files live under:
 
 ## Storage Roles
 
-- `.vibebox/wiki/`: human-readable Markdown for inspection.
-- `.vibebox/index/`: JSON indexes for retrieval.
-- `.vibebox/logs/`: raw blackbox event records.
-- `.vibebox/pending/`: memory candidates awaiting review.
+- `~/.vibebox/global/`: global preferences and rules.
+- `~/.vibebox/projects/{projectId}/`: project memory derived from the current working directory.
+- `~/.vibebox/wiki/`: human-readable Markdown for inspection.
+- `~/.vibebox/index/`: JSON indexes for retrieval.
+- `~/.vibebox/logs/`: raw blackbox event records.
+- `~/.vibebox/pending/`: memory candidates awaiting review.
+- `~/.vibebox/registry/`: project identity registry data.
 
-`.vibebox/` is runtime state in the user project. It should usually not be committed to public repositories.
+Set `VIBEBOX_HOME` to use a different store root. VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects.
 
 ## Privacy Rule
 
