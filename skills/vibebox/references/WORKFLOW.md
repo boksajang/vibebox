@@ -2,13 +2,26 @@
 
 VibeBox is agent-neutral. Any AI coding agent that can read files and run shell commands can use the same workflow.
 
-## Standard Workflow
+## Default Agent Workflow
+
+1. Receive the user task.
+2. Judge whether it is meaningful repository work.
+3. Check whether VibeBox memory exists for the project.
+4. If memory exists and could affect the task, run `pretask` before planning or editing.
+5. Use the Pre-Task Brief to reduce wrong assumptions and avoid repeated failures.
+6. Perform the task within the current user request.
+7. After meaningful work, capture the result with `aftertask` unless the user opted out.
+8. Keep new memory as pending until review and approval.
+
+This is an auto-intervention policy, not a hardcoded trigger list. The agent should consider repository context, change risk, prior memory value, and user preference before deciding whether VibeBox should intervene.
+
+## Standard CLI Workflow
 
 1. Initialize a project once with `vibebox init`.
-2. Run `vibebox pretask --task "<task>"` before non-trivial work.
+2. Run `vibebox pretask --task "<task>"` before memory-relevant repository work.
 3. Read the Pre-Task Brief and inspect the repository.
 4. Perform the requested coding, design, or review work.
-5. Run `vibebox aftertask ...` after meaningful work.
+5. Run `vibebox aftertask ...` after meaningful work unless the user opted out.
 6. Review candidates with `vibebox review`.
 7. Promote useful memory with `vibebox approve <candidate-id>` or skip safe items with `vibebox approve --safe`.
 8. Reject unwanted candidates with `vibebox reject <candidate-id>`.
@@ -16,7 +29,7 @@ VibeBox is agent-neutral. Any AI coding agent that can read files and run shell 
 
 ## Pre-Task Brief Workflow
 
-Use this before coding when `.vibebox/` exists:
+Use this before planning or editing when repository memory could affect the task, especially when `.vibebox/` already exists:
 
 ```bash
 vibebox pretask --task "Fix dashboard table scrolling"
@@ -46,7 +59,7 @@ For longer summaries:
 vibebox aftertask --from-file task-result.txt
 ```
 
-Aftertask writes a blackbox event and creates pending memory candidates. It does not auto-approve memory.
+Aftertask writes a blackbox event and creates pending memory candidates. It does not auto-approve memory. Skip capture when the user explicitly opts out.
 
 ## Review-First Approval Workflow
 

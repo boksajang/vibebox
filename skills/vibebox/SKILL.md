@@ -1,6 +1,6 @@
 ---
 name: vibebox
-description: Use this skill when an AI coding task should consult VibeBox project memory before work, generate a pre-task brief, capture after-task results, review blackbox memory, or avoid repeating known failed approaches.
+description: Use this skill when an AI coding task should consult VibeBox project memory before work as an auto-intervention memory layer for meaningful repository work; consider VibeBox before planning or editing when prior decisions, failures, constraints, or user preferences could affect the task, run pre-task memory checks when `.vibebox/` exists, and capture after-task results unless the user explicitly opts out.
 ---
 
 # VibeBox
@@ -18,11 +18,21 @@ For details, load these references only when needed:
 - [WORKFLOW.md](references/WORKFLOW.md) for standard pre-task, after-task, review, and reporting flows.
 - [MEMORY_POLICY.md](references/MEMORY_POLICY.md) for memory types, confidence, conflicts, and privacy rules.
 
+## Auto-Intervention Principle
+
+Before starting repository-based work, judge whether the task could be affected by prior decisions, failures, preferences, constraints, project conventions, or blackbox history. If that possibility exists, or if `.vibebox/` already exists in the project, run VibeBox pre-task retrieval before planning or editing.
+
+Use VibeBox memory as constraints, warnings, and context that narrow the working assumptions. Do not treat memory as a replacement for the user's current explicit request. The current request wins over past memory.
+
+If memory conflicts with the current request or repository reality, report the conflict instead of hiding it. After meaningful work, capture the result with `aftertask` unless the user explicitly opts out.
+
+Do not wait for the user to say "use VibeBox" every time. Consider VibeBox automatically when the repository context, change risk, or memory value makes it relevant.
+
 ## Core Principle
 
 Use VibeBox to reduce repeated explanation and repeated mistakes:
 
-- Retrieve reviewed active memory before non-trivial coding or design work.
+- Retrieve reviewed active memory before meaningful repository work.
 - Treat avoid rules and failure memory as high-priority warnings.
 - Prefer project-specific memory before global memory.
 - Capture meaningful task outcomes after work.
@@ -32,31 +42,29 @@ Do not let VibeBox memory override the user's current explicit request. If past 
 
 ## When To Use This Skill
 
-Use VibeBox when:
+Use VibeBox when the task context suggests memory could reduce wrong assumptions or repeated mistakes. Decide by asking:
 
-- The task is part of an ongoing coding project.
-- The task may depend on previous project decisions.
-- The user refers to previous preferences, rules, failures, decisions, or repeated mistakes.
-- The user asks the agent to continue work from prior context.
-- The task involves architecture, refactoring, dependency changes, design rules, coding style, or workflow rules.
-- The user wants fewer repeated explanations.
-- A non-trivial code change is about to happen in a repository where `.vibebox/` exists.
-- Meaningful coding or design work has finished and should be captured as blackbox memory.
+- Does this task change repository state?
+- Could it affect existing design, structure, dependencies, documentation, packaging, tests, or release flow?
+- Could previous failures, user preferences, project decisions, or constraints affect the right approach?
+- Is the result likely to matter for a future coding session?
+- Does `.vibebox/` already exist for this project?
+- Would the user reasonably expect the agent to avoid asking for repeated project context?
 
 Do not use VibeBox when:
 
-- The user asks a simple general knowledge question.
-- The request is unrelated to a project or repository.
+- The request is a simple answer unrelated to a repository.
+- The task has no file, design, architecture, workflow, or project-memory consequence.
+- Memory retrieval would add ceremony without reducing risk.
 - The user explicitly says not to use memory.
-- The repository has no `.vibebox/` and the user did not ask to initialize VibeBox.
-- The task is too small to benefit from memory retrieval.
+- `.vibebox/` is absent and the task is not meaningful enough to justify initializing project memory.
 
 ## Pre-Task Workflow
 
-Before non-trivial coding or design work:
+Before meaningful repository work:
 
-1. Check whether `.vibebox/` exists in the project root.
-2. If it exists, run a pre-task memory lookup.
+1. Judge whether prior memory could affect the task.
+2. Check whether `.vibebox/` exists in the project root.
 3. Prefer `vibebox pretask --task "<task description>"`.
 4. If the global command is unavailable inside the VibeBox repository, try `node bin/vibebox.mjs pretask --task "<task description>"`.
 5. Read the Pre-Task Brief.

@@ -2,7 +2,7 @@
 
 **Universal local-first blackbox memory middleware for AI coding agents.**
 
-VibeBox gives an AI coding agent a focused pre-task brief from reviewed project memory, then records the task result as a local blackbox event for future review.
+VibeBox gives an AI coding agent a focused pre-task brief from reviewed project memory, then records the task result as a local blackbox event for future review. It is designed as an auto-intervention memory layer that agents can consider before and after meaningful repository work, not only as a manually invoked CLI.
 
 ## What Is VibeBox?
 
