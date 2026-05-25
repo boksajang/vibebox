@@ -48,6 +48,8 @@ node bin/vibebox.mjs pretask --task "Fix dashboard table scrolling"
 
 On Windows PowerShell, if the npm `.ps1` shim is blocked by execution policy, use `vibebox.cmd <command>` or the direct `node bin/vibebox.mjs <command>` form.
 
+Windows note: If Codex fails to parse `marketplace.json` after manually editing it in PowerShell, save the file as UTF-8 without BOM. Using Codex/plugin installer normally handles this automatically.
+
 After the agent finishes:
 
 ```bash
