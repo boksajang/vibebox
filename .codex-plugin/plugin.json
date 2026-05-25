@@ -1,0 +1,31 @@
+{
+  "name": "vibebox",
+  "version": "0.1.0",
+  "description": "Universal local-first blackbox memory middleware for AI coding agents.",
+  "author": {
+    "name": "Boksajang"
+  },
+  "license": "MIT",
+  "keywords": [
+    "ai-coding",
+    "memory",
+    "blackbox",
+    "local-first"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "VibeBox",
+    "shortDescription": "Local blackbox memory for AI coding agents.",
+    "longDescription": "Use VibeBox's local CLI and shared skill instructions to retrieve reviewed memory before coding and capture blackbox events after work. This wrapper does not replace the Core CLI.",
+    "developerName": "Boksajang",
+    "category": "Productivity",
+    "capabilities": [
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Generate a VibeBox pre-task brief.",
+      "Capture this task with VibeBox.",
+      "Review VibeBox pending memory."
+    ]
+  }
+}

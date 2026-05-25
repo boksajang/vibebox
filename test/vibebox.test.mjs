@@ -686,6 +686,80 @@ test('doctor does not warn for already redacted captured secret placeholders', a
   assert.equal(report.warnings.length, 0);
 });
 
+test('universal agent skill package files exist and declare shared skill metadata', async () => {
+  const skill = await readFile(path.resolve('skills/vibebox/SKILL.md'), 'utf8');
+  assert.match(skill, /^---\n[\s\S]+?\n---\n/);
+  assert.match(skill, /^name:\s*vibebox$/m);
+  assert.match(skill, /^description:\s*Use this skill when an AI coding task should consult VibeBox project memory before work/m);
+  assert.match(skill, /agent-neutral/i);
+  assert.match(skill, /VibeBox Core is a local CLI/i);
+  assert.match(skill, /Past memory is context, not authority/i);
+  assert.match(skill, /Pending memory must not be treated as active memory/i);
+  assert.doesNotMatch(skill, /Codex-only|Claude-only|Codex 전용|Claude 전용/i);
+
+  for (const relativePath of [
+    'skills/vibebox/references/COMMANDS.md',
+    'skills/vibebox/references/WORKFLOW.md',
+    'skills/vibebox/references/MEMORY_POLICY.md',
+    'adapters/codex/README.md',
+    'adapters/claude/README.md',
+    'adapters/common/README.md',
+    'adapters/common/INSTALL.md'
+  ]) {
+    const content = await readFile(path.resolve(relativePath), 'utf8');
+    assert.ok(content.trim().length > 0, `${relativePath} should not be empty`);
+  }
+
+  const plugin = await loadJson(path.resolve('.codex-plugin/plugin.json'));
+  assert.equal(plugin.name, 'vibebox');
+  assert.equal(plugin.version, '0.1.0');
+  assert.match(plugin.description, /Universal local-first blackbox memory middleware/i);
+  assert.ok(
+    plugin.skills === './skills/' || JSON.stringify(plugin.skills).includes('skills/vibebox/SKILL.md'),
+    'plugin manifest should expose the shared VibeBox skill'
+  );
+
+  const packageJson = await loadJson(path.resolve('package.json'));
+  assert.equal(packageJson.bin.vibebox, './bin/vibebox.mjs');
+});
+
+test('agent packaging docs list real CLI commands and fallback strategy without overclaiming distribution', async () => {
+  const commandReference = await readFile(path.resolve('skills/vibebox/references/COMMANDS.md'), 'utf8');
+  for (const command of [
+    'init',
+    'capture',
+    'extract',
+    'review',
+    'approve',
+    'approve --safe',
+    'reject',
+    'context',
+    'pretask',
+    'aftertask',
+    'report',
+    'blackbox',
+    'doctor'
+  ]) {
+    assert.ok(commandReference.includes(`vibebox ${command}`), `COMMANDS.md should document vibebox ${command}`);
+  }
+
+  const docs = [
+    'README.md',
+    'skills/vibebox/SKILL.md',
+    'skills/vibebox/references/COMMANDS.md',
+    'skills/vibebox/references/WORKFLOW.md',
+    'adapters/codex/README.md',
+    'adapters/claude/README.md',
+    'adapters/common/README.md',
+    'adapters/common/INSTALL.md'
+  ];
+  const combined = (await Promise.all(docs.map((relativePath) => readFile(path.resolve(relativePath), 'utf8')))).join('\n');
+  assert.match(combined, /vibebox <command>/);
+  assert.match(combined, /node bin\/vibebox\.mjs <command>/);
+  assert.doesNotMatch(combined, /Codex-only|Claude-only|Codex 전용|Claude 전용/i);
+  assert.doesNotMatch(combined, /marketplace distribution is available|official Claude install is available|cloud install is available/i);
+});
+
 test('CLI exposes init, capture, extract, review, approve, context, pretask, aftertask, report, blackbox, and doctor commands', async () => {
   const root = await makeWorkspace();
   const bin = path.resolve('bin/vibebox.mjs');

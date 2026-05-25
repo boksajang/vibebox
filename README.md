@@ -1,12 +1,12 @@
 # VibeBox
 
-**A local blackbox for AI coding sessions.**
+**Universal local-first blackbox memory middleware for AI coding agents.**
 
-VibeBox is a local-first memory middleware for AI coding agents. It gives an agent a focused pre-task brief from reviewed project memory, then records the task result as a local blackbox event for future review.
+VibeBox gives an AI coding agent a focused pre-task brief from reviewed project memory, then records the task result as a local blackbox event for future review.
 
 ## What Is VibeBox?
 
-VibeBox sits in front of tools like Codex, Claude Code, Gemini CLI, Cursor-style agents, or any workflow that can run a local command.
+VibeBox sits in front of Codex, Claude Code, Gemini CLI, Cursor-style agents, or any workflow that can run a local command. The Core is a local CLI; agent-specific files are thin packaging adapters.
 
 Before work starts, VibeBox retrieves relevant memory: decisions, preferences, avoid rules, failures, and successful patterns. After work finishes, it records what happened and creates pending memory candidates. Nothing becomes active memory until you review and approve it.
 
@@ -47,6 +47,18 @@ node bin/vibebox.mjs approve <candidate-id>
 6. Promote useful memory with `approve` or skip it with `reject`.
 7. Use `report`, `blackbox`, and `doctor` to inspect project memory health.
 
+## Agent Skill Packaging
+
+VibeBox includes a shared agent skill source and thin adapter guides:
+
+- [Shared skill](skills/vibebox/SKILL.md): common instructions for any AI coding agent
+- [Command reference](skills/vibebox/references/COMMANDS.md): exact CLI commands and fallback usage
+- [Common adapter](adapters/common/README.md): baseline usage for shell-capable agents
+- [Codex adapter](adapters/codex/README.md): local Codex plugin wrapper guide
+- [Claude adapter](adapters/claude/README.md): Claude-compatible skill packaging guide
+
+These adapters do not replace the CLI or claim marketplace distribution. VibeBox Core remains agent-neutral.
+
 ## Core Commands
 
 ```bash
@@ -79,6 +91,8 @@ VibeBox stores data locally in `.vibebox/`. It does not send memory anywhere by 
 - [Usage](docs/USAGE.md): command details and examples
 - [Memory Model](docs/MEMORY_MODEL.md): memory types, scopes, confidence, and conflicts
 - [Obsidian Wiki](docs/OBSIDIAN.md): wiki structure, links, and managed blocks
+- [Common Agent Workflow](skills/vibebox/references/WORKFLOW.md): agent-neutral pre-task and after-task flow
+- [Memory Policy](skills/vibebox/references/MEMORY_POLICY.md): review-first policy, conflicts, and sensitive data
 
 ## License / Author
 
