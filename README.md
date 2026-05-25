@@ -36,7 +36,7 @@ Before an AI coding agent answers, designs, or writes code, VibeBox can provide 
 
 After a task is completed, VibeBox can record what happened, what worked, what failed, and what should be remembered next time.
 
-```text
+
 User Request
 ↓
 VibeBox Memory Search
@@ -54,7 +54,7 @@ Memory Candidate
 Review / Approval
 ↓
 Reusable Project Memory
-```
+
 
 ---
 
@@ -77,13 +77,13 @@ It can store:
 
 Examples:
 
-```text
+
 For dashboard projects, prefer MSSQL.
 Do not modify package.json unless explicitly requested.
 Global body overflow changes caused layout regressions before.
 Wrapper-based table scrolling worked successfully.
 This project uses ECharts for dashboard visualization.
-```
+
 
 ---
 
@@ -103,14 +103,14 @@ It should preserve decisions, failures, constraints, and patterns.
 
 VibeBox stores everything locally inside the project workspace.
 
-```text
+
 .vibebox/
   config.json
   wiki/
   index/
   logs/
   pending/
-```
+
 
 This makes the memory portable, inspectable, and versionable.
 
@@ -128,7 +128,7 @@ The wiki layer is for humans.
 
 It helps users visually inspect how decisions, failures, tools, and preferences are connected.
 
-```text
+
 .vibebox/wiki/
   Home.md
   User Preferences.md
@@ -139,17 +139,17 @@ It helps users visually inspect how decisions, failures, tools, and preferences 
   Success Patterns.md
   Tooling Preferences.md
   Workflow Rules.md
-```
+
 
 VibeBox also uses wiki-style links such as:
 
-```markdown
+markdown
 [[MSSQL]]
 [[FastAPI]]
 [[Dashboard Development]]
 [[Failure Memory]]
 [[Avoid Rules]]
-```
+
 
 This allows the project memory to become a connected knowledge graph.
 
@@ -160,13 +160,13 @@ This allows the project memory to become a connected knowledge graph.
 The Markdown wiki is for humans.  
 The JSON index is for AI agents.
 
-```text
+
 .vibebox/index/
   memory-index.json
   keyword-index.json
   relation-index.json
   pending-index.json
-```
+
 
 The index allows VibeBox to quickly retrieve relevant memory for a task and generate a compact Context Pack.
 
@@ -178,7 +178,7 @@ A Context Pack is the short, focused memory brief that an AI coding agent should
 
 Example:
 
-```text
+
 VibeBox Context Pack
 
 Task:
@@ -197,7 +197,7 @@ Guidance for AI Agent:
 - Preserve existing layout behavior.
 - Avoid repeating known failed approaches.
 - Use the memory context as constraints.
-```
+
 
 ---
 
@@ -207,7 +207,7 @@ VibeBox does not automatically turn every extracted memory into permanent truth.
 
 New memory is first stored as a pending candidate.
 
-```text
+
 capture
 ↓
 extract
@@ -219,7 +219,7 @@ review
 approve / reject
 ↓
 active memory
-```
+
 
 This prevents one-time comments, temporary decisions, or ambiguous statements from becoming permanent rules.
 
@@ -240,10 +240,10 @@ This is important because real development memory is rarely simple.
 
 For example:
 
-```text
+
 General app projects may prefer Supabase.
 Internal dashboard-style apps may prefer MSSQL.
-```
+
 
 That is not a simple conflict.  
 It is a conditional refinement.
@@ -278,7 +278,7 @@ The goal is simple:
 
 VibeBox is designed around simple commands.
 
-```bash
+bash
 vibebox init
 vibebox capture
 vibebox extract
@@ -287,29 +287,29 @@ vibebox approve
 vibebox reject
 vibebox context
 vibebox doctor
-```
+
 
 Future workflow commands may include:
 
-```bash
+bash
 vibebox pretask
 vibebox aftertask
 vibebox report
 vibebox blackbox
-```
+
 
 ---
 
 ## Typical Workflow
 
-```text
+
 1. Initialize VibeBox in a project.
 2. Capture important AI coding events.
 3. Extract memory candidates.
 4. Review and approve useful memories.
 5. Generate a Context Pack before the next AI task.
 6. Let the AI coding agent work with better context.
-```
+
 
 ---
 
@@ -319,19 +319,19 @@ A user repeatedly works on dashboard projects.
 
 Over time, VibeBox learns that:
 
-```text
+
 Dashboard projects usually use MSSQL.
 FastAPI is preferred for backend services.
 ECharts is preferred for dashboard visualization.
 UI messages should use formal Korean.
 package.json should not be modified without approval.
-```
+
 
 Later, when the user says:
 
-```text
+
 Create a new dashboard module.
-```
+
 
 VibeBox can provide the AI agent with the relevant project memory before work begins.
 
