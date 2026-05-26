@@ -1,8 +1,8 @@
 # VibeBox Concept
 
-VibeBox is a universal local-first blackbox memory middleware for AI coding agents.
+VibeBox is a local-first active user pattern graph and blackbox memory middleware for AI coding agents.
 
-It is not a chat transcript archive and it is not a remote memory service. VibeBox stores compact, reviewable development memory in one user-level global store so an AI coding agent can avoid repeating the same mistakes across sessions and projects.
+It is not a chat transcript archive, a passive history store, or a remote memory service. VibeBox stores compact, reviewable development memory in one user-level global store, then keeps only the latest active guidance in retrieval, Context Packs, Pre-Task Briefs, and the Obsidian-compatible wiki.
 
 ## The Problem
 
@@ -13,6 +13,7 @@ AI coding agents can be effective inside a single task, but they often lose dura
 - which command or file change caused trouble
 - which successful pattern should be reused
 - which user preference applies to this project
+- how the user asks, reviews, validates, corrects, and hands work off
 
 The user then has to repeat the same explanations.
 
@@ -27,7 +28,7 @@ User task
 -> Blackbox Event
 -> pending memory candidates
 -> review / approve / reject
--> active memory for future tasks
+-> latest active pattern graph for future tasks
 ```
 
 ## What Is Implemented
@@ -40,8 +41,12 @@ The current VibeBox implementation is a Node.js CLI with:
 - Obsidian-compatible Markdown wiki generation
 - JSON indexes for retrieval
 - Context Pack and Pre-Task Brief output
+- active replacement of outdated memory
+- situation-aware retrieval for implementation, debugging, architecture, documentation, verification, packaging, and handoff work
 - after-task blackbox event capture
 - pending-first memory review and approval
+- user pattern memory for validation style, process habits, design philosophy, response preference, correction patterns, and agent failure/success patterns
+- locale-aware human-facing headings for `en-US` and `ko-KR`
 - common agent skill documentation
 - Codex, Claude-compatible, and common adapter guides
 
@@ -52,6 +57,12 @@ The adapter documents are packaging guides. The Codex adapter can be exposed thr
 VibeBox never promotes extracted memory automatically. New candidates are written to pending memory first. The user decides what becomes active memory.
 
 This prevents one-time comments, experiments, or ambiguous statements from becoming permanent project rules.
+
+## Active Memory, Not History
+
+VibeBox's active graph is the current optimized guidance set. If an approved memory replaces, corrects, or refines an older memory for the same subject and scope, the older memory is removed from active retrieval, active wiki sections, active relation indexes, and namespace files. Scoped exceptions can remain active next to a broader rule only when their condition is clear.
+
+Raw events in `logs/events.jsonl` are diagnostic blackbox records. They are not normal retrieval input and they are not rendered as current guidance.
 
 ## Current Request Wins
 

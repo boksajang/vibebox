@@ -6,6 +6,7 @@ VibeBox separates active memory from pending memory.
 - Active memory is reviewed and approved.
 - Context and pretask output use active memory first.
 - Pending conflict candidates may appear only as potential conflicts.
+- Replaced or discarded memory is not part of normal retrieval or the active wiki graph.
 
 ## Memory Types
 
@@ -18,9 +19,23 @@ Active memory can use these types:
 - `failure_memory`
 - `success_pattern`
 - `tooling_preference`
+- `technology_preference`
 - `coding_style`
 - `design_preference`
 - `workflow_rule`
+- `question_pattern`
+- `response_preference`
+- `process_pattern`
+- `validation_pattern`
+- `design_philosophy`
+- `decision_pattern`
+- `communication_pattern`
+- `correction_pattern`
+- `agent_failure_pattern`
+- `agent_success_pattern`
+- `handoff_pattern`
+
+Pattern types are used only when they add retrieval value. For example, `validation_pattern` can guide test commands before completion claims, and `agent_failure_pattern` can become a repeated-risk prevention rule.
 
 ## Scopes
 
@@ -50,11 +65,12 @@ Memory can be:
 
 - `active`
 - `pending`
-- `superseded`
 - `rejected`
-- `archived`
+- `discarded`
 
 Only active memory is used as normal retrieval context.
+
+Older `superseded` or `archived` records from previous stores are treated as inactive. Current active replacement removes replaced memory from active indexes and namespace files instead of presenting it as current guidance.
 
 ## Conflict Status
 
@@ -93,11 +109,40 @@ Classification is deterministic and heuristic-based. It considers permanence, sc
 ## Conflict Handling Notes
 
 - `duplicate`: do not auto-promote; review or reject as noise.
-- `refinement`: approve only when it usefully narrows an existing memory; keep related links.
-- `exception`: approve only when the exception scope is clear.
+- `refinement`: approving a more specific memory for the same subject removes the competing broader active record when they should not stand side by side.
+- `exception`: approve only when the exception scope is clear; keep the broader memory active and attach an `activeCondition` to the exception.
 - `direct_conflict`: keep pending until a human decides.
-- `supersedes`: approving the new memory should mark the older memory superseded.
+- `supersedes`: approving the new memory removes the older memory from active retrieval, active relation graph, namespace files, Context Packs, Pre-Task Briefs, and active wiki sections.
 - `needs_user_review`: keep pending until the missing context is clarified.
+
+## Pattern Fields
+
+Memory records keep stable English field names. Pattern-oriented records may include:
+
+- `patternType`
+- `situation`
+- `trigger`
+- `observedBehavior`
+- `preferredBehavior`
+- `preventionRule`
+- `reuseWhen`
+- `relatedProjects`
+- `relatedPatterns`
+- `relatedFailures`
+- `relatedSuccesses`
+- `relatedDecisions`
+- `relatedPreferences`
+- `replaces`
+- `replacedBy`
+- `activeCondition`
+
+Failure memory can also include `failedApproach`, `failureReason`, `userCorrection`, `recurrenceRisk`, `relatedFiles`, and a `preventionRule`. Success patterns can include `successfulApproach`, `whyItWorked`, and `reuseWhen`.
+
+## Relation Index
+
+`index/relation-index.json` stores active graph edges with stable English relation types such as `project_has_failure`, `failure_prevented_by_rule`, `success_resolves_failure`, `user_prefers_validation`, `agent_failed_by_pattern`, `memory_replaces_memory`, `memory_refines_memory`, and `memory_exception_to_memory`.
+
+Each relation has `id`, `type`, `from`, `to`, `projectId`, `strength`, `evidence`, `createdAt`, and `active`. Relations that point to discarded replacement targets are marked inactive and are not treated as active guidance.
 
 ## Runtime State Policy
 

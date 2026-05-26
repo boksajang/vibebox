@@ -1,14 +1,16 @@
 # VibeBox
 
-**Universal local-first blackbox memory middleware for AI coding agents.**
+**Local-first active user pattern graph and blackbox memory middleware for AI coding agents.**
 
-VibeBox gives an AI coding agent a focused pre-task brief from reviewed memory, then records the task result as a local blackbox event for future review. It keeps one user-level global store and separates each project inside that store by `projectId`, so work repositories stay clean.
+VibeBox is not a passive memory archive. It maintains the latest optimized user pattern graph for AI coding work: user preferences, question and response patterns, process habits, validation style, design philosophy, project decisions, failure prevention rules, and success patterns. It keeps one user-level global store and separates each project inside that store by `projectId`, so work repositories stay clean.
 
 ## What Is VibeBox?
 
 VibeBox sits in front of Codex, Claude Code, Gemini CLI, Cursor-style agents, or any workflow that can run a local command. The Core is a local CLI; agent-specific files are thin packaging adapters.
 
-Before work starts, VibeBox retrieves relevant memory: current-project decisions first, then useful global preferences, avoid rules, failures, and successful patterns. After work finishes, it records what happened and creates pending memory candidates. Nothing becomes active memory until you review and approve it.
+Before work starts, VibeBox retrieves situation-aware active guidance: current-project decisions first, then relevant user patterns, avoid rules, failure memory, prevention rules, and successful patterns. After work finishes, it records what happened and creates pending memory candidates. Nothing becomes active memory until you review and approve it.
+
+When a new approved memory replaces, corrects, or refines an older memory for the same subject and scope, VibeBox removes the older record from active retrieval, Context Packs, Pre-Task Briefs, namespace files, and active wiki pages. Raw logs can remain for diagnosis, but raw logs are not normal retrieval context.
 
 ## Why It Exists
 
@@ -19,8 +21,9 @@ AI coding agents often forget:
 - what the user explicitly rejected
 - which files or tools should be avoided
 - what worked well enough to reuse
+- how the user asks questions, wants responses structured, validates work, corrects agents, and judges design tradeoffs
 
-VibeBox makes that memory local, inspectable, and reusable.
+VibeBox makes that memory local, inspectable, connected, and current.
 
 ## Quick Start
 
@@ -130,7 +133,7 @@ node bin/vibebox.mjs doctor
 
 VibeBox writes one global store under `~/.vibebox` by default. Override it with `VIBEBOX_HOME` or `--store <path>` when testing or using a portable setup.
 
-The store contains global memory in `global/`, project memory in `projects/{projectId}/`, human-readable Markdown in `wiki/`, retrieval indexes in `index/`, raw events in `logs/events.jsonl`, pending candidates in `pending/memory-candidates.jsonl`, and known project identities in `registry/projects.json`.
+The store contains global memory in `global/`, project memory in `projects/{projectId}/`, human-readable active graph Markdown in `wiki/`, retrieval indexes in `index/`, raw diagnostic events in `logs/events.jsonl`, pending candidates in `pending/memory-candidates.jsonl`, and known project identities in `registry/projects.json`.
 
 Projects are identified from the current working directory using git remote `origin`, `package.json` name, git root folder name, then current folder name.
 
@@ -138,7 +141,11 @@ VibeBox does not create `.vibebox/`, pointer files, or hidden metadata in the cu
 
 ## Obsidian-Compatible Wiki
 
-VibeBox writes human-readable Markdown under `~/.vibebox/wiki/`. If `VIBEBOX_HOME` is set, open `$VIBEBOX_HOME/wiki` instead. The wiki uses normal Markdown, YAML frontmatter, and Obsidian-style `[[links]]`. Open that folder in Obsidian to inspect the whole cross-project memory graph. VibeBox only updates managed blocks, so user notes outside those blocks are preserved.
+VibeBox writes human-readable Markdown under `~/.vibebox/wiki/`. If `VIBEBOX_HOME` is set, open `$VIBEBOX_HOME/wiki` instead. The wiki uses normal Markdown, YAML frontmatter, and Obsidian-style `[[links]]`. Open that folder in Obsidian to inspect the active cross-project pattern graph: projects, failures, prevention rules, success patterns, user patterns, design philosophy, validation patterns, process patterns, and decisions. VibeBox only updates managed blocks, so user notes outside those blocks are preserved.
+
+## Locale-Aware Output
+
+Machine-readable JSON field names and enum values remain English. Human-facing headings in wiki pages, Context Packs, Pre-Task Briefs, reports, blackbox output, and doctor output follow `VIBEBOX_LOCALE` or `VIBEBOX_LANGUAGE` when set. Built-in templates currently support `en-US` and `ko-KR`, and VibeBox preserves the original language of approved memory text instead of translating it through an external service.
 
 ## Local-First Privacy
 

@@ -7,10 +7,11 @@ description: Use this skill when an AI coding task should consult VibeBox memory
 
 ## What VibeBox Is
 
-VibeBox is universal agent-neutral local-first blackbox memory middleware for AI coding agents.
+VibeBox is universal agent-neutral local-first active user pattern graph and blackbox memory middleware for AI coding agents.
 VibeBox Core is a local CLI and memory engine. This skill tells an AI coding agent when and how to call that CLI; it does not replace repository inspection or the user's current request.
 
 Past memory is context, not authority. Pending memory must not be treated as active memory.
+VibeBox is not a passive archive: active memory is the latest reviewed guidance set. Replaced, corrected, or discarded memory must not be treated as current guidance.
 
 For details, load these references only when needed:
 
@@ -34,6 +35,8 @@ Use VibeBox to reduce repeated explanation and repeated mistakes:
 
 - Retrieve reviewed active memory before meaningful repository work.
 - Treat avoid rules and failure memory as high-priority warnings.
+- Treat failure memory as prevention guidance, not just history.
+- Apply validation, process, design, correction, and agent failure/success patterns when relevant.
 - Prefer project-specific memory before global memory.
 - Capture meaningful task outcomes after work.
 - Keep memory promotion review-first.
@@ -82,7 +85,8 @@ During work:
 - Do not let VibeBox memory replace repository inspection.
 - Do not make broad changes only because memory suggests a preference.
 - Respect project-specific memory before global memory.
-- Consider `avoid_rule` and `failure_memory` as high-priority warnings.
+- Consider `avoid_rule`, `failure_memory`, and `agent_failure_pattern` as high-priority warnings.
+- Let `validation_pattern`, `process_pattern`, and `design_philosophy` shape how you verify, sequence, and design the work.
 - Preserve existing behavior unless the user asks for a change.
 - If the task touches an area with known failure memory, explicitly account for it.
 - If the task may create new project decisions, note them for after-task capture.
@@ -111,6 +115,8 @@ New memory candidates require review before becoming active. Active memory is th
 
 - Do not treat pending memory as an instruction.
 - Do not auto-approve direct conflicts, supersedes, exceptions, duplicate records, or uncertain memory.
+- When an approved memory replaces or refines an older memory for the same subject and scope, expect VibeBox to remove the older memory from active retrieval and active wiki sections.
+- Scoped exceptions can coexist with broader rules only when their condition is clear.
 - Use `vibebox review`, `vibebox approve <candidate-id>`, `vibebox approve --safe`, and `vibebox reject <candidate-id>` for promotion decisions.
 - When in doubt, keep memory pending and ask for review.
 
@@ -168,11 +174,15 @@ If neither works:
 
 ## Obsidian-Compatible Wiki Notes
 
-VibeBox writes human-readable Markdown in the global store wiki, `~/.vibebox/wiki/` by default, or `$VIBEBOX_HOME/wiki` when configured. Use it for inspection and review, not as a raw transcript store. VibeBox managed sections are bounded by `<!-- VIBEBOX:BEGIN -->` and `<!-- VIBEBOX:END -->`; user-written notes outside managed blocks should be preserved.
+VibeBox writes human-readable Markdown in the global store wiki, `~/.vibebox/wiki/` by default, or `$VIBEBOX_HOME/wiki` when configured. Use it for inspection and review, not as a raw transcript store. The wiki is an active pattern graph linking projects, failures, prevention rules, success patterns, user patterns, design philosophy, validation patterns, process patterns, and decisions. VibeBox managed sections are bounded by `<!-- VIBEBOX:BEGIN -->` and `<!-- VIBEBOX:END -->`; user-written notes outside managed blocks should be preserved.
 
 VibeBox uses one global user store. Global preferences and rules live under `global/`; project memory lives under `projects/{projectId}/`; wiki, index, logs, pending, and registry data live under the global store. Project identity comes from the current working directory using git remote `origin`, `package.json` name, git root folder name, then current folder name.
 
 VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects. Old project-local `.vibebox/` folders are legacy; `vibebox doctor` warns about them and no destructive migration is automatic.
+
+## Locale Notes
+
+Human-facing headings follow `VIBEBOX_LOCALE`, `VIBEBOX_LANGUAGE`, or config locale when available. JSON field names, command names, and enum values stay English. Do not translate the user's stored memory text yourself; preserve the captured language unless the user asks otherwise.
 
 ## Troubleshooting
 

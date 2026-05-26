@@ -1,7 +1,7 @@
 {
   "name": "vibebox",
   "version": "0.1.0",
-  "description": "Universal local-first blackbox memory middleware for AI coding agents.",
+  "description": "Local-first active user pattern graph and blackbox memory middleware for AI coding agents.",
   "type": "module",
   "bin": {
     "vibebox": "./bin/vibebox.mjs"

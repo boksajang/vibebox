@@ -16,7 +16,7 @@ Reference files live under:
 2. Run `vibebox pretask --task "<task>"` before non-trivial work.
 3. On Windows PowerShell, use `vibebox.cmd pretask --task "<task>"` if the npm `.ps1` shim is blocked.
 4. If needed inside the VibeBox repository, fall back to `node bin/vibebox.mjs pretask --task "<task>"`.
-5. Treat active memory as context and constraints, not authority over the current request.
+5. Treat active memory as the current pattern graph: context and constraints, not authority over the current request.
 6. Inspect the repository before editing.
 7. Run `vibebox aftertask ...` after meaningful work.
 8. Keep memory promotion review-first with `review`, `approve`, and `reject`.
@@ -32,6 +32,10 @@ Reference files live under:
 - `~/.vibebox/registry/`: project identity registry data.
 
 Set `VIBEBOX_HOME` to use a different store root. VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects.
+
+The wiki and relation index represent the active graph only: current project decisions, failure prevention rules, success patterns, validation/process/design patterns, user preferences, and agent failure/success patterns. Raw logs are diagnostic and should not be treated as prompt context by default.
+
+Set `VIBEBOX_LOCALE` or `VIBEBOX_LANGUAGE` to localize human-facing headings. JSON field names and command names stay English.
 
 ## Privacy Rule
 

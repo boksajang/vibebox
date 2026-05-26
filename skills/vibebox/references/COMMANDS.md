@@ -27,6 +27,15 @@ VIBEBOX_HOME=/path/to/store vibebox <command>
 vibebox <command> --store /path/to/store
 ```
 
+Locale override for human-facing headings:
+
+```bash
+VIBEBOX_LOCALE=ko-KR vibebox pretask --task "검증 절차 확인"
+VIBEBOX_LANGUAGE=en-US vibebox report
+```
+
+JSON field names, command names, and enum values stay English.
+
 ## `vibebox init`
 
 - Purpose: Create the global VibeBox user store at `~/.vibebox` by default, or at `VIBEBOX_HOME` when configured.
@@ -60,7 +69,7 @@ vibebox <command> --store /path/to/store
 - Purpose: Promote one pending candidate into active memory.
 - Typical usage: Approve a reviewed candidate by id.
 - Example: `vibebox approve mem_abc123`
-- Notes: Approval updates active indexes, namespace memory files, and related wiki pages. `global` memory goes under `global/`; project/task memory goes under `projects/{projectId}/`.
+- Notes: Approval updates active indexes, namespace memory files, relation index, and related wiki pages. `global` memory goes under `global/`; project/task memory goes under `projects/{projectId}/`. Replacement, correction, and same-subject refinement remove older competing memory from active retrieval.
 
 ## `vibebox approve --safe`
 
@@ -81,14 +90,14 @@ vibebox <command> --store /path/to/store
 - Purpose: Generate a compact Context Pack from active memory.
 - Typical usage: Attach memory context to an agent prompt before work.
 - Example: `vibebox context --task "Update dashboard dependency handling"`
-- Notes: `pretask` is usually better before coding because it is more action-oriented.
+- Notes: `pretask` is usually better before coding because it is more action-oriented. Context can include validation, process, design, correction, and agent failure/success patterns when relevant.
 
 ## `vibebox pretask`
 
 - Purpose: Generate an agent-ready Pre-Task Brief.
 - Typical usage: Run before non-trivial coding or design work.
 - Example: `vibebox pretask --task "Fix dashboard table scrolling"`
-- Notes: Also accepts positional task text, such as `vibebox pretask "Fix dashboard table scrolling"`.
+- Notes: Also accepts positional task text, such as `vibebox pretask "Fix dashboard table scrolling"`. The brief is situation-aware and prioritizes failure prevention for debugging, validation patterns for verification, and design philosophy for architecture work.
 
 ## `vibebox aftertask`
 

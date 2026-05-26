@@ -22,6 +22,7 @@ import {
   generateContextPack,
   generatePreTaskBrief,
   generateReport,
+  formatDoctorReport,
   initVibeBox,
   loadJson,
   readJsonl,
@@ -33,6 +34,8 @@ import {
 async function makeWorkspace() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vibebox-test-'));
   process.env.VIBEBOX_HOME = storePath(root);
+  process.env.VIBEBOX_LOCALE = 'en-US';
+  delete process.env.VIBEBOX_LANGUAGE;
   return root;
 }
 
@@ -821,6 +824,236 @@ test('conflict resolver classifies duplicate, refinement, exception, direct conf
     appliesTo: ['dashboard projects'],
     confidence: 'low'
   }).status, 'needs_user_review');
+});
+
+test('active replacement discards older memory from active retrieval, wiki, and active relations', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const [oldCandidate] = await extractMemoryCandidates(root, {
+    text: 'For dashboard projects, prefer MSSQL because reporting data lives there.'
+  });
+  const oldMemory = await approveMemory(root, oldCandidate.id);
+
+  const [replacementCandidate] = await extractMemoryCandidates(root, {
+    text: 'Replace the dashboard database rule: for dashboard projects, prefer PostgreSQL instead of MSSQL.'
+  });
+  assert.equal(replacementCandidate.conflictStatus, 'supersedes');
+  const newMemory = await approveMemory(root, replacementCandidate.id);
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.equal(memoryIndex.memories.some((memory) => memory.id === oldMemory.id), false);
+  assert.equal(memoryIndex.memories.some((memory) => memory.id === newMemory.id && memory.status === 'active'), true);
+
+  const brief = await generatePreTaskBrief(root, {
+    task: 'Plan dashboard database work.'
+  });
+  assert.match(brief, /PostgreSQL/);
+  assert.doesNotMatch(brief, /reporting data lives there/);
+
+  const wiki = await readFile(storePath(root, 'wiki', 'User Preferences.md'), 'utf8');
+  assert.match(wiki, /PostgreSQL/);
+  assert.doesNotMatch(wiki, /reporting data lives there/);
+
+  const relationIndex = await loadJson(storePath(root, 'index', 'relation-index.json'));
+  assert.ok(relationIndex.relations.some((relation) => relation.type === 'memory_replaces_memory' && relation.from === newMemory.id && relation.to === oldMemory.id && relation.active === false));
+  assert.equal(relationIndex.relations.some((relation) => relation.to === oldMemory.id && relation.active !== false), false);
+
+  const doctor = await runDoctor(root);
+  assert.equal(doctor.warnings.some((warning) => warning.includes(`references missing related memory ${oldMemory.id}`)), false);
+});
+
+test('active replacement clears stale concept wiki references for discarded memory', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const [oldCandidate] = await extractMemoryCandidates(root, {
+    text: 'For dashboard cache projects, prefer Redis because cache invalidation was already tested.'
+  });
+  const oldMemory = await approveMemory(root, oldCandidate.id);
+  const redisWikiBefore = await readFile(storePath(root, 'wiki', 'Redis.md'), 'utf8');
+  assert.match(redisWikiBefore, new RegExp(oldMemory.id));
+
+  const [replacementCandidate] = await extractMemoryCandidates(root, {
+    text: 'Replace the dashboard cache rule: for dashboard cache projects, prefer Memcached instead of Redis.'
+  });
+  await approveMemory(root, replacementCandidate.id);
+
+  const redisWikiAfter = await readFile(storePath(root, 'wiki', 'Redis.md'), 'utf8');
+  assert.doesNotMatch(redisWikiAfter, new RegExp(oldMemory.id));
+});
+
+test('refinement merges competing memory while scoped exceptions remain conditional', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const [baseCandidate] = await extractMemoryCandidates(root, {
+    text: 'For dashboard projects, prefer MSSQL because reporting data lives there.'
+  });
+  const baseMemory = await approveMemory(root, baseCandidate.id);
+
+  const [refinementCandidate] = await extractMemoryCandidates(root, {
+    text: 'For internal dashboard reporting modules, prefer MSSQL read-only views because reporting queries must stay stable.'
+  });
+  assert.equal(refinementCandidate.conflictStatus, 'refinement');
+  const refinedMemory = await approveMemory(root, refinementCandidate.id);
+
+  const memoryIndexAfterRefinement = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.equal(memoryIndexAfterRefinement.memories.some((memory) => memory.id === baseMemory.id), false);
+  assert.equal(memoryIndexAfterRefinement.memories.filter((memory) => memory.topic === 'dashboard database' && memory.status === 'active').length, 1);
+  assert.equal(memoryIndexAfterRefinement.memories[0].id, refinedMemory.id);
+
+  const [exceptionCandidate] = await extractMemoryCandidates(root, {
+    text: 'Except for public marketing dashboards, use Supabase instead of MSSQL.'
+  });
+  assert.equal(exceptionCandidate.conflictStatus, 'exception');
+  const exceptionMemory = await approveMemory(root, exceptionCandidate.id);
+
+  const internalBrief = await generatePreTaskBrief(root, {
+    task: 'Tune internal dashboard reporting database queries.'
+  });
+  assert.match(internalBrief, /MSSQL read-only views/);
+  assert.doesNotMatch(internalBrief, /public marketing dashboards/);
+
+  const marketingBrief = await generatePreTaskBrief(root, {
+    task: 'Build public marketing dashboard database integration.'
+  });
+  assert.match(marketingBrief, /public marketing dashboards/);
+  assert.match(marketingBrief, new RegExp(exceptionMemory.id));
+});
+
+test('failure memory injects prevention rules and links to success patterns and relation graph', async () => {
+  const root = await makeWorkspace();
+  const { projectId } = await initVibeBox(root);
+
+  const candidates = await extractMemoryCandidates(root, {
+    text: [
+      'Global body overflow changes caused layout regressions before; prevent this by using component-level wrapper scrolling.',
+      'Wrapper-based table scrolling worked successfully for wide dashboard tables and should be reused there.'
+    ].join('\n')
+  });
+  for (const candidate of candidates) {
+    await approveMemory(root, candidate.id);
+  }
+
+  const brief = await generatePreTaskBrief(root, {
+    task: 'Fix dashboard table scrolling without global body overflow changes.'
+  });
+  assert.match(brief, /Known Failure Risks:\n- .*body overflow/s);
+  assert.match(brief, /Prevention: using component-level wrapper scrolling/s);
+  assert.match(brief, /Alternative: .*Wrapper-based table scrolling/s);
+
+  const relationIndex = await loadJson(storePath(root, 'index', 'relation-index.json'));
+  assert.ok(relationIndex.relations.some((relation) => relation.type === 'failure_prevented_by_rule' && relation.projectId === projectId));
+  assert.ok(relationIndex.relations.some((relation) => relation.type === 'success_resolves_failure'));
+
+  const failureWiki = await readFile(storePath(root, 'wiki', 'Failure Memory.md'), 'utf8');
+  assert.match(failureWiki, /\[\[Prevention Rules\]\]/);
+  assert.match(failureWiki, /\[\[Success Patterns\]\]/);
+});
+
+test('user pattern memory is extracted as pending and applied by situation-aware context', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const candidates = await extractMemoryCandidates(root, {
+    text: [
+      'When validating code changes, prefer running npm.cmd test and npm.cmd run check before claiming completion.',
+      'I prefer the work process to inspect the repository first, make small scoped edits, and report commands run.',
+      'Design philosophy: preserve existing architecture and avoid one-off patches.',
+      'The agent repeatedly fails by claiming completion before running verification; prevent this by running checks first.',
+      'The agent succeeded by using a short plan and focused tests before code.'
+    ].join('\n')
+  });
+
+  assert.ok(byType(candidates, 'validation_pattern'));
+  assert.ok(byType(candidates, 'process_pattern'));
+  assert.ok(byType(candidates, 'design_philosophy'));
+  assert.ok(byType(candidates, 'agent_failure_pattern'));
+  assert.ok(byType(candidates, 'agent_success_pattern'));
+  assert.equal(candidates.every((candidate) => candidate.status === 'pending'), true);
+
+  for (const candidate of candidates) {
+    await approveMemory(root, candidate.id);
+  }
+
+  const verificationBrief = await generatePreTaskBrief(root, {
+    task: 'Verify the package after implementation.'
+  });
+  assert.match(verificationBrief, /Relevant Validation Patterns:\n- .*npm\.cmd test/s);
+  assert.match(verificationBrief, /Known Failure Risks:\n- .*claiming completion before running verification/s);
+
+  const architectureContext = await generateContextPack(root, {
+    task: 'Plan architecture changes for memory replacement.'
+  });
+  assert.match(architectureContext, /Relevant Design Philosophy:\n- .*preserve existing architecture/s);
+  assert.match(architectureContext, /Relevant Process Patterns:\n- .*inspect the repository first/s);
+
+  const relationIndex = await loadJson(storePath(root, 'index', 'relation-index.json'));
+  assert.ok(relationIndex.relations.some((relation) => relation.type === 'user_prefers_validation'));
+  assert.ok(relationIndex.relations.some((relation) => relation.type === 'user_prefers_process'));
+  assert.ok(relationIndex.relations.some((relation) => relation.type === 'agent_failed_by_pattern'));
+
+  for (const pageName of ['User Patterns.md', 'Design Philosophy.md', 'Validation Patterns.md', 'Process Patterns.md', 'Agent Failure Patterns.md', 'Agent Success Patterns.md', 'Prevention Rules.md']) {
+    const text = await readFile(storePath(root, 'wiki', pageName), 'utf8');
+    assert.match(text, /VIBEBOX:BEGIN/);
+  }
+});
+
+test('locale controls human-facing headings while JSON fields and Korean memory text are preserved', async () => {
+  const root = await makeWorkspace();
+  process.env.VIBEBOX_LOCALE = 'ko-KR';
+  await initVibeBox(root);
+
+  const [candidate] = await extractMemoryCandidates(root, {
+    text: '검증할 때는 완료를 말하기 전에 npm.cmd test를 먼저 실행하는 방식을 선호한다.'
+  });
+  assert.equal(candidate.type, 'validation_pattern');
+  await approveMemory(root, candidate.id);
+
+  const briefKo = await generatePreTaskBrief(root, {
+    task: '검증 절차를 확인한다.'
+  });
+  assert.match(briefKo, /VibeBox 사전 작업 브리프/);
+  assert.match(briefKo, /관련 검증 패턴/);
+  assert.match(briefKo, /검증할 때는 완료를 말하기 전에/);
+
+  const wikiKo = await readFile(storePath(root, 'wiki', 'Validation Patterns.md'), 'utf8');
+  assert.match(wikiKo, /# 검증 패턴/);
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'patternType'), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'summary'), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], '관련검증패턴'), false);
+
+  process.env.VIBEBOX_LOCALE = 'en-US';
+  const briefEn = await generatePreTaskBrief(root, {
+    task: 'Verify the package.'
+  });
+  assert.match(briefEn, /VibeBox Pre-Task Brief/);
+  assert.match(briefEn, /Relevant Validation Patterns/);
+});
+
+test('ko-KR locale applies to report, blackbox, doctor headings and empty states', async () => {
+  const root = await makeWorkspace();
+  process.env.VIBEBOX_LOCALE = 'ko-KR';
+  await initVibeBox(root);
+
+  const report = await generateReport(root);
+  assert.match(report, /VibeBox 메모리 보고서/);
+  assert.match(report, /활성 메모리/);
+  assert.doesNotMatch(report, /Active Memory/);
+
+  const blackbox = await generateBlackboxReport(root, { limit: 2 });
+  assert.match(blackbox, /VibeBox 블랙박스 보고서/);
+  assert.match(blackbox, /작업 타임라인/);
+  assert.match(blackbox, /- 없음\./);
+  assert.doesNotMatch(blackbox, /- None\./);
+
+  const doctorText = formatDoctorReport(await runDoctor(root));
+  assert.match(doctorText, /VibeBox 진단/);
+  assert.match(doctorText, /상태:/);
+  assert.doesNotMatch(doctorText, /Status:/);
 });
 
 test('doctor validates structure and warns about suspicious raw secrets', async () => {

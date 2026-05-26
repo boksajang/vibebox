@@ -51,6 +51,8 @@ The global store contains:
 - `pending/memory-candidates.jsonl` for review candidates with `projectId` or `scope`
 - `registry/projects.json` for known project identities
 
+`config.json` includes `locale`, `outputLanguage`, `wikiLanguage`, `reportLanguage`, and `contextLanguage`. Set `VIBEBOX_LOCALE=ko-KR` or `VIBEBOX_LANGUAGE=ko-KR` to localize human-facing headings. JSON field names, command names, and enum values remain English.
+
 ## Project Initialization
 
 ```bash
@@ -79,7 +81,7 @@ or:
 vibebox pretask "Fix dashboard table scrolling"
 ```
 
-`pretask` prints a Pre-Task Brief with relevant active memory, known failure risks, success patterns, project guardrails, potential conflicts, and instructions for the agent.
+`pretask` prints a Pre-Task Brief with relevant active memory, validation and process patterns, known failure risks, prevention rules, success patterns, project guardrails, potential conflicts, and instructions for the agent. It chooses guidance by task situation, so debugging work emphasizes failure prevention and verification work emphasizes validation patterns.
 
 ## After-Task Usage
 
@@ -125,7 +127,7 @@ Safe approval promotes only candidates with sufficient confidence and no known c
 vibebox approve --safe
 ```
 
-Conflict, exception, supersede, duplicate, low-confidence, and review-needed candidates remain pending for explicit review.
+Conflict, exception, supersede, duplicate, low-confidence, and review-needed candidates remain pending for explicit review. When an approved candidate replaces or refines an older active memory for the same subject and scope, the older memory is removed from active retrieval, active wiki sections, active relations, and namespace files.
 
 ## Context Pack
 
@@ -135,6 +137,8 @@ vibebox context --task "Update dashboard dependency handling"
 
 `context` prints a compact memory pack. `pretask` is usually better before coding because it is more instruction-oriented.
 
+The Context Pack can include user patterns such as `validation_pattern`, `process_pattern`, `design_philosophy`, `correction_pattern`, and `agent_failure_pattern` when those patterns match the current task situation.
+
 ## Reports
 
 ```bash
@@ -143,6 +147,8 @@ vibebox blackbox --limit 10
 ```
 
 `report` summarizes active and pending memory. `blackbox` summarizes recent task events, failed approaches, successful approaches, changed files, decisions, and prevention rules.
+
+Reports and blackbox output are active-graph oriented. Raw logs remain diagnostic and are not treated as current guidance.
 
 ## Doctor
 

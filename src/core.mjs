@@ -17,6 +17,15 @@ export const VIBEBOX_VERSION = '0.1.0';
 const WIKI_PAGES = [
   'Home.md',
   'User Preferences.md',
+  'User Patterns.md',
+  'Design Philosophy.md',
+  'Validation Patterns.md',
+  'Process Patterns.md',
+  'Decision Patterns.md',
+  'Technology Preferences.md',
+  'Agent Failure Patterns.md',
+  'Agent Success Patterns.md',
+  'Prevention Rules.md',
   'Global Avoid Rules.md',
   'Failure Memory.md',
   'Success Patterns.md',
@@ -33,9 +42,21 @@ const MEMORY_TYPES = new Set([
   'failure_memory',
   'success_pattern',
   'tooling_preference',
+  'technology_preference',
   'coding_style',
   'design_preference',
-  'workflow_rule'
+  'workflow_rule',
+  'question_pattern',
+  'response_preference',
+  'process_pattern',
+  'validation_pattern',
+  'design_philosophy',
+  'decision_pattern',
+  'communication_pattern',
+  'correction_pattern',
+  'agent_failure_pattern',
+  'agent_success_pattern',
+  'handoff_pattern'
 ]);
 
 const TYPE_TO_PAGE = {
@@ -48,19 +69,46 @@ const TYPE_TO_PAGE = {
   failure_memory: 'Failure Memory.md',
   success_pattern: 'Success Patterns.md',
   tooling_preference: 'Tooling Preferences.md',
+  technology_preference: 'Technology Preferences.md',
   workflow_rule: 'Workflow Rules.md'
 };
+
+Object.assign(TYPE_TO_PAGE, {
+  question_pattern: 'User Patterns.md',
+  response_preference: 'User Patterns.md',
+  process_pattern: 'Process Patterns.md',
+  validation_pattern: 'Validation Patterns.md',
+  design_philosophy: 'Design Philosophy.md',
+  decision_pattern: 'Decision Patterns.md',
+  communication_pattern: 'User Patterns.md',
+  correction_pattern: 'User Patterns.md',
+  agent_failure_pattern: 'Agent Failure Patterns.md',
+  agent_success_pattern: 'Agent Success Patterns.md',
+  handoff_pattern: 'Process Patterns.md'
+});
 
 const GLOBAL_MEMORY_FILES = {
   user_preference: 'user-preferences.json',
   avoid_rule: 'avoid-rules.json',
   tooling_preference: 'tooling-preferences.json',
+  technology_preference: 'tooling-preferences.json',
   coding_style: 'coding-style.json',
   workflow_rule: 'workflow-rules.json',
   architecture_rule: 'architecture-patterns.json',
   failure_memory: 'failure-memory.json',
   success_pattern: 'success-patterns.json',
-  design_preference: 'user-preferences.json'
+  design_preference: 'user-preferences.json',
+  question_pattern: 'workflow-rules.json',
+  response_preference: 'user-preferences.json',
+  process_pattern: 'workflow-rules.json',
+  validation_pattern: 'workflow-rules.json',
+  design_philosophy: 'architecture-patterns.json',
+  decision_pattern: 'workflow-rules.json',
+  communication_pattern: 'workflow-rules.json',
+  correction_pattern: 'workflow-rules.json',
+  agent_failure_pattern: 'failure-memory.json',
+  agent_success_pattern: 'success-patterns.json',
+  handoff_pattern: 'workflow-rules.json'
 };
 
 const PROJECT_MEMORY_FILES = {
@@ -70,10 +118,22 @@ const PROJECT_MEMORY_FILES = {
   failure_memory: 'failures.json',
   success_pattern: 'successes.json',
   tooling_preference: 'tooling-preferences.json',
+  technology_preference: 'tooling-preferences.json',
   workflow_rule: 'workflow-rules.json',
   design_preference: 'design-preferences.json',
   user_preference: 'workflow-rules.json',
-  coding_style: 'design-preferences.json'
+  coding_style: 'design-preferences.json',
+  question_pattern: 'workflow-rules.json',
+  response_preference: 'workflow-rules.json',
+  process_pattern: 'workflow-rules.json',
+  validation_pattern: 'workflow-rules.json',
+  design_philosophy: 'architecture-rules.json',
+  decision_pattern: 'decisions.json',
+  communication_pattern: 'workflow-rules.json',
+  correction_pattern: 'workflow-rules.json',
+  agent_failure_pattern: 'failures.json',
+  agent_success_pattern: 'successes.json',
+  handoff_pattern: 'workflow-rules.json'
 };
 
 const GLOBAL_MEMORY_FILE_NAMES = [
@@ -110,13 +170,39 @@ const TYPE_PRIORITY = {
   failure_memory: 85,
   project_decision: 65,
   architecture_rule: 60,
+  validation_pattern: 58,
+  agent_failure_pattern: 58,
+  design_philosophy: 56,
+  process_pattern: 54,
+  agent_success_pattern: 52,
   success_pattern: 50,
   tooling_preference: 40,
+  technology_preference: 40,
   workflow_rule: 40,
+  correction_pattern: 39,
+  decision_pattern: 38,
+  handoff_pattern: 38,
+  response_preference: 37,
+  communication_pattern: 36,
+  question_pattern: 36,
   user_preference: 35,
   coding_style: 30,
   design_preference: 30
 };
+
+const PATTERN_TYPES = new Set([
+  'question_pattern',
+  'response_preference',
+  'process_pattern',
+  'validation_pattern',
+  'design_philosophy',
+  'decision_pattern',
+  'communication_pattern',
+  'correction_pattern',
+  'agent_failure_pattern',
+  'agent_success_pattern',
+  'handoff_pattern'
+]);
 
 const CONFIDENCE_PRIORITY = {
   high: 15,
@@ -268,17 +354,229 @@ async function writeJsonl(filePath, records) {
   await writeFile(filePath, text.length > 0 ? `${text}\n` : '', 'utf8');
 }
 
+function detectSystemLocale() {
+  try {
+    return new Intl.DateTimeFormat().resolvedOptions().locale || 'en-US';
+  } catch {
+    return 'en-US';
+  }
+}
+
+function normalizeLocale(locale) {
+  const value = String(locale || '').trim();
+  if (/^ko(?:-|$)/iu.test(value)) return 'ko-KR';
+  if (/^en(?:-|$)/iu.test(value)) return 'en-US';
+  return value || 'en-US';
+}
+
+function languageFromLocale(locale) {
+  return normalizeLocale(locale).startsWith('ko') ? 'ko' : 'en';
+}
+
 function defaultConfig() {
   const timestamp = nowIso();
+  const locale = normalizeLocale(process.env.VIBEBOX_LOCALE || process.env.VIBEBOX_LANGUAGE || detectSystemLocale());
   return {
     version: VIBEBOX_VERSION,
     memoryMode: 'review',
     obsidianCompatible: true,
     maxContextItems: 8,
     maxContextChars: 6000,
+    locale,
+    outputLanguage: languageFromLocale(locale),
+    wikiLanguage: languageFromLocale(locale),
+    reportLanguage: languageFromLocale(locale),
+    contextLanguage: languageFromLocale(locale),
     createdAt: timestamp,
     updatedAt: timestamp
   };
+}
+
+const LOCALE_TEMPLATES = {
+  'en-US': {
+    homeTitle: 'VibeBox Home',
+    contextTitle: 'VibeBox Context Pack',
+    pretaskTitle: 'VibeBox Pre-Task Brief',
+    reportTitle: 'VibeBox Memory Report',
+    blackboxTitle: 'VibeBox Blackbox Report',
+    doctorTitle: 'VibeBox Doctor',
+    task: 'Task',
+    userTask: 'User Task',
+    relevantMemoryContext: 'Relevant Memory Context',
+    relevantUserPreferences: 'Relevant User Preferences',
+    relevantUserPatterns: 'Relevant User Patterns',
+    relevantProjectDecisions: 'Relevant Project Decisions',
+    relevantArchitectureRules: 'Relevant Architecture Rules',
+    relevantAvoidRules: 'Relevant Avoid Rules',
+    relevantFailureMemory: 'Relevant Failure Memory',
+    knownFailureRisks: 'Known Failure Risks',
+    knownSuccessPatterns: 'Known Success Patterns',
+    relevantSuccessPatterns: 'Relevant Success Patterns',
+    relevantValidationPatterns: 'Relevant Validation Patterns',
+    relevantProcessPatterns: 'Relevant Process Patterns',
+    relevantDesignPhilosophy: 'Relevant Design Philosophy',
+    relevantAgentFailurePatterns: 'Relevant Agent Failure Patterns',
+    relevantAgentSuccessPatterns: 'Relevant Agent Success Patterns',
+    relevantCorrectionPatterns: 'Relevant Correction Patterns',
+    relevantResponsePreferences: 'Relevant Response Preferences',
+    relevantCommunicationPatterns: 'Relevant Communication Patterns',
+    relevantQuestionPatterns: 'Relevant Question Patterns',
+    relevantDecisionPatterns: 'Relevant Decision Patterns',
+    relevantHandoffPatterns: 'Relevant Handoff Patterns',
+    projectGuardrails: 'Project Guardrails',
+    potentialConflicts: 'Potential Conflicts',
+    guidanceForAgent: 'Guidance for AI Agent',
+    instructionForAgent: 'Instruction for AI Agent',
+    prevention: 'Prevention',
+    alternative: 'Alternative',
+    none: 'None.',
+    pageUserPreferences: 'User Preferences',
+    pageUserPatterns: 'User Patterns',
+    pageDesignPhilosophy: 'Design Philosophy',
+    pageValidationPatterns: 'Validation Patterns',
+    pageProcessPatterns: 'Process Patterns',
+    pageDecisionPatterns: 'Decision Patterns',
+    pageTechnologyPreferences: 'Technology Preferences',
+    pageAgentFailurePatterns: 'Agent Failure Patterns',
+    pageAgentSuccessPatterns: 'Agent Success Patterns',
+    pagePreventionRules: 'Prevention Rules',
+    pageGlobalAvoidRules: 'Global Avoid Rules',
+    pageFailureMemory: 'Failure Memory',
+    pageSuccessPatterns: 'Success Patterns',
+    pageToolingPreferences: 'Tooling Preferences',
+    pageWorkflowRules: 'Workflow Rules',
+    pageProjectIndex: 'Project Index',
+    activeMemory: 'Active Memory',
+    pendingCandidates: 'Pending Candidates',
+    recentBlackboxEvents: 'Recent Blackbox Events',
+    taskTimeline: 'Task Timeline',
+    failedApproaches: 'Failed Approaches',
+    successfulApproaches: 'Successful Approaches',
+    rejectedDirections: 'Rejected Directions',
+    confirmedDecisions: 'Confirmed Decisions',
+    recurringFailureTypes: 'Recurring Failure Types',
+    frequentlyChangedFiles: 'Frequently Changed Files',
+    preventionRules: 'Prevention Rules',
+    project: 'Project',
+    status: 'Status',
+    globalStore: 'Global store',
+    currentProjectId: 'Current projectId',
+    errors: 'Errors',
+    warnings: 'Warnings',
+    noIssuesFound: 'No issues found.'
+  },
+  'ko-KR': {
+    homeTitle: 'VibeBox 홈',
+    contextTitle: 'VibeBox 컨텍스트 팩',
+    pretaskTitle: 'VibeBox 사전 작업 브리프',
+    reportTitle: 'VibeBox 메모리 보고서',
+    blackboxTitle: 'VibeBox 블랙박스 보고서',
+    doctorTitle: 'VibeBox 진단',
+    task: '작업',
+    userTask: '작업',
+    relevantMemoryContext: '관련 메모리 컨텍스트',
+    relevantUserPreferences: '관련 사용자 성향',
+    relevantUserPatterns: '관련 사용자 패턴',
+    relevantProjectDecisions: '관련 프로젝트 결정',
+    relevantArchitectureRules: '관련 아키텍처 규칙',
+    relevantAvoidRules: '관련 금지 규칙',
+    relevantFailureMemory: '관련 실패 메모리',
+    knownFailureRisks: '알려진 실패 위험',
+    knownSuccessPatterns: '관련 성공 패턴',
+    relevantSuccessPatterns: '관련 성공 패턴',
+    relevantValidationPatterns: '관련 검증 패턴',
+    relevantProcessPatterns: '관련 처리 방식',
+    relevantDesignPhilosophy: '관련 설계 철학',
+    relevantAgentFailurePatterns: '관련 AI 실패 패턴',
+    relevantAgentSuccessPatterns: '관련 AI 성공 패턴',
+    relevantCorrectionPatterns: '관련 교정 패턴',
+    relevantResponsePreferences: '관련 답변 선호',
+    relevantCommunicationPatterns: '관련 대화 방식',
+    relevantQuestionPatterns: '관련 질문 방식',
+    relevantDecisionPatterns: '관련 판단 방식',
+    relevantHandoffPatterns: '관련 인수인계 방식',
+    projectGuardrails: '프로젝트 가드레일',
+    potentialConflicts: '잠재적 충돌',
+    guidanceForAgent: 'AI 에이전트 지침',
+    instructionForAgent: 'AI 에이전트 지침',
+    prevention: '예방',
+    alternative: '대안',
+    none: '없음.',
+    pageUserPreferences: '사용자 성향',
+    pageUserPatterns: '사용자 패턴',
+    pageDesignPhilosophy: '설계 철학',
+    pageValidationPatterns: '검증 패턴',
+    pageProcessPatterns: '처리 방식',
+    pageDecisionPatterns: '판단 방식',
+    pageTechnologyPreferences: '기술 선호',
+    pageAgentFailurePatterns: 'AI 실패 패턴',
+    pageAgentSuccessPatterns: 'AI 성공 패턴',
+    pagePreventionRules: '예방 규칙',
+    pageGlobalAvoidRules: '전역 금지 규칙',
+    pageFailureMemory: '실패 메모리',
+    pageSuccessPatterns: '성공 패턴',
+    pageToolingPreferences: '도구 선호',
+    pageWorkflowRules: '워크플로 규칙',
+    pageProjectIndex: '프로젝트 인덱스',
+    activeMemory: '활성 메모리',
+    pendingCandidates: '검토 대기 후보',
+    recentBlackboxEvents: '최근 블랙박스 이벤트',
+    taskTimeline: '작업 타임라인',
+    failedApproaches: '실패한 접근',
+    successfulApproaches: '성공한 접근',
+    rejectedDirections: '거절된 방향',
+    confirmedDecisions: '확정된 결정',
+    recurringFailureTypes: '반복 실패 유형',
+    frequentlyChangedFiles: '자주 변경된 파일',
+    preventionRules: '예방 규칙',
+    project: '프로젝트',
+    status: '상태',
+    globalStore: '전역 저장소',
+    currentProjectId: '현재 projectId',
+    errors: '오류',
+    warnings: '경고',
+    noIssuesFound: '문제 없음.'
+  }
+};
+
+function resolveLocale(input = {}, config = {}) {
+  return normalizeLocale(
+    input.locale
+    || process.env.VIBEBOX_LOCALE
+    || process.env.VIBEBOX_LANGUAGE
+    || config.locale
+    || detectSystemLocale()
+  );
+}
+
+function localeTemplates(locale) {
+  return LOCALE_TEMPLATES[normalizeLocale(locale)] || LOCALE_TEMPLATES['en-US'];
+}
+
+function t(locale, key) {
+  return localeTemplates(locale)[key] || LOCALE_TEMPLATES['en-US'][key] || key;
+}
+
+function localizedPageTitle(pageName, locale = 'en-US') {
+  const keyByPage = {
+    'User Preferences.md': 'pageUserPreferences',
+    'User Patterns.md': 'pageUserPatterns',
+    'Design Philosophy.md': 'pageDesignPhilosophy',
+    'Validation Patterns.md': 'pageValidationPatterns',
+    'Process Patterns.md': 'pageProcessPatterns',
+    'Decision Patterns.md': 'pageDecisionPatterns',
+    'Technology Preferences.md': 'pageTechnologyPreferences',
+    'Agent Failure Patterns.md': 'pageAgentFailurePatterns',
+    'Agent Success Patterns.md': 'pageAgentSuccessPatterns',
+    'Prevention Rules.md': 'pagePreventionRules',
+    'Global Avoid Rules.md': 'pageGlobalAvoidRules',
+    'Failure Memory.md': 'pageFailureMemory',
+    'Success Patterns.md': 'pageSuccessPatterns',
+    'Tooling Preferences.md': 'pageToolingPreferences',
+    'Workflow Rules.md': 'pageWorkflowRules',
+    'Project Index.md': 'pageProjectIndex'
+  };
+  return keyByPage[pageName] ? t(locale, keyByPage[pageName]) : pageTitle(pageName);
 }
 
 function defaultRegistry() {
@@ -529,7 +827,10 @@ function defaultRelationIndex() {
     updatedAt: nowIso(),
     relations: [],
     related: {},
-    supersedes: {}
+    supersedes: {},
+    byType: {},
+    byProject: {},
+    nodes: {}
   };
 }
 
@@ -574,19 +875,19 @@ function wikiFrontmatter(title) {
   ].join('\n');
 }
 
-function initialWikiPage(pageName) {
+function initialWikiPage(pageName, locale = 'en-US') {
   if (pageName === 'Home.md') {
-    return `${renderHomeShell()}\n\n${managedBlock(renderHomeManaged([]))}\n`;
+    return `${renderHomeShell(locale)}\n\n${managedBlock(renderHomeManaged([], locale))}\n`;
   }
   if (pageName === 'Project Index.md') {
-    return `${renderProjectIndexShell()}\n\n${managedBlock(renderProjectIndexManaged([]))}\n`;
+    return `${renderProjectIndexShell(locale)}\n\n${managedBlock(renderProjectIndexManaged([], locale))}\n`;
   }
 
-  return `${renderMemoryShell(pageName)}\n\n${managedBlock(renderMemoryManaged([]))}\n`;
+  return `${renderMemoryShell(pageName, locale)}\n\n${managedBlock(renderMemoryManaged([], locale))}\n`;
 }
 
-function initialProjectWikiPage(project) {
-  return `${renderProjectShell(project)}\n\n${managedBlock(renderProjectManaged(project, []))}\n`;
+function initialProjectWikiPage(project, locale = 'en-US') {
+  return `${renderProjectShell(project, locale)}\n\n${managedBlock(renderProjectManaged(project, [], locale))}\n`;
 }
 
 export async function initVibeBox(root = process.cwd()) {
@@ -625,9 +926,9 @@ export async function initVibeBox(root = process.cwd()) {
     files.push([`projects/${project.projectId}/${fileName}`, `${JSON.stringify(defaultMemoryFile(), null, 2)}\n`]);
   }
   for (const page of WIKI_PAGES) {
-    files.push([`wiki/${page}`, initialWikiPage(page)]);
+    files.push([`wiki/${page}`, initialWikiPage(page, config.locale)]);
   }
-  files.push([`wiki/projects/${project.projectId}.md`, initialProjectWikiPage(project)]);
+  files.push([`wiki/projects/${project.projectId}.md`, initialProjectWikiPage(project, config.locale)]);
 
   for (const [relative, content] of files) {
     const didCreate = await writeIfMissing(vibeboxPath(root, relative), content);
@@ -640,7 +941,7 @@ export async function initVibeBox(root = process.cwd()) {
   await saveJson(vibeboxPath(root, `projects/${project.projectId}/project.json`), project);
   await rebuildIndexes(root, { syncNamespaceFiles: false });
   const registry = await loadJson(vibeboxPath(root, 'registry/projects.json'), defaultRegistry());
-  await writeManagedWikiPage(root, 'Project Index.md', renderProjectIndexShell(), renderProjectIndexManaged(registry.projects || []));
+  await writeManagedWikiPage(root, 'Project Index.md', renderProjectIndexShell(config.locale), renderProjectIndexManaged(registry.projects || [], config.locale));
 
   return {
     root: path.resolve(root),
@@ -659,7 +960,7 @@ async function ensureConfigFields(root) {
   const merged = { ...defaults, ...existing };
   let changed = false;
 
-  for (const key of ['maxContextItems', 'maxContextChars', 'memoryMode', 'obsidianCompatible']) {
+  for (const key of ['maxContextItems', 'maxContextChars', 'memoryMode', 'obsidianCompatible', 'locale', 'outputLanguage', 'wikiLanguage', 'reportLanguage', 'contextLanguage']) {
     if (existing[key] === undefined) {
       merged[key] = defaults[key];
       changed = true;
@@ -776,6 +1077,9 @@ function extractDomains(statement) {
   if (textHasAny(statement, ['frontend', 'ui', 'ux', 'layout'])) domains.add('frontend');
   if (textHasAny(statement, ['database', 'mssql', 'supabase', 'postgresql'])) domains.add('database');
   if (textHasAny(statement, ['tool', 'command', 'cli'])) domains.add('tooling');
+  if (textHasAny(statement, ['test', 'check', 'verify', 'verification', 'validating', '검증'])) domains.add('verification');
+  if (textHasAny(statement, ['architecture', 'design philosophy', '설계'])) domains.add('architecture');
+  if (textHasAny(statement, ['agent', 'ai', '에이전트'])) domains.add('agent');
   return [...domains];
 }
 
@@ -812,7 +1116,20 @@ function extractTags(statement) {
     'tailwind',
     'css modules',
     'styled-components',
-    'recharts'
+    'recharts',
+    'test',
+    'check',
+    'verification',
+    'validation',
+    '검증',
+    'process',
+    'repository',
+    'architecture',
+    'design philosophy',
+    'agent',
+    'handoff',
+    'correction',
+    'communication'
   ];
   for (const item of known) {
     if (normalized.includes(normalizeText(item))) tags.add(item);
@@ -841,12 +1158,26 @@ function determineScope(statement, domains) {
   return domains.length > 0 ? 'domain' : 'task';
 }
 
+function normalizeCandidateScope(type, scope, statement) {
+  if (!PATTERN_TYPES.has(type)) return scope;
+  if (scope === 'temporary' || scope === 'project') return scope;
+  if (scope === 'task' && textHasAny(statement, ['for this task only', 'this task only', 'this once'])) return scope;
+  if (textHasAny(statement, ['for dashboard', 'dashboard projects', 'backend services', 'frontend'])) return scope;
+  return scope === 'domain' ? 'domain' : 'global';
+}
+
 function determineConfidence(statement, type, scope) {
   if (textHasAny(statement, ['maybe', 'might', 'feels', 'try later', 'can try'])) {
     return 'low';
   }
   if (scope === 'task' || scope === 'temporary') {
     return 'low';
+  }
+  if (PATTERN_TYPES.has(type)) {
+    if (textHasAny(statement, ['repeatedly', 'always', 'must', 'before claiming completion', '완료를 말하기 전에'])) {
+      return 'high';
+    }
+    return 'medium';
   }
   if (type === 'avoid_rule' && textHasAny(statement, ['do not', 'never', 'must not', 'forbidden'])) {
     return 'high';
@@ -878,6 +1209,19 @@ function inferType(statement) {
   const hasWorkflow = textHasAny(statement, ['review first', 'approval', 'workflow']);
   const hasArchitecture = textHasAny(statement, ['architecture', 'component-level', 'preserve existing behavior']);
 
+  if (textHasAny(statement, ['agent repeatedly fails', 'ai repeatedly fails', 'agent failed', 'ai failed', 'agent failure', 'repeatedly fails by', '에이전트가 반복적으로 실패'])) return 'agent_failure_pattern';
+  if (textHasAny(statement, ['agent succeeded', 'ai succeeded', 'agent success', 'succeeded by', 'successfully handled by', '에이전트가 성공'])) return 'agent_success_pattern';
+  if (textHasAny(statement, ['when validating', 'validation pattern', 'verification pattern', 'verify changes', 'before claiming completion', 'run checks before', '검증할 때', '검증 방식', '완료를 말하기 전에'])) return 'validation_pattern';
+  if (textHasAny(statement, ['work process', 'process pattern', 'inspect the repository first', 'small scoped edits', '작업 진행', '처리 방식'])) return 'process_pattern';
+  if (textHasAny(statement, ['design philosophy', '설계 철학', 'preserve existing architecture', 'anti-patch'])) return 'design_philosophy';
+  if (textHasAny(statement, ['question pattern', 'question style', 'when asking', '질문 방식'])) return 'question_pattern';
+  if (textHasAny(statement, ['response preference', 'answer style', 'reply style', '답변 방식', '답변 선호'])) return 'response_preference';
+  if (textHasAny(statement, ['communication pattern', 'conversation style', 'feedback style', '대화 방식'])) return 'communication_pattern';
+  if (textHasAny(statement, ['correction pattern', 'user correction', 'when corrected', '교정 방식'])) return 'correction_pattern';
+  if (textHasAny(statement, ['decision pattern', 'decision style', 'judgment style', '판단 방식'])) return 'decision_pattern';
+  if (textHasAny(statement, ['handoff pattern', 'handoff', 'handover', '인수인계'])) return 'handoff_pattern';
+  if (hasPreference && textHasAny(statement, ['technology', 'stack', 'library', 'framework'])) return 'technology_preference';
+  if (textHasAny(statement, ['except for', 'exception', 'only when', 'apart from']) && textHasAny(statement, ['use', 'prefer', 'instead of'])) return 'user_preference';
   if (hasRejection) return 'avoid_rule';
   if (hasFailure) return 'failure_memory';
   if (hasDecision) return 'project_decision';
@@ -892,6 +1236,21 @@ function inferType(statement) {
 }
 
 function inferTopic(statement, tags, domains) {
+  if (textHasAny(statement, ['verification', 'validating', 'verify', 'npm.cmd test', '검증'])) {
+    return 'verification process';
+  }
+  if (textHasAny(statement, ['work process', 'inspect the repository first', 'small scoped edits', '작업 진행', '처리 방식'])) {
+    return 'work process';
+  }
+  if (textHasAny(statement, ['design philosophy', 'preserve existing architecture', '설계 철학'])) {
+    return 'design philosophy';
+  }
+  if (textHasAny(statement, ['agent repeatedly fails', 'before claiming completion'])) {
+    return 'agent verification failure';
+  }
+  if (textHasAny(statement, ['agent succeeded', 'focused tests'])) {
+    return 'agent success process';
+  }
   if (tags.includes('dashboard') && (tags.includes('database') || tags.includes('mssql') || tags.includes('supabase') || tags.includes('postgresql'))) {
     return 'dashboard database';
   }
@@ -934,7 +1293,7 @@ function buildCandidate(statement, source, activeMemories) {
 
   const domains = extractDomains(statement);
   const tags = extractTags(statement);
-  const scope = determineScope(statement, domains);
+  const scope = normalizeCandidateScope(type, determineScope(statement, domains), statement);
   const confidence = determineConfidence(statement, type, scope);
   const topic = inferTopic(statement, tags, domains);
   const timestamp = nowIso();
@@ -1022,6 +1381,53 @@ function enrichTypedFields(candidate, statement) {
       : 'Captured from an explicit project decision statement.';
     candidate.alternativesRejected = inferRejectedAlternatives(statement);
   }
+
+  if (PATTERN_TYPES.has(candidate.type)) {
+    candidate.patternType = candidate.type;
+    candidate.situation = inferPatternSituation(candidate.type, statement);
+    candidate.trigger = inferTrigger(statement);
+    candidate.observedBehavior = candidate.type.includes('failure') ? candidate.summary : '';
+    candidate.preferredBehavior = inferPreferredBehavior(candidate, statement);
+    candidate.preventionRule = candidate.type === 'agent_failure_pattern'
+      ? inferPreventionRule(statement)
+      : candidate.preventionRule;
+    candidate.reuseWhen = candidate.type === 'agent_success_pattern' ? candidate.appliesTo : candidate.reuseWhen;
+    candidate.relatedProjects = [];
+    candidate.relatedPatterns = [];
+    candidate.relatedFailures = [];
+    candidate.relatedSuccesses = [];
+    candidate.relatedDecisions = [];
+    candidate.relatedPreferences = [];
+  }
+}
+
+function inferPatternSituation(type, statement) {
+  if (type === 'validation_pattern' || textHasAny(statement, ['test', 'check', 'verify', '검증'])) return 'verification';
+  if (type === 'design_philosophy' || textHasAny(statement, ['architecture', 'design'])) return 'architecture';
+  if (type === 'process_pattern' || type === 'handoff_pattern') return 'implementation';
+  if (type === 'agent_failure_pattern') return 'debugging';
+  if (type === 'agent_success_pattern') return 'implementation';
+  if (type === 'response_preference' || type === 'communication_pattern' || type === 'question_pattern') return 'handoff';
+  return 'general';
+}
+
+function inferTrigger(statement) {
+  if (textHasAny(statement, ['when validating', '검증할 때'])) return 'validation work';
+  if (textHasAny(statement, ['before claiming completion', '완료를 말하기 전에'])) return 'completion claim';
+  if (textHasAny(statement, ['inspect the repository first'])) return 'starting repository work';
+  if (textHasAny(statement, ['design philosophy'])) return 'architecture decisions';
+  return summarizeStatement(statement);
+}
+
+function inferPreferredBehavior(candidate, statement) {
+  if (candidate.type === 'agent_failure_pattern') {
+    return inferPreventionRule(statement);
+  }
+  if (textHasAny(statement, ['prefer'])) {
+    const parts = statement.split(/\bprefer\b/iu);
+    return summarizeStatement(parts.slice(1).join('prefer') || statement);
+  }
+  return candidate.summary;
 }
 
 function inferFailureType(statement) {
@@ -1055,6 +1461,27 @@ function inferRejectedAlternatives(statement) {
     return [];
   }
   return match[1].split(/\s+and\s+|,/u).map((item) => item.trim()).filter(Boolean);
+}
+
+function inferActiveCondition(memory) {
+  const text = [memory.rule, memory.summary, memory.details].filter(Boolean).join(' ');
+  const exceptionMatch = text.match(/except\s+for\s+([^,.;]+)/iu)
+    || text.match(/only\s+when\s+([^,.;]+)/iu)
+    || text.match(/unless\s+([^,.;]+)/iu);
+  if (!exceptionMatch) return null;
+  const summary = summarizeStatement(exceptionMatch[1]);
+  const keywords = memoryKeywords({ summary, tags: [], domains: [], appliesTo: [summary] }).slice(0, 8);
+  return {
+    kind: 'exception',
+    summary,
+    keywords
+  };
+}
+
+function matchesActiveCondition(memory, task) {
+  if (!memory.activeCondition?.keywords?.length) return true;
+  const taskTokens = new Set(memoryKeywords({ summary: task, tags: [], domains: [], appliesTo: [] }));
+  return memory.activeCondition.keywords.some((keyword) => taskTokens.has(keyword) || normalizeText(task).includes(keyword));
 }
 
 async function activeMemories(root) {
@@ -1128,6 +1555,7 @@ export async function extractMemoryCandidates(root = process.cwd(), input = {}) 
         continue;
       }
       candidate.sourceProjectRoot = project.rootPath;
+      candidate.sourceProjectId = project.projectId;
       candidate.repositoryName = project.repositoryName || project.projectName;
       newCandidates.push(candidate);
       existingIds.add(candidate.id);
@@ -1155,6 +1583,12 @@ function hasTargetOverlap(memory, candidate) {
     || setOverlap(memory.tags, candidate.tags) >= 2
     || setOverlap(memory.domains, candidate.domains) >= 1
     || setOverlap(memory.appliesTo, candidate.appliesTo) >= 1;
+}
+
+function hasSameActiveSubject(memory, candidate) {
+  return memory.topic === candidate.topic
+    || setOverlap(memory.tags, candidate.tags) >= 2
+    || (memory.type === candidate.type && setOverlap(memory.appliesTo, candidate.appliesTo) >= 1);
 }
 
 function hasOpposingChoice(memory, candidate) {
@@ -1218,7 +1652,7 @@ export function classifyCandidateConflict(activeMemoryRecords = [], candidate) {
     return { status: 'needs_user_review', related, supersedes: [], reason: 'Low-confidence candidate overlaps existing memory.' };
   }
 
-  if (relatedMemories.some((memory) => isMoreSpecific(memory, candidate))) {
+  if (relatedMemories.some((memory) => hasSameActiveSubject(memory, candidate) && isMoreSpecific(memory, candidate))) {
     return { status: 'refinement', related, supersedes: [], reason: 'Candidate adds a more specific condition to existing memory.' };
   }
 
@@ -1249,6 +1683,8 @@ function toPendingIndexEntry(candidate) {
     recommendedAction: recommendCandidateAction(candidate).action,
     related: candidate.related || [],
     supersedes: candidate.supersedes || [],
+    replaces: candidate.replaces || [],
+    activeCondition: candidate.activeCondition || null,
     updatedAt: candidate.updatedAt
   };
 }
@@ -1286,6 +1722,7 @@ function toMemoryIndexEntry(memory) {
     domains: memory.domains || [],
     appliesTo: memory.appliesTo || [],
     projectId: memory.projectId,
+    sourceProjectId: memory.sourceProjectId,
     sourceProjectRoot: memory.sourceProjectRoot,
     repositoryName: memory.repositoryName,
     source: memory.source || {},
@@ -1295,9 +1732,23 @@ function toMemoryIndexEntry(memory) {
     conflictStatus: memory.conflictStatus,
     supersedes: memory.supersedes || [],
     related: memory.related || [],
+    replaces: memory.replaces || [],
+    replacedBy: memory.replacedBy || null,
+    activeCondition: memory.activeCondition || null,
     createdAt: memory.createdAt,
     updatedAt: memory.updatedAt,
     lastUsedAt: memory.lastUsedAt || null,
+    patternType: memory.patternType,
+    situation: memory.situation,
+    trigger: memory.trigger,
+    observedBehavior: memory.observedBehavior,
+    preferredBehavior: memory.preferredBehavior,
+    relatedProjects: memory.relatedProjects,
+    relatedPatterns: memory.relatedPatterns,
+    relatedFailures: memory.relatedFailures,
+    relatedSuccesses: memory.relatedSuccesses,
+    relatedDecisions: memory.relatedDecisions,
+    relatedPreferences: memory.relatedPreferences,
     failureType: memory.failureType,
     failedApproach: memory.failedApproach,
     failureReason: memory.failureReason,
@@ -1359,6 +1810,18 @@ export async function approveSafeMemories(root = process.cwd()) {
   return { approved, skipped };
 }
 
+function replacementIdsForMemory(memory, existingMemories = []) {
+  if (memory.conflictStatus === 'exception') return [];
+  if (['supersedes', 'refinement'].includes(memory.conflictStatus)) {
+    const candidateIds = [...new Set([...(memory.supersedes || []), ...(memory.related || [])])];
+    return candidateIds.filter((id) => {
+      const existing = existingMemories.find((item) => item.id === id);
+      return !existing || hasSameActiveSubject(existing, memory);
+    });
+  }
+  return [...new Set(memory.supersedes || [])];
+}
+
 export async function approveMemory(root = process.cwd(), candidateId) {
   await initVibeBox(root);
   const project = await resolveCurrentProjectIdentity(root);
@@ -1393,16 +1856,21 @@ export async function approveMemory(root = process.cwd(), candidateId) {
     status: 'active',
     updatedAt: timestamp
   };
-
-  for (const existing of memoryIndex.memories) {
-    if ((memory.supersedes || []).includes(existing.id) && existing.status === 'active') {
-      existing.status = 'superseded';
-      existing.updatedAt = timestamp;
-    }
+  const replaceIds = replacementIdsForMemory(memory, memoryIndex.memories);
+  memory.replaces = [...new Set([...(memory.replaces || []), ...replaceIds])];
+  memory.related = (memory.related || []).filter((id) => !replaceIds.includes(id));
+  memory.supersedes = (memory.supersedes || []).filter((id) => !replaceIds.includes(id));
+  if (memory.conflictStatus === 'exception' && !memory.activeCondition) {
+    memory.activeCondition = inferActiveCondition(memory);
   }
+
+  memoryIndex.memories = memoryIndex.memories
+    .filter((existing) => existing.id === memory.id || !replaceIds.includes(existing.id));
 
   if (!memoryIndex.memories.some((item) => item.id === memory.id)) {
     memoryIndex.memories.push(toMemoryIndexEntry(memory));
+  } else {
+    memoryIndex.memories = memoryIndex.memories.map((item) => item.id === memory.id ? toMemoryIndexEntry(memory) : item);
   }
   memoryIndex.updatedAt = timestamp;
   await saveJson(vibeboxPath(root, 'index/global-memory-index.json'), memoryIndex);
@@ -1437,14 +1905,218 @@ export async function rejectMemory(root = process.cwd(), candidateId, reason = '
   return candidate;
 }
 
+function relationId(type, from, to, projectId = null) {
+  return hashId('rel', `${type}|${from}|${to}|${projectId || ''}`);
+}
+
+function addRelation(relationIndex, relation) {
+  const normalized = {
+    id: relation.id || relationId(relation.type, relation.from, relation.to, relation.projectId),
+    type: relation.type,
+    from: relation.from,
+    to: relation.to,
+    projectId: relation.projectId || null,
+    strength: relation.strength || 0.7,
+    evidence: relation.evidence || '',
+    createdAt: relation.createdAt || nowIso(),
+    active: relation.active !== false
+  };
+  if (!normalized.type || !normalized.from || !normalized.to) return;
+  if (relationIndex.relations.some((item) => item.type === normalized.type && item.from === normalized.from && item.to === normalized.to && (item.projectId || null) === normalized.projectId)) {
+    return;
+  }
+  relationIndex.relations.push(normalized);
+  relationIndex.byType[normalized.type] = [...new Set([...(relationIndex.byType[normalized.type] || []), normalized.id])].sort();
+  if (normalized.projectId) {
+    relationIndex.byProject[normalized.projectId] = [...new Set([...(relationIndex.byProject[normalized.projectId] || []), normalized.id])].sort();
+  }
+}
+
+function addMemoryNode(relationIndex, memory) {
+  relationIndex.nodes[memory.id] = {
+    id: memory.id,
+    type: memory.type,
+    topic: memory.topic,
+    projectId: memory.projectId || null,
+    active: memory.status === 'active'
+  };
+}
+
+function relationProjectId(memory) {
+  return memory.projectId || memory.sourceProjectId || null;
+}
+
+function addDerivedMemoryRelations(relationIndex, memory, activeMemories) {
+  const projectNode = memory.projectId ? `project:${memory.projectId}` : null;
+  if (projectNode) {
+    const projectRelationByType = {
+      project_decision: 'project_has_decision',
+      failure_memory: 'project_has_failure',
+      agent_failure_pattern: 'project_has_failure',
+      success_pattern: 'project_has_success',
+      agent_success_pattern: 'project_has_success'
+    };
+    if (projectRelationByType[memory.type]) {
+      addRelation(relationIndex, {
+        type: projectRelationByType[memory.type],
+        from: projectNode,
+        to: memory.id,
+        projectId: memory.projectId,
+        strength: 0.9,
+        evidence: memory.summary
+      });
+    }
+    if (PATTERN_TYPES.has(memory.type)) {
+      addRelation(relationIndex, {
+        type: 'project_uses_pattern',
+        from: projectNode,
+        to: memory.id,
+        projectId: memory.projectId,
+        evidence: memory.summary
+      });
+      addRelation(relationIndex, {
+        type: 'pattern_applies_to_project',
+        from: memory.id,
+        to: projectNode,
+        projectId: memory.projectId,
+        evidence: memory.summary
+      });
+    }
+  }
+
+  if (memory.preventionRule && ['failure_memory', 'agent_failure_pattern'].includes(memory.type)) {
+    addRelation(relationIndex, {
+      type: 'failure_prevented_by_rule',
+      from: memory.id,
+      to: `rule:${hashId('rule', memory.preventionRule)}`,
+      projectId: relationProjectId(memory),
+      strength: 0.95,
+      evidence: memory.preventionRule
+    });
+  }
+
+  const preferenceRelationByType = {
+    validation_pattern: 'user_prefers_validation',
+    process_pattern: 'user_prefers_process',
+    response_preference: 'user_prefers_response_style',
+    design_philosophy: 'decision_based_on_preference',
+    agent_failure_pattern: 'agent_failed_by_pattern',
+    agent_success_pattern: 'agent_succeeded_by_pattern'
+  };
+  if (preferenceRelationByType[memory.type]) {
+    addRelation(relationIndex, {
+      type: preferenceRelationByType[memory.type],
+      from: memory.type.startsWith('agent_') ? 'agent:ai-coding-agent' : 'user:local',
+      to: memory.id,
+      projectId: relationProjectId(memory),
+      strength: 0.85,
+      evidence: memory.summary
+    });
+  }
+  if (memory.type === 'avoid_rule') {
+    addRelation(relationIndex, {
+      type: 'user_rejects_approach',
+      from: 'user:local',
+      to: memory.id,
+      projectId: relationProjectId(memory),
+      evidence: memory.summary
+    });
+  }
+
+  if (memory.type === 'success_pattern' || memory.type === 'agent_success_pattern') {
+    for (const failure of activeMemories.filter((item) => (
+      ['failure_memory', 'agent_failure_pattern'].includes(item.type)
+      && (
+        hasTargetOverlap(item, memory)
+        || setOverlap(item.tags || [], memory.tags || []) >= 1
+        || (textHasAny(item.summary, ['scroll', 'overflow', 'layout']) && textHasAny(memory.summary, ['scroll', 'wrapper', 'layout']))
+      )
+    ))) {
+      addRelation(relationIndex, {
+        type: 'success_resolves_failure',
+        from: memory.id,
+        to: failure.id,
+        projectId: relationProjectId(memory) || relationProjectId(failure),
+        strength: 0.8,
+        evidence: memory.summary
+      });
+      addRelation(relationIndex, {
+        type: 'failure_replaced_by_success',
+        from: failure.id,
+        to: memory.id,
+        projectId: relationProjectId(memory) || relationProjectId(failure),
+        strength: 0.75,
+        evidence: memory.summary
+      });
+    }
+  }
+
+  for (const relatedId of memory.related || []) {
+    if ((memory.replaces || []).includes(relatedId)) continue;
+    addRelation(relationIndex, {
+      type: 'related',
+      from: memory.id,
+      to: relatedId,
+      projectId: relationProjectId(memory),
+      evidence: memory.summary
+    });
+    relationIndex.related[memory.id] = [...new Set([...(relationIndex.related[memory.id] || []), relatedId])];
+  }
+  for (const supersededId of memory.supersedes || []) {
+    addRelation(relationIndex, {
+      type: 'memory_replaces_memory',
+      from: memory.id,
+      to: supersededId,
+      projectId: relationProjectId(memory),
+      evidence: memory.summary,
+      active: false
+    });
+    relationIndex.supersedes[memory.id] = [...new Set([...(relationIndex.supersedes[memory.id] || []), supersededId])];
+  }
+  for (const replacedId of memory.replaces || []) {
+    addRelation(relationIndex, {
+      type: 'memory_replaces_memory',
+      from: memory.id,
+      to: replacedId,
+      projectId: relationProjectId(memory),
+      evidence: memory.summary,
+      active: false
+    });
+  }
+  if (memory.conflictStatus === 'refinement') {
+    for (const replacedId of memory.replaces || memory.related || []) {
+      addRelation(relationIndex, {
+        type: 'memory_refines_memory',
+        from: memory.id,
+        to: replacedId,
+        projectId: relationProjectId(memory),
+        evidence: memory.summary,
+        active: false
+      });
+    }
+  }
+  if (memory.conflictStatus === 'exception') {
+    for (const relatedId of memory.related || []) {
+      addRelation(relationIndex, {
+        type: 'memory_exception_to_memory',
+        from: memory.id,
+        to: relatedId,
+        projectId: relationProjectId(memory),
+        evidence: memory.activeCondition?.summary || memory.summary
+      });
+    }
+  }
+}
+
 async function rebuildIndexes(root, options = {}) {
   const syncNamespaceFiles = options.syncNamespaceFiles !== false;
   const memoryIndex = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
   const keywordIndex = defaultKeywordIndex();
   const relationIndex = defaultRelationIndex();
   const registry = await loadJson(vibeboxPath(root, 'registry/projects.json'), defaultRegistry());
+  const activeMemoriesForIndex = memoryIndex.memories.filter((memory) => memory.status === 'active');
 
-  for (const memory of memoryIndex.memories) {
+  for (const memory of activeMemoriesForIndex) {
     indexValue(keywordIndex.types, memory.type, memory.id);
     indexValue(keywordIndex.scopes, memory.scope, memory.id);
     indexValue(keywordIndex.topics, memory.topic, memory.id);
@@ -1452,22 +2124,17 @@ async function rebuildIndexes(root, options = {}) {
     for (const tag of memory.tags || []) indexValue(keywordIndex.tags, tag, memory.id);
     for (const domain of memory.domains || []) indexValue(keywordIndex.domains, domain, memory.id);
     for (const keyword of memoryKeywords(memory)) indexValue(keywordIndex.keywords, keyword, memory.id);
-
-    for (const relatedId of memory.related || []) {
-      relationIndex.relations.push({ from: memory.id, to: relatedId, type: 'related', fromProjectId: memory.projectId || null });
-      relationIndex.related[memory.id] = [...new Set([...(relationIndex.related[memory.id] || []), relatedId])];
-    }
-    for (const supersededId of memory.supersedes || []) {
-      relationIndex.relations.push({ from: memory.id, to: supersededId, type: 'supersedes', fromProjectId: memory.projectId || null });
-      relationIndex.supersedes[memory.id] = [...new Set([...(relationIndex.supersedes[memory.id] || []), supersededId])];
-    }
+    addMemoryNode(relationIndex, memory);
+  }
+  for (const memory of activeMemoriesForIndex) {
+    addDerivedMemoryRelations(relationIndex, memory, activeMemoriesForIndex);
   }
 
-  await saveJson(vibeboxPath(root, 'index/project-index.json'), defaultProjectIndex(registry.projects || [], memoryIndex.memories));
+  await saveJson(vibeboxPath(root, 'index/project-index.json'), defaultProjectIndex(registry.projects || [], activeMemoriesForIndex));
   await saveJson(vibeboxPath(root, 'index/keyword-index.json'), keywordIndex);
   await saveJson(vibeboxPath(root, 'index/relation-index.json'), relationIndex);
   if (syncNamespaceFiles) {
-    await syncMemoryNamespaceFiles(root, memoryIndex.memories, registry.projects || []);
+    await syncMemoryNamespaceFiles(root, activeMemoriesForIndex, registry.projects || []);
   }
   await updatePendingIndex(root);
 }
@@ -1530,6 +2197,13 @@ function memoryKeywords(memory) {
     memory.title,
     memory.summary,
     memory.rule,
+    memory.patternType,
+    memory.situation,
+    memory.trigger,
+    memory.preferredBehavior,
+    memory.preventionRule,
+    memory.failedApproach,
+    memory.successfulApproach,
     ...(memory.tags || []),
     ...(memory.domains || []),
     ...(memory.appliesTo || [])
@@ -1550,7 +2224,12 @@ function normalizeKeywordToken(token) {
     scrolls: 'scroll',
     changed: 'change',
     changing: 'change',
-    changes: 'change'
+    changes: 'change',
+    verify: 'verification',
+    verifying: 'verification',
+    validating: 'validation',
+    checks: 'check',
+    tested: 'test'
   };
   return aliases[token] || token;
 }
@@ -1569,23 +2248,25 @@ function wikiLink(label) {
 
 async function rebuildWiki(root) {
   const memoryIndex = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
+  const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
+  const locale = resolveLocale({}, config);
   const active = memoryIndex.memories.filter((memory) => memory.status === 'active');
   const registry = await loadJson(vibeboxPath(root, 'registry/projects.json'), defaultRegistry());
 
-  await writeManagedWikiPage(root, 'Home.md', renderHomeShell(), renderHomeManaged(active));
-  await writeManagedWikiPage(root, 'Project Index.md', renderProjectIndexShell(), renderProjectIndexManaged(registry.projects || []));
+  await writeManagedWikiPage(root, 'Home.md', renderHomeShell(locale), renderHomeManaged(active, locale));
+  await writeManagedWikiPage(root, 'Project Index.md', renderProjectIndexShell(locale), renderProjectIndexManaged(registry.projects || [], locale));
   for (const page of WIKI_PAGES.filter((item) => !['Home.md', 'Project Index.md'].includes(item))) {
     const pageMemories = active.filter((memory) => (
       TYPE_TO_PAGE[memory.type] === page
       && (['Failure Memory.md', 'Success Patterns.md'].includes(page) || memoryScopeUsesGlobalNamespace(memory))
     ));
-    await writeManagedWikiPage(root, page, renderMemoryShell(page), renderMemoryManaged(pageMemories));
+    await writeManagedWikiPage(root, page, renderMemoryShell(page, locale), renderMemoryManaged(pageMemories, locale));
   }
   for (const project of registry.projects || []) {
     const projectMemories = active.filter((memory) => memory.projectId === project.projectId);
-    await writeManagedWikiPage(root, `projects/${project.projectId}.md`, renderProjectShell(project), renderProjectManaged(project, projectMemories));
+    await writeManagedWikiPage(root, `projects/${project.projectId}.md`, renderProjectShell(project, locale), renderProjectManaged(project, projectMemories, locale));
   }
-  await writeConceptWikiPages(root, active);
+  await writeConceptWikiPages(root, active, locale);
 }
 
 function managedBlock(content) {
@@ -1621,13 +2302,13 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
-function renderHomeShell() {
-  return `${wikiFrontmatter('VibeBox Home')}# VibeBox Home
+function renderHomeShell(locale = 'en-US') {
+  return `${wikiFrontmatter(t(locale, 'homeTitle'))}# ${t(locale, 'homeTitle')}
 
 Global local-first memory store for AI coding agents.`;
 }
 
-function renderHomeManaged(memories) {
+function renderHomeManaged(memories, locale = 'en-US') {
   const counts = memories.reduce((acc, memory) => {
     acc[memory.type] = (acc[memory.type] || 0) + 1;
     return acc;
@@ -1635,6 +2316,11 @@ function renderHomeManaged(memories) {
   return `## Wiki
 
 - [[User Preferences]] (${counts.user_preference || 0})
+- [[User Patterns]] (${PATTERN_TYPES.size > 0 ? memories.filter((memory) => PATTERN_TYPES.has(memory.type)).length : 0})
+- [[Design Philosophy]] (${counts.design_philosophy || 0})
+- [[Validation Patterns]] (${counts.validation_pattern || 0})
+- [[Process Patterns]] (${counts.process_pattern || 0})
+- [[Prevention Rules]]
 - [[Global Avoid Rules]] (${counts.avoid_rule || 0})
 - [[Failure Memory]] (${counts.failure_memory || 0})
 - [[Success Patterns]] (${counts.success_pattern || 0})
@@ -1654,28 +2340,28 @@ ${memories.slice(-10).map((memory) => `- ${wikiLink(pageTitle(TYPE_TO_PAGE[memor
 `;
 }
 
-function renderProjectIndexShell() {
-  return `${wikiFrontmatter('Project Index')}# Project Index
+function renderProjectIndexShell(locale = 'en-US') {
+  return `${wikiFrontmatter(t(locale, 'pageProjectIndex'))}# ${t(locale, 'pageProjectIndex')}
 
 Back to [[Home]].`;
 }
 
-function renderProjectIndexManaged(projects) {
-  if (!projects.length) return 'No projects registered yet.';
+function renderProjectIndexManaged(projects, locale = 'en-US') {
+  if (!projects.length) return t(locale, 'none');
   return [
-    '## Projects',
+    `## ${t(locale, 'pageProjectIndex')}`,
     '',
     ...projects.map((project) => `- [[projects/${project.projectId}|${project.projectName || project.projectId}]] (${project.projectId})`)
   ].join('\n');
 }
 
-function renderProjectShell(project) {
+function renderProjectShell(project, locale = 'en-US') {
   return `${wikiFrontmatter(project.projectName || project.projectId)}# ${project.projectName || project.projectId}
 
-Back to [[Project Index]].`;
+Back to [[${t(locale, 'pageProjectIndex')}]].`;
 }
 
-function renderProjectManaged(project, memories) {
+function renderProjectManaged(project, memories, locale = 'en-US') {
   const lines = [
     '## Project',
     '',
@@ -1684,29 +2370,29 @@ function renderProjectManaged(project, memories) {
     `- Primary domain: \`${project.primaryDomain || 'general'}\``,
     `- Last seen: ${project.lastSeenAt || 'unknown'}`,
     '',
-    '## Active Memory',
+    '## Active Pattern Graph',
     ''
   ];
   if (memories.length === 0) {
-    lines.push('- No approved project memory yet.');
+    lines.push(`- ${t(locale, 'none')}`);
   } else {
-    lines.push(...memories.map((memory) => `- \`${memory.id}\` ${memory.title}: ${memory.summary}`));
+    lines.push(...memories.map((memory) => `- \`${memory.id}\` ${wikiLink(localizedPageTitle(TYPE_TO_PAGE[memory.type] || 'Project Index.md', locale))} ${memory.title}: ${memory.summary}`));
   }
   return lines.join('\n');
 }
 
-function renderMemoryShell(pageName) {
-  const title = pageTitle(pageName);
+function renderMemoryShell(pageName, locale = 'en-US') {
+  const title = localizedPageTitle(pageName, locale);
   return `${wikiFrontmatter(title)}# ${title}
 
 Back to [[Home]].`;
 }
 
-function renderMemoryManaged(memories) {
-  return memories.length === 0 ? 'No approved memory yet.' : memories.map(renderMemoryMarkdown).join('\n\n');
+function renderMemoryManaged(memories, locale = 'en-US') {
+  return memories.length === 0 ? t(locale, 'none') : memories.map((memory) => renderMemoryMarkdown(memory, locale)).join('\n\n');
 }
 
-function renderMemoryMarkdown(memory) {
+function renderMemoryMarkdown(memory, locale = 'en-US') {
   const concepts = conceptsForMemory(memory);
   const links = concepts.map(wikiLink).filter(Boolean).join(' ');
 
@@ -1721,12 +2407,17 @@ function renderMemoryMarkdown(memory) {
     `- Applies to: ${(memory.appliesTo || []).map((item) => wikiLink(item) || item).join(', ') || 'Not specified'}`
   ];
 
-  if (memory.type === 'failure_memory') {
+  if (memory.type === 'failure_memory' || memory.type === 'agent_failure_pattern') {
     lines.push(`- Failure type: \`${memory.failureType || 'unclear_requirement'}\``);
     lines.push(`- Prevention rule: ${memory.preventionRule || 'Review before repeating.'}`);
   }
-  if (memory.type === 'success_pattern') {
+  if (memory.type === 'success_pattern' || memory.type === 'agent_success_pattern') {
     lines.push(`- Reuse when: ${(memory.reuseWhen || memory.appliesTo || []).join(', ') || 'Similar work appears.'}`);
+  }
+  if (memory.patternType) {
+    lines.push(`- Pattern type: \`${memory.patternType}\``);
+    lines.push(`- Situation: \`${memory.situation || 'general'}\``);
+    if (memory.preferredBehavior) lines.push(`- Preferred behavior: ${memory.preferredBehavior}`);
   }
   if (memory.type === 'avoid_rule') {
     lines.push(`- Forbidden action: ${memory.forbiddenAction || memory.rule}`);
@@ -1744,26 +2435,44 @@ function renderMemoryMarkdown(memory) {
   return lines.join('\n');
 }
 
-async function writeConceptWikiPages(root, memories) {
+async function writeConceptWikiPages(root, memories, locale = 'en-US') {
   const concepts = new Map();
+  const reservedTitles = new Set(WIKI_PAGES.map(pageTitle));
   for (const memory of memories) {
     for (const concept of conceptsForMemory(memory)) {
+      if (reservedTitles.has(concept)) continue;
       if (!concepts.has(concept)) concepts.set(concept, []);
       concepts.get(concept).push(memory);
     }
   }
 
+  const activeConceptPages = new Set();
   for (const [concept, relatedMemories] of concepts) {
     const pageName = `${safeWikiPageName(concept)}.md`;
+    activeConceptPages.add(pageName);
     const shell = `${wikiFrontmatter(concept)}# ${concept}
 
 Back to [[Home]].`;
     const managed = [
       '## Related memories',
       '',
-      ...relatedMemories.map((memory) => `- \`${memory.id}\` ${wikiLink(pageTitle(TYPE_TO_PAGE[memory.type]))}: ${memory.summary}`)
+      ...relatedMemories.map((memory) => `- \`${memory.id}\` ${wikiLink(localizedPageTitle(TYPE_TO_PAGE[memory.type], locale))}: ${memory.summary}`)
     ].join('\n');
     await writeManagedWikiPage(root, pageName, shell, managed);
+  }
+
+  const wikiRoot = vibeboxPath(root, 'wiki');
+  for (const wikiFile of await listMarkdownFiles(wikiRoot)) {
+    const relative = path.relative(wikiRoot, wikiFile);
+    if (relative.includes(path.sep) || relative.includes(path.posix.sep)) continue;
+    if (WIKI_PAGES.includes(relative) || activeConceptPages.has(relative)) continue;
+    const text = await readFile(wikiFile, 'utf8');
+    if (!text.includes('vibebox: true') || !text.includes(MANAGED_BEGIN)) continue;
+    const concept = pageTitle(relative);
+    const shell = `${wikiFrontmatter(concept)}# ${concept}
+
+Back to [[Home]].`;
+    await writeManagedWikiPage(root, relative, shell, ['## Related memories', '', `- ${t(locale, 'none')}`].join('\n'));
   }
 }
 
@@ -1777,6 +2486,30 @@ function safeWikiPageName(name) {
 
 function conceptsForMemory(memory) {
   const concepts = new Set();
+  if (memory.type === 'failure_memory') {
+    concepts.add('Failure Memory');
+    concepts.add('Prevention Rules');
+    concepts.add('Success Patterns');
+  }
+  if (memory.type === 'success_pattern') concepts.add('Success Patterns');
+  if (memory.type === 'validation_pattern') {
+    concepts.add('User Patterns');
+    concepts.add('Validation Patterns');
+  }
+  if (memory.type === 'process_pattern') {
+    concepts.add('User Patterns');
+    concepts.add('Process Patterns');
+  }
+  if (memory.type === 'design_philosophy') {
+    concepts.add('User Patterns');
+    concepts.add('Design Philosophy');
+  }
+  if (memory.type === 'agent_failure_pattern') {
+    concepts.add('Agent Failure Patterns');
+    concepts.add('Prevention Rules');
+  }
+  if (memory.type === 'agent_success_pattern') concepts.add('Agent Success Patterns');
+  if (memory.type === 'workflow_rule') concepts.add('Agent Workflow');
   const terms = [
     memory.topic,
     ...(memory.domains || []),
@@ -1784,11 +2517,8 @@ function conceptsForMemory(memory) {
   ];
   for (const term of terms) {
     const concept = conceptNameForTerm(term);
-    if (concept) concepts.add(concept);
+      if (concept) concepts.add(concept);
   }
-  if (memory.type === 'failure_memory') concepts.add('Failure Patterns');
-  if (memory.type === 'success_pattern') concepts.add('Success Patterns');
-  if (memory.type === 'workflow_rule') concepts.add('Agent Workflow');
   return [...concepts].slice(0, 8);
 }
 
@@ -1838,7 +2568,11 @@ function scoreMemoryDetailed(memory, task, config = {}) {
   if (memory.scope === 'project' && memory.projectId && memory.projectId === config.projectId) score += 25;
   if (memory.scope === 'project') score += 16;
   if (memory.scope === 'global') score -= 6;
-  if (['avoid_rule', 'failure_memory'].includes(memory.type) && matchScore > 0) score += 35;
+  if (['avoid_rule', 'failure_memory', 'agent_failure_pattern'].includes(memory.type) && matchScore > 0) score += 35;
+  if (config.situation && situationPreferredTypes(config.situation).includes(memory.type)) {
+    score += 22;
+    if (PATTERN_TYPES.has(memory.type)) matchScore += 8;
+  }
   score += Math.min(20, Number(memory.usageCount || 0) * 2);
   const ageMs = Date.now() - Date.parse(memory.updatedAt || memory.createdAt || nowIso());
   if (Number.isFinite(ageMs)) {
@@ -1851,16 +2585,51 @@ function scoreMemory(memory, task) {
   return scoreMemoryDetailed(memory, task).score;
 }
 
+function detectSituation(task) {
+  if (textHasAny(task, ['debug', 'fix', 'failed', 'failure', 'regression', 'error', 'bug'])) return 'debugging';
+  if (textHasAny(task, ['verify', 'test', 'check', 'doctor', '검증'])) return 'verification';
+  if (textHasAny(task, ['architecture', 'design', 'plan', '설계'])) return 'architecture';
+  if (textHasAny(task, ['doc', 'readme', 'documentation', '문서'])) return 'documentation';
+  if (textHasAny(task, ['package', 'install', 'adapter', 'npm link'])) return 'packaging';
+  if (textHasAny(task, ['refactor', 'cleanup'])) return 'refactoring';
+  if (textHasAny(task, ['handoff', 'report', 'summary'])) return 'handoff';
+  return 'implementation';
+}
+
+function situationPreferredTypes(situation) {
+  const bySituation = {
+    implementation: ['process_pattern', 'validation_pattern', 'avoid_rule', 'failure_memory', 'success_pattern', 'agent_failure_pattern'],
+    debugging: ['failure_memory', 'agent_failure_pattern', 'avoid_rule', 'validation_pattern', 'success_pattern', 'agent_success_pattern'],
+    architecture: ['design_philosophy', 'architecture_rule', 'project_decision', 'process_pattern', 'avoid_rule'],
+    documentation: ['response_preference', 'communication_pattern', 'handoff_pattern', 'process_pattern'],
+    verification: ['validation_pattern', 'agent_failure_pattern', 'failure_memory', 'avoid_rule', 'success_pattern'],
+    packaging: ['tooling_preference', 'technology_preference', 'avoid_rule', 'failure_memory', 'validation_pattern'],
+    refactoring: ['design_philosophy', 'architecture_rule', 'process_pattern', 'validation_pattern'],
+    handoff: ['handoff_pattern', 'response_preference', 'communication_pattern', 'process_pattern']
+  };
+  return bySituation[situation] || bySituation.implementation;
+}
+
 function selectRelevantMemories(memories, task, config) {
   const maxItems = config.maxContextItems || 8;
+  const situation = config.situation || detectSituation(task);
   const scored = memories
     .filter((memory) => memory.status === 'active')
-    .map((memory) => ({ memory, ...scoreMemoryDetailed(memory, task, config) }))
+    .filter((memory) => matchesActiveCondition(memory, task))
+    .map((memory) => ({ memory, ...scoreMemoryDetailed(memory, task, { ...config, situation }) }))
     .filter((item) => item.matchScore > 0)
     .sort((left, right) => right.score - left.score);
   const currentProject = scored.filter((item) => memoryBelongsToCurrentProject(item.memory, config.projectId));
   const broader = scored.filter((item) => !memoryBelongsToCurrentProject(item.memory, config.projectId));
-  return [...currentProject, ...broader]
+  const preferredBroader = broader.filter((item) => situationPreferredTypes(situation).includes(item.memory.type));
+  const combined = [...currentProject, ...preferredBroader, ...broader];
+  const seen = new Set();
+  return combined
+    .filter((item) => {
+      if (seen.has(item.memory.id)) return false;
+      seen.add(item.memory.id);
+      return true;
+    })
     .slice(0, maxItems)
     .map((item) => ({ ...item.memory, retrievalScore: item.score, retrievalMatchScore: item.matchScore, lastUsedAt: nowIso() }));
 }
@@ -1872,34 +2641,41 @@ function memoryBelongsToCurrentProject(memory, projectId) {
 export async function generateContextPack(root = process.cwd(), input = {}) {
   await ensureStoreForRead(root);
   const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
+  const locale = resolveLocale(input, config);
   const project = await resolveCurrentProjectIdentity(root);
   const task = input.task || input.text || '';
+  const situation = detectSituation(task);
+  const retrievalConfig = { ...config, projectId: project.projectId, situation };
   const index = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
   const active = index.memories.filter((memory) => memory.status === 'active' && isMemoryVisibleForProject(memory, project));
-  const scored = selectRelevantMemories(active, task, { ...config, projectId: project.projectId });
+  const scored = selectRelevantMemories(active, task, retrievalConfig);
 
   const pendingIndex = await loadJson(vibeboxPath(root, 'index/pending-index.json'), defaultPendingIndex());
   const conflicts = pendingIndex.candidates
     .filter((candidate) => candidate.status === 'pending' && !['no_conflict', 'duplicate'].includes(candidate.conflictStatus))
     .filter((candidate) => isMemoryVisibleForProject(candidate, project))
-    .filter((candidate) => scoreMemoryDetailed(candidate, task, { ...config, projectId: project.projectId }).matchScore > 0)
+    .filter((candidate) => scoreMemoryDetailed(candidate, task, retrievalConfig).matchScore > 0)
     .slice(0, 4);
   const activeConflicts = findActiveMemoryConflicts(scored);
 
   const sections = [
-    'VibeBox Context Pack',
+    t(locale, 'contextTitle'),
     '',
-    'Task:',
+    `${t(locale, 'task')}:`,
     redactSensitive(task),
     '',
-    renderContextSection('Relevant User Preferences', scored.filter((memory) => ['user_preference', 'tooling_preference', 'coding_style', 'design_preference', 'workflow_rule'].includes(memory.type))),
-    renderContextSection('Relevant Project Decisions', scored.filter((memory) => memory.type === 'project_decision')),
-    renderContextSection('Relevant Architecture Rules', scored.filter((memory) => memory.type === 'architecture_rule')),
-    renderContextSection('Relevant Avoid Rules', scored.filter((memory) => memory.type === 'avoid_rule')),
-    renderContextSection('Relevant Failure Memory', scored.filter((memory) => memory.type === 'failure_memory')),
-    renderContextSection('Relevant Success Patterns', scored.filter((memory) => memory.type === 'success_pattern')),
-    renderConflictSection([...conflicts, ...activeConflicts]),
-    'Guidance for AI Agent:',
+    renderContextSection(t(locale, 'relevantUserPreferences'), scored.filter((memory) => ['user_preference', 'tooling_preference', 'technology_preference', 'coding_style', 'design_preference', 'workflow_rule'].includes(memory.type)), { locale, allMemories: scored }),
+    renderContextSection(t(locale, 'relevantUserPatterns'), scored.filter((memory) => ['question_pattern', 'response_preference', 'communication_pattern', 'correction_pattern', 'decision_pattern', 'handoff_pattern'].includes(memory.type)), { locale, allMemories: scored }),
+    renderContextSection(t(locale, 'relevantValidationPatterns'), scored.filter((memory) => memory.type === 'validation_pattern'), { locale, allMemories: scored }),
+    renderContextSection(t(locale, 'relevantProcessPatterns'), scored.filter((memory) => memory.type === 'process_pattern'), { locale, allMemories: scored }),
+    renderContextSection(t(locale, 'relevantDesignPhilosophy'), scored.filter((memory) => memory.type === 'design_philosophy'), { locale, allMemories: scored }),
+    renderContextSection(t(locale, 'relevantProjectDecisions'), scored.filter((memory) => memory.type === 'project_decision'), { locale, allMemories: scored }),
+    renderContextSection(t(locale, 'relevantArchitectureRules'), scored.filter((memory) => memory.type === 'architecture_rule'), { locale, allMemories: scored }),
+    renderContextSection(t(locale, 'relevantAvoidRules'), scored.filter((memory) => memory.type === 'avoid_rule'), { locale, allMemories: scored }),
+    renderContextSection(t(locale, 'relevantFailureMemory'), scored.filter((memory) => ['failure_memory', 'agent_failure_pattern'].includes(memory.type)), { locale, allMemories: scored }),
+    renderContextSection(t(locale, 'relevantSuccessPatterns'), scored.filter((memory) => ['success_pattern', 'agent_success_pattern'].includes(memory.type)), { locale, allMemories: scored }),
+    renderConflictSection([...conflicts, ...activeConflicts], locale),
+    `${t(locale, 'guidanceForAgent')}:`,
     '- Use the memory context as constraints.',
     '- Do not treat low-confidence memory as a final fact.',
     "- If memory conflicts with the user's current explicit request, follow the current explicit request and mention the conflict.",
@@ -1914,18 +2690,46 @@ export async function generateContextPack(root = process.cwd(), input = {}) {
   return redactSensitive(pack);
 }
 
-function renderContextSection(title, memories) {
+function formatMemoryLine(memory, options = {}) {
+  const locale = options.locale || 'en-US';
+  const details = [];
+  if (['failure_memory', 'agent_failure_pattern'].includes(memory.type) && memory.preventionRule) {
+    details.push(`${t(locale, 'prevention')}: ${memory.preventionRule}`);
+    const alternative = (options.allMemories || []).find((candidate) => (
+      ['success_pattern', 'agent_success_pattern'].includes(candidate.type)
+      && (
+        hasTargetOverlap(memory, candidate)
+        || setOverlap(memory.tags || [], candidate.tags || []) >= 1
+        || (textHasAny(memory.summary, ['scroll', 'overflow', 'layout']) && textHasAny(candidate.summary, ['scroll', 'wrapper', 'layout']))
+      )
+    ));
+    if (alternative) {
+      details.push(`${t(locale, 'alternative')}: ${alternative.summary}`);
+    }
+  }
+  if (memory.type === 'success_pattern' && (memory.reuseWhen || []).length > 0) {
+    details.push(`Reuse when: ${(memory.reuseWhen || []).join(', ')}`);
+  }
+  if (memory.patternType && memory.preferredBehavior && memory.preferredBehavior !== memory.summary) {
+    details.push(`${t(locale, 'guidanceForAgent')}: ${memory.preferredBehavior}`);
+  }
+  const detailText = details.length > 0 ? ` ${details.join(' ')}` : '';
+  return `- ${memory.confidence === 'low' ? '[low confidence] ' : ''}${memory.summary}${detailText} [${memory.id}; ${memory.scope}; ${memory.confidence}]`;
+}
+
+function renderContextSection(title, memories, options = {}) {
+  const locale = options.locale || 'en-US';
   return [
     `${title}:`,
-    ...(memories.length > 0 ? memories.map((memory) => `- ${memory.summary} [${memory.id}; ${memory.scope}; ${memory.confidence}]`) : ['- None.']),
+    ...(memories.length > 0 ? memories.map((memory) => formatMemoryLine(memory, options)) : [`- ${t(locale, 'none')}`]),
     ''
   ].join('\n');
 }
 
-function renderConflictSection(conflicts) {
+function renderConflictSection(conflicts, locale = 'en-US') {
   return [
-    'Potential Conflicts:',
-    ...(conflicts.length > 0 ? conflicts.map((candidate) => `- ${candidate.summary} [${candidate.id}; ${candidate.conflictStatus || 'active_conflict'}; ${candidate.confidence || 'medium'}]`) : ['- None.']),
+    `${t(locale, 'potentialConflicts')}:`,
+    ...(conflicts.length > 0 ? conflicts.map((candidate) => `- ${candidate.summary} [${candidate.id}; ${candidate.conflictStatus || 'active_conflict'}; ${candidate.confidence || 'medium'}]`) : [`- ${t(locale, 'none')}`]),
     ''
   ].join('\n');
 }
@@ -1958,35 +2762,41 @@ function findActiveMemoryConflicts(memories) {
 export async function generatePreTaskBrief(root = process.cwd(), input = {}) {
   await ensureStoreForRead(root);
   const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
+  const locale = resolveLocale(input, config);
   const project = await resolveCurrentProjectIdentity(root);
   const task = input.task || input.text || '';
+  const situation = detectSituation(task);
+  const retrievalConfig = { ...config, projectId: project.projectId, situation };
   const index = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
-  const relevant = selectRelevantMemories(index.memories.filter((memory) => isMemoryVisibleForProject(memory, project)), task, { ...config, projectId: project.projectId });
+  const relevant = selectRelevantMemories(index.memories.filter((memory) => isMemoryVisibleForProject(memory, project)), task, retrievalConfig);
   const pendingIndex = await loadJson(vibeboxPath(root, 'index/pending-index.json'), defaultPendingIndex());
   const conflicts = [
     ...pendingIndex.candidates
       .filter((candidate) => candidate.status === 'pending' && !['no_conflict', 'duplicate'].includes(candidate.conflictStatus))
       .filter((candidate) => isMemoryVisibleForProject(candidate, project))
-      .filter((candidate) => scoreMemoryDetailed(candidate, task, { ...config, projectId: project.projectId }).matchScore > 0),
+      .filter((candidate) => scoreMemoryDetailed(candidate, task, retrievalConfig).matchScore > 0),
     ...findActiveMemoryConflicts(relevant)
   ].slice(0, 6);
   const broaderConflictIds = new Set(conflicts.map((conflict) => conflict.broaderMemoryId).filter(Boolean));
 
-  const memoryContext = relevant.filter((memory) => !broaderConflictIds.has(memory.id) && !['failure_memory', 'success_pattern', 'avoid_rule', 'architecture_rule', 'project_decision'].includes(memory.type));
+  const memoryContext = relevant.filter((memory) => !broaderConflictIds.has(memory.id) && ['user_preference', 'tooling_preference', 'technology_preference', 'coding_style', 'design_preference', 'workflow_rule', 'question_pattern', 'response_preference', 'communication_pattern', 'correction_pattern', 'decision_pattern', 'handoff_pattern'].includes(memory.type));
   const projectGuardrails = relevant.filter((memory) => ['avoid_rule', 'architecture_rule', 'project_decision'].includes(memory.type));
   const lines = [
-    'VibeBox Pre-Task Brief',
+    t(locale, 'pretaskTitle'),
     '',
-    'User Task:',
+    `${t(locale, 'userTask')}:`,
     redactSensitive(task),
     '',
-    renderBriefSection('Relevant Memory Context', memoryContext),
-    renderBriefSection('Known Failure Risks', relevant.filter((memory) => memory.type === 'failure_memory')),
-    renderBriefSection('Known Success Patterns', relevant.filter((memory) => memory.type === 'success_pattern')),
-    renderBriefSection('Project Guardrails', projectGuardrails),
-    renderConflictSection(conflicts).trim(),
+    renderBriefSection(t(locale, 'relevantMemoryContext'), memoryContext, { locale, allMemories: relevant }),
+    renderBriefSection(t(locale, 'relevantValidationPatterns'), relevant.filter((memory) => memory.type === 'validation_pattern'), { locale, allMemories: relevant }),
+    renderBriefSection(t(locale, 'relevantProcessPatterns'), relevant.filter((memory) => memory.type === 'process_pattern'), { locale, allMemories: relevant }),
+    renderBriefSection(t(locale, 'relevantDesignPhilosophy'), relevant.filter((memory) => memory.type === 'design_philosophy'), { locale, allMemories: relevant }),
+    renderBriefSection(t(locale, 'projectGuardrails'), projectGuardrails, { locale, allMemories: relevant }),
+    renderBriefSection(t(locale, 'knownFailureRisks'), relevant.filter((memory) => ['failure_memory', 'agent_failure_pattern'].includes(memory.type)), { locale, allMemories: relevant }),
+    renderBriefSection(t(locale, 'knownSuccessPatterns'), relevant.filter((memory) => ['success_pattern', 'agent_success_pattern'].includes(memory.type)), { locale, allMemories: relevant }),
+    renderConflictSection(conflicts, locale).trim(),
     '',
-    'Instruction for AI Agent:',
+    `${t(locale, 'instructionForAgent')}:`,
     '- Analyze the repository before editing.',
     '- Use the memory context as constraints.',
     "- Do not override the user's current explicit request.",
@@ -2007,12 +2817,12 @@ export async function generatePreTaskBrief(root = process.cwd(), input = {}) {
   return redactSensitive(brief);
 }
 
-function renderBriefSection(title, memories) {
+function renderBriefSection(title, memories, options = {}) {
   return [
     `${title}:`,
     ...(memories.length > 0
-      ? memories.map((memory) => `- ${memory.confidence === 'low' ? '[low confidence] ' : ''}${memory.summary} [${memory.id}; ${memory.scope}; ${memory.confidence}]`)
-      : ['- None.']),
+      ? memories.map((memory) => formatMemoryLine(memory, options))
+      : [`- ${t(options.locale || 'en-US', 'none')}`]),
     ''
   ].join('\n');
 }
@@ -2066,8 +2876,10 @@ export async function afterTask(root = process.cwd(), input = {}) {
   };
 }
 
-export async function generateReport(root = process.cwd()) {
+export async function generateReport(root = process.cwd(), input = {}) {
   await initVibeBox(root);
+  const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
+  const locale = resolveLocale(input, config);
   const project = await resolveCurrentProjectIdentity(root);
   const memoryIndex = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
   const pendingIndex = await loadJson(vibeboxPath(root, 'index/pending-index.json'), defaultPendingIndex());
@@ -2077,28 +2889,31 @@ export async function generateReport(root = process.cwd()) {
   const conflicts = visiblePending.filter((candidate) => !['no_conflict', 'duplicate'].includes(candidate.conflictStatus));
 
   return redactSensitive([
-    'VibeBox Memory Report',
-    `Project: ${project.projectId}`,
+    t(locale, 'reportTitle'),
+    `${t(locale, 'project')}: ${project.projectId}`,
     `Global Store: ${vibeboxPath(root)}`,
     '',
-    `Active Memory: ${active.length}`,
-    `Pending Candidates: ${visiblePending.length}`,
-    `Recent Blackbox Events: ${events.length}`,
+    `${t(locale, 'activeMemory')}: ${active.length}`,
+    `${t(locale, 'pendingCandidates')}: ${visiblePending.length}`,
+    `${t(locale, 'recentBlackboxEvents')}: ${events.length}`,
     '',
-    renderReportType('User Preferences', active, ['user_preference', 'coding_style', 'design_preference']),
-    renderReportType('Project Decisions', active, ['project_decision']),
-    renderReportType('Architecture Rules', active, ['architecture_rule']),
-    renderReportType('Avoid Rules', active, ['avoid_rule']),
-    renderReportType('Failure Memory', active, ['failure_memory']),
-    renderReportType('Success Patterns', active, ['success_pattern']),
-    renderReportType('Tooling Preferences', active, ['tooling_preference']),
-    renderReportType('Workflow Rules', active, ['workflow_rule']),
-    'Pending Candidates:',
+    renderReportType(t(locale, 'relevantUserPreferences'), active, ['user_preference', 'coding_style', 'design_preference', 'response_preference', 'communication_pattern']),
+    renderReportType(t(locale, 'relevantValidationPatterns'), active, ['validation_pattern']),
+    renderReportType(t(locale, 'relevantProcessPatterns'), active, ['process_pattern', 'handoff_pattern']),
+    renderReportType(t(locale, 'relevantDesignPhilosophy'), active, ['design_philosophy']),
+    renderReportType(t(locale, 'relevantProjectDecisions'), active, ['project_decision', 'decision_pattern']),
+    renderReportType(t(locale, 'relevantArchitectureRules'), active, ['architecture_rule']),
+    renderReportType(t(locale, 'relevantAvoidRules'), active, ['avoid_rule']),
+    renderReportType(t(locale, 'relevantFailureMemory'), active, ['failure_memory', 'agent_failure_pattern']),
+    renderReportType(t(locale, 'relevantSuccessPatterns'), active, ['success_pattern', 'agent_success_pattern']),
+    renderReportType(t(locale, 'pageToolingPreferences'), active, ['tooling_preference', 'technology_preference']),
+    renderReportType(t(locale, 'pageWorkflowRules'), active, ['workflow_rule']),
+    `${t(locale, 'pendingCandidates')}:`,
     ...(visiblePending.slice(0, 12).map((candidate) => `- ${candidate.id} ${candidate.type}/${candidate.scope}: ${candidate.summary} [${candidate.conflictStatus}; ${candidate.recommendedAction || recommendCandidateAction(candidate).action}]`) || []),
-    visiblePending.length === 0 ? '- None.' : '',
+    visiblePending.length === 0 ? `- ${t(locale, 'none')}` : '',
     '',
-    'Potential Conflicts:',
-    ...(conflicts.length > 0 ? conflicts.map((candidate) => `- ${candidate.id}: ${candidate.summary} [${candidate.conflictStatus}]`) : ['- None.'])
+    `${t(locale, 'potentialConflicts')}:`,
+    ...(conflicts.length > 0 ? conflicts.map((candidate) => `- ${candidate.id}: ${candidate.summary} [${candidate.conflictStatus}]`) : [`- ${t(locale, 'none')}`])
   ].filter((line) => line !== '').join('\n'));
 }
 
@@ -2113,6 +2928,8 @@ function renderReportType(title, memories, types) {
 
 export async function generateBlackboxReport(root = process.cwd(), input = {}) {
   await initVibeBox(root);
+  const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
+  const locale = resolveLocale(input, config);
   const project = await resolveCurrentProjectIdentity(root);
   const limit = Number(input.limit || 10);
   const since = input.since ? Date.parse(input.since) : null;
@@ -2128,41 +2945,41 @@ export async function generateBlackboxReport(root = process.cwd(), input = {}) {
   const recurringFailureTypes = countValues(active.filter((memory) => memory.type === 'failure_memory').map((memory) => memory.failureType || 'unclear_requirement'));
 
   return redactSensitive([
-    'VibeBox Blackbox Report',
-    `Project: ${project.projectId}`,
+    t(locale, 'blackboxTitle'),
+    `${t(locale, 'project')}: ${project.projectId}`,
     '',
-    'Task Timeline:',
-    ...(events.length > 0 ? events.map((event) => `- ${event.createdAt} ${event.outcome || 'unknown'}: ${event.userRequest || event.aiActionSummary || event.id}`) : ['- No events recorded.']),
+    `${t(locale, 'taskTimeline')}:`,
+    ...(events.length > 0 ? events.map((event) => `- ${event.createdAt} ${event.outcome || 'unknown'}: ${event.userRequest || event.aiActionSummary || event.id}`) : [`- ${t(locale, 'none')}`]),
     '',
-    'Failed Approaches:',
-    ...reportEventApproaches(events, 'failure'),
+    `${t(locale, 'failedApproaches')}:`,
+    ...reportEventApproaches(events, 'failure', locale),
     '',
-    'Successful Approaches:',
-    ...reportEventApproaches(events, 'success'),
+    `${t(locale, 'successfulApproaches')}:`,
+    ...reportEventApproaches(events, 'success', locale),
     '',
-    'Rejected Directions:',
+    `${t(locale, 'rejectedDirections')}:`,
     ...events.filter((event) => textHasAny(event.userFeedback || '', ['reject', 'rejected', 'instead'])).map((event) => `- ${event.userFeedback}`),
-    events.some((event) => textHasAny(event.userFeedback || '', ['reject', 'rejected', 'instead'])) ? '' : '- None.',
+    events.some((event) => textHasAny(event.userFeedback || '', ['reject', 'rejected', 'instead'])) ? '' : `- ${t(locale, 'none')}`,
     '',
-    'Confirmed Decisions:',
+    `${t(locale, 'confirmedDecisions')}:`,
     ...(active.filter((memory) => memory.type === 'project_decision').map((memory) => `- ${memory.summary}`) || []),
-    active.some((memory) => memory.type === 'project_decision') ? '' : '- None.',
+    active.some((memory) => memory.type === 'project_decision') ? '' : `- ${t(locale, 'none')}`,
     '',
-    'Recurring Failure Types:',
-    ...formatCounts(recurringFailureTypes),
+    `${t(locale, 'recurringFailureTypes')}:`,
+    ...formatCounts(recurringFailureTypes, locale),
     '',
-    'Frequently Changed Files:',
-    ...formatCounts(changedFiles),
+    `${t(locale, 'frequentlyChangedFiles')}:`,
+    ...formatCounts(changedFiles, locale),
     '',
-    'Prevention Rules:',
-    ...(active.filter((memory) => ['failure_memory', 'avoid_rule'].includes(memory.type)).map((memory) => `- ${memory.preventionRule || memory.forbiddenAction || memory.summary}`) || []),
-    active.some((memory) => ['failure_memory', 'avoid_rule'].includes(memory.type)) ? '' : '- None.'
+    `${t(locale, 'preventionRules')}:`,
+    ...(active.filter((memory) => ['failure_memory', 'avoid_rule', 'agent_failure_pattern'].includes(memory.type)).map((memory) => `- ${memory.preventionRule || memory.forbiddenAction || memory.summary}`) || []),
+    active.some((memory) => ['failure_memory', 'avoid_rule', 'agent_failure_pattern'].includes(memory.type)) ? '' : `- ${t(locale, 'none')}`
   ].filter((line) => line !== '').join('\n'));
 }
 
-function reportEventApproaches(events, outcome) {
+function reportEventApproaches(events, outcome, locale = 'en-US') {
   const selected = events.filter((event) => event.outcome === outcome);
-  if (selected.length === 0) return ['- None.'];
+  if (selected.length === 0) return [`- ${t(locale, 'none')}`];
   return selected.map((event) => `- ${event.aiActionSummary || event.commandResult || event.userRequest || event.id}`);
 }
 
@@ -2174,8 +2991,8 @@ function countValues(values) {
   return [...counts.entries()].sort((left, right) => right[1] - left[1]);
 }
 
-function formatCounts(counts) {
-  return counts.length > 0 ? counts.map(([value, count]) => `- ${value} (${count})`) : ['- None.'];
+function formatCounts(counts, locale = 'en-US') {
+  return counts.length > 0 ? counts.map(([value, count]) => `- ${value} (${count})`) : [`- ${t(locale, 'none')}`];
 }
 
 export async function runDoctor(root = process.cwd()) {
@@ -2335,7 +3152,10 @@ export async function runDoctor(root = process.cwd()) {
 
     const relationIndex = await loadJson(vibeboxPath(root, 'index/relation-index.json'));
     for (const relation of relationIndex.relations || []) {
-      if (!ids.has(relation.from) || !ids.has(relation.to)) {
+      if (relation.active === false) continue;
+      const fromIsMemory = String(relation.from || '').startsWith('mem_');
+      const toIsMemory = String(relation.to || '').startsWith('mem_');
+      if ((fromIsMemory && !ids.has(relation.from)) || (toIsMemory && !ids.has(relation.to))) {
         warnings.push(`relation-index references missing memory: ${relation.from} -> ${relation.to}.`);
       }
     }
@@ -2377,22 +3197,23 @@ async function listMarkdownFiles(dirPath) {
   }
 }
 
-export function formatDoctorReport(report) {
-  const lines = ['VibeBox Doctor', `Status: ${report.ok ? 'ok' : 'error'}`];
+export function formatDoctorReport(report, input = {}) {
+  const locale = resolveLocale(input, {});
+  const lines = [t(locale, 'doctorTitle'), `${t(locale, 'status')}: ${report.ok ? 'ok' : 'error'}`];
   if (report.storeRoot) {
-    lines.push(`Global store: ${report.storeRoot}`);
+    lines.push(`${t(locale, 'globalStore')}: ${report.storeRoot}`);
   }
   if (report.currentProjectId || report.projectIdentity?.projectId) {
-    lines.push(`Current projectId: ${report.currentProjectId || report.projectIdentity.projectId}`);
+    lines.push(`${t(locale, 'currentProjectId')}: ${report.currentProjectId || report.projectIdentity.projectId}`);
   }
   if (report.errors.length > 0) {
-    lines.push('', 'Errors:', ...report.errors.map((error) => `- ${error}`));
+    lines.push('', `${t(locale, 'errors')}:`, ...report.errors.map((error) => `- ${error}`));
   }
   if (report.warnings.length > 0) {
-    lines.push('', 'Warnings:', ...report.warnings.map((warning) => `- ${warning}`));
+    lines.push('', `${t(locale, 'warnings')}:`, ...report.warnings.map((warning) => `- ${warning}`));
   }
   if (report.errors.length === 0 && report.warnings.length === 0) {
-    lines.push('', 'No issues found.');
+    lines.push('', t(locale, 'noIssuesFound'));
   }
   return lines.join('\n');
 }

@@ -11,9 +11,21 @@ VibeBox memory is reviewed local context for AI coding work. It is not a replace
 - `failure_memory`
 - `success_pattern`
 - `tooling_preference`
+- `technology_preference`
 - `coding_style`
 - `design_preference`
 - `workflow_rule`
+- `question_pattern`
+- `response_preference`
+- `process_pattern`
+- `validation_pattern`
+- `design_philosophy`
+- `decision_pattern`
+- `communication_pattern`
+- `correction_pattern`
+- `agent_failure_pattern`
+- `agent_success_pattern`
+- `handoff_pattern`
 
 ## Memory Scopes
 
@@ -37,11 +49,11 @@ Low-confidence memory must not be treated as final fact.
 
 - `active`: reviewed memory available for Context Packs and Pre-Task Briefs.
 - `pending`: candidate memory awaiting review.
-- `superseded`: replaced by a newer approved memory.
 - `rejected`: reviewed and declined.
-- `archived`: kept for history but not active retrieval.
+- `discarded`: replaced or declined and not part of active retrieval.
 
 Pending memory must not be treated as active memory.
+Older `superseded` or `archived` records from previous stores are inactive and must not guide normal work.
 
 ## Conflict Statuses
 
@@ -54,6 +66,22 @@ Pending memory must not be treated as active memory.
 - `needs_user_review`
 
 Direct conflicts, supersedes, exceptions, duplicate records, and unclear candidates require review.
+
+## Active Replacement Policy
+
+VibeBox maintains the latest optimized active graph, not a pile of competing rules.
+
+- Replacement or correction: approving the new memory removes the older same-subject memory from active retrieval, active wiki sections, namespace files, and active relations.
+- Refinement: if the new memory is the latest better expression of the same subject and scope, keep the refined memory and remove the competing older memory.
+- Exception: keep the broader memory only when the exception has a clear `activeCondition`.
+- Ambiguous candidates stay pending.
+- Raw logs can preserve diagnostic events, but raw logs are not normal retrieval context.
+
+## Pattern Memory Policy
+
+User patterns may describe question style, response preference, process habits, validation requirements, design philosophy, decision style, communication style, correction patterns, agent failure patterns, agent success patterns, and handoff style. A single vague statement should remain pending or low confidence; explicit or repeated behavior can become active after review.
+
+Failure memory must include prevention guidance when possible. Success patterns should describe when to reuse the successful approach.
 
 ## Review-First Policy
 

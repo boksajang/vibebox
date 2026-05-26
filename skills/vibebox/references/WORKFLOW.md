@@ -8,10 +8,11 @@ VibeBox is agent-neutral. Any AI coding agent that can read files and run shell 
 2. Judge whether it is meaningful repository work.
 3. Check whether VibeBox is available, the global store exists or can be initialized, and the current working directory identifies the project.
 4. If memory could affect the task, run `pretask` before planning or editing.
-5. Use the Pre-Task Brief to reduce wrong assumptions and avoid repeated failures.
+5. Use the Pre-Task Brief to reduce wrong assumptions, apply current user patterns, and avoid repeated failures.
 6. Perform the task within the current user request.
 7. After meaningful work, capture the result with `aftertask` unless the user opted out.
 8. Keep new memory as pending until review and approval.
+9. Treat active memory as the latest pattern graph, not as a permanent history list.
 
 This is an auto-intervention policy, not a hardcoded trigger list. The agent should consider repository context, change risk, prior memory value, and user preference before deciding whether VibeBox should intervene.
 
@@ -43,7 +44,7 @@ node bin/vibebox.mjs pretask --task "Fix dashboard table scrolling"
 
 On Windows PowerShell, use `vibebox.cmd pretask --task "..."` if the npm `.ps1` shim is blocked.
 
-The brief should guide attention, not replace codebase analysis. Apply active memory as constraints, risk warnings, and project context.
+The brief should guide attention, not replace codebase analysis. Apply active memory as constraints, risk warnings, project context, validation style, process guidance, and failure-prevention rules.
 
 ## After-Task Blackbox Workflow
 
@@ -79,6 +80,8 @@ vibebox approve --safe
 
 Safe approval skips candidates with direct conflicts, supersedes, exceptions, duplicate status, low confidence, or review-needed status.
 
+Approving a replacement, correction, or same-subject refinement removes the older active memory from normal retrieval, Context Packs, Pre-Task Briefs, namespace files, active relations, and active wiki sections. Approving a scoped exception keeps the broader memory active only when the exception has a clear condition.
+
 ## Context Pack Usage
 
 Use `context` when a compact memory pack is enough:
@@ -104,6 +107,8 @@ vibebox blackbox --limit 10
 ```
 
 Neither command should be treated as a raw transcript dump.
+
+Reports and blackbox output summarize the active graph and meaningful task outcomes. Raw logs remain diagnostic and should not be pasted wholesale into prompts.
 
 ## Agent-Neutral Usage Pattern
 

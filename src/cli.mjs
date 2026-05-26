@@ -100,6 +100,7 @@ Usage:
 
 Global store:
   Defaults to ~/.vibebox and can be overridden with VIBEBOX_HOME or --store <path>.
+  Human-facing output can be localized with VIBEBOX_LOCALE, VIBEBOX_LANGUAGE, or --locale.
 `;
 }
 
@@ -108,6 +109,9 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
   const { args, flags } = parseArgs(rest);
   if (flags.store) {
     process.env.VIBEBOX_HOME = String(flags.store);
+  }
+  if (flags.locale) {
+    process.env.VIBEBOX_LOCALE = String(flags.locale);
   }
 
   switch (command) {
@@ -207,19 +211,20 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
     }
 
     case 'report':
-      return generateReport(root);
+      return generateReport(root, { locale: flags.locale });
 
     case 'blackbox': {
       return generateBlackboxReport(root, {
         limit: flags.limit,
         type: flags.type,
-        since: flags.since
+        since: flags.since,
+        locale: flags.locale
       });
     }
 
     case 'doctor': {
       const report = await runDoctor(root);
-      return formatDoctorReport(report);
+      return formatDoctorReport(report, { locale: flags.locale });
     }
 
     case undefined:
