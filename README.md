@@ -1,171 +1,163 @@
 # VibeBox
 
-**Local-first active user pattern graph and blackbox memory middleware for AI coding agents.**
+A local blackbox memory layer for AI coding agents.
 
-VibeBox is not a passive memory archive. It maintains the latest optimized user pattern graph for AI coding work: user preferences, question and response patterns, process habits, validation style, design philosophy, project decisions, failure prevention rules, and success patterns. It keeps one user-level global store and separates each project inside that store by `projectId`, so work repositories stay clean.
+AI coding agents often forget the decisions, failed attempts, review habits, and design preferences that made earlier work succeed. VibeBox keeps the latest useful user and project patterns in a local global store, then returns relevant guidance before the next task. After work, it captures what happened and turns useful lessons into reviewable memory candidates. The approved memory becomes an Obsidian-compatible active graph that humans can inspect. Your repositories stay clean because VibeBox uses one user-level store instead of creating project-local metadata folders.
 
-## What Is VibeBox?
+## Why VibeBox Exists
 
-VibeBox sits in front of Codex, Claude Code, Gemini CLI, Cursor-style agents, or any workflow that can run a local command. The Core is a local CLI; agent-specific files are thin packaging adapters.
+VibeBox helps when AI coding agents:
 
-Before work starts, VibeBox retrieves situation-aware active guidance: current-project decisions first, then relevant user patterns, avoid rules, failure memory, prevention rules, and successful patterns. After work finishes, it records what happened and creates pending memory candidates. Nothing becomes active memory until you review and approve it.
+- repeat failed approaches
+- forget project decisions
+- suggest tools or patterns the user already rejected
+- ignore the user's preferred workflow or validation style
+- lose context across long-running projects and new sessions
+- miss recurring agent failure patterns that should become prevention rules
 
-When a new approved memory replaces, corrects, or refines an older memory for the same subject and scope, VibeBox removes the older record from active retrieval, Context Packs, Pre-Task Briefs, namespace files, and active wiki pages. Raw logs can remain for diagnosis, but raw logs are not normal retrieval context.
+## How It Works
 
-## Why It Exists
+```text
+User task
+-> Agent checks VibeBox memory
+-> VibeBox returns active guidance
+-> Agent works with fewer wrong assumptions
+-> VibeBox captures the result
+-> Useful memory stays pending until review
+-> Approved memory updates the active graph
+```
 
-AI coding agents often forget:
+VibeBox does not blindly pile up memories. It keeps the latest active guidance for each subject and scope. When approved memory replaces, corrects, or refines older memory, the outdated version is removed from normal retrieval, Context Packs, Pre-Task Briefs, and the active wiki.
 
-- which project decisions were already made
-- which approaches failed before
-- what the user explicitly rejected
-- which files or tools should be avoided
-- what worked well enough to reuse
-- how the user asks questions, wants responses structured, validates work, corrects agents, and judges design tradeoffs
+## What VibeBox Remembers
 
-VibeBox makes that memory local, inspectable, connected, and current.
+- project decisions
+- user preferences
+- failed approaches
+- failure prevention rules
+- success patterns
+- validation style
+- process habits
+- design philosophy
+- response preferences
+- agent failure and success patterns
+
+## What VibeBox Is Not
+
+- Not a cloud service
+- Not a passive chat log archive
+- Not a project-local `.vibebox` metadata folder
+- Not tied to one AI coding agent
+- Not a replacement for your coding agent
 
 ## Quick Start
 
-From a clone with Node.js 20 or newer:
+In normal agent workflows, VibeBox commands are called by the agent through the shared skill or an adapter. You can also run them manually for setup, testing, or debugging.
+
+Install from a checkout with Node.js 20 or newer:
 
 ```bash
+git clone https://github.com/boksajang/vibebox.git
+cd vibebox
 npm install
-```
-
-Use it from another project:
-
-```bash
 npm link
-cd path/to/your-project
-vibebox init
-vibebox pretask --task "Fix dashboard table scrolling"
 ```
 
-Direct fallback from the VibeBox repository also works:
+Manual check:
 
 ```bash
-node bin/vibebox.mjs init
-node bin/vibebox.mjs pretask --task "Fix dashboard table scrolling"
+vibebox doctor
 ```
 
-On Windows PowerShell, if the npm `.ps1` shim is blocked by execution policy, use `vibebox.cmd <command>` or the direct `node bin/vibebox.mjs <command>` form.
-
-After the agent finishes:
+Windows PowerShell fallback:
 
 ```bash
-vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling and kept package.json unchanged." --files "src/table.mjs" --commands "npm.cmd test" --outcome success
-vibebox review
-vibebox approve <candidate-id>
+vibebox.cmd doctor
 ```
 
-## Basic Workflow
+Direct fallback from this repository:
 
-1. Run `init` once from a repository to initialize the global store and register the current project.
-2. Run `pretask` before the AI agent starts.
-3. Give the Pre-Task Brief to the agent.
-4. Run `aftertask` when the task is finished.
-5. Review pending memory with `review`.
-6. Promote useful memory with `approve` or skip it with `reject`.
-7. Use `report`, `blackbox`, and `doctor` to inspect project memory health.
+```bash
+node bin/vibebox.mjs doctor
+```
 
-## Codex Plugin Marketplace
-
-The repository includes a Codex marketplace manifest at `.agents/plugins/marketplace.json` and a plugin wrapper at `.codex-plugin/plugin.json`.
-
-Final users should add the marketplace source with Codex instead of hand-editing Codex marketplace files:
+Codex marketplace:
 
 ```bash
 codex plugin marketplace add boksajang/vibebox
 ```
 
-Git URL form is also supported by Codex:
+After adding the marketplace, enable VibeBox from Codex's plugin UI and start a new session.
 
-```bash
-codex plugin marketplace add https://github.com/boksajang/vibebox.git
+## Typical Agent Workflow
+
+Before meaningful repository work, the agent checks VibeBox memory. During work, the agent uses active guidance as constraints, warnings, and preferences. After meaningful work, the agent captures a blackbox event. New memories stay pending until review and approval.
+
+The CLI commands are the engine interface. AI agents can call them automatically through skills or adapters, and users can run them manually when needed.
+
+## Global Store
+
+Default store:
+
+```text
+~/.vibebox
 ```
 
-On Windows PowerShell, if `codex` is blocked by execution policy, use `codex.cmd plugin marketplace add ...`.
+Override:
 
-This registers the VibeBox marketplace source. Enable the `vibebox` plugin from Codex's plugin UI or plugin configuration, then start a new Codex session so the shared VibeBox skill can be loaded. The plugin wrapper gives Codex the skill instructions; the VibeBox Core CLI still needs to be reachable through `vibebox`, `vibebox.cmd`, or `node bin/vibebox.mjs`.
-
-### Local Development / Troubleshooting
-
-For local adapter testing from a checkout:
-
-```bash
-codex.cmd plugin marketplace add path\to\vibebox
+```text
+VIBEBOX_HOME
 ```
 
-Manual `marketplace.json` editing is not the normal install path. If you manually create or edit a Codex marketplace file in PowerShell and Codex reports a JSON parse error at line 1 column 1, rewrite the file as UTF-8 without BOM.
+Projects are separated by `projectId` inside the global store. VibeBox does not create `.vibebox` inside your work repositories.
 
-## Agent Skill Packaging
+## Obsidian-Compatible Active Graph
 
-VibeBox includes a shared agent skill source and thin adapter guides:
+Open this folder in Obsidian:
 
-- [Shared skill](skills/vibebox/SKILL.md): common instructions for any AI coding agent
-- [Command reference](skills/vibebox/references/COMMANDS.md): exact CLI commands and fallback usage
-- [Common adapter](adapters/common/README.md): baseline usage for shell-capable agents
-- [Codex adapter](adapters/codex/README.md): local Codex plugin wrapper guide
-- [Claude adapter](adapters/claude/README.md): Claude-compatible skill packaging guide
+```text
+~/.vibebox/wiki
+```
 
-These adapters do not replace the CLI. VibeBox Core remains agent-neutral.
+The wiki connects projects, failures, prevention rules, success patterns, user patterns, validation style, process habits, design philosophy, and decisions. It shows active/current guidance, not a pile of outdated history.
 
 ## Core Commands
 
 ```bash
-node bin/vibebox.mjs init
-node bin/vibebox.mjs pretask --task "..."
-node bin/vibebox.mjs aftertask --request "..." --summary "..." --outcome success
-node bin/vibebox.mjs context --task "..."
-node bin/vibebox.mjs capture --request "..." --summary "..."
-node bin/vibebox.mjs extract --text "..."
-node bin/vibebox.mjs review
-node bin/vibebox.mjs approve <candidate-id>
-node bin/vibebox.mjs approve --safe
-node bin/vibebox.mjs reject <candidate-id>
-node bin/vibebox.mjs report
-node bin/vibebox.mjs blackbox --limit 10
-node bin/vibebox.mjs doctor
+vibebox init
+vibebox doctor
+vibebox pretask --task "..."
+vibebox aftertask --request "..." --summary "..." --outcome success
+vibebox review
+vibebox approve <candidate-id>
+vibebox report
+vibebox blackbox
 ```
 
-## Global Store
+See the usage guide for the full command reference and fallback forms.
 
-VibeBox writes one global store under `~/.vibebox` by default. Override it with `VIBEBOX_HOME` or `--store <path>` when testing or using a portable setup.
+## Agent Support
 
-The store contains global memory in `global/`, project memory in `projects/{projectId}/`, human-readable active graph Markdown in `wiki/`, retrieval indexes in `index/`, raw diagnostic events in `logs/events.jsonl`, pending candidates in `pending/memory-candidates.jsonl`, and known project identities in `registry/projects.json`.
-
-Projects are identified from the current working directory using git remote `origin`, `package.json` name, git root folder name, then current folder name.
-
-VibeBox does not create `.vibebox/`, pointer files, or hidden metadata in the current working project.
-
-## Obsidian-Compatible Wiki
-
-VibeBox writes human-readable Markdown under `~/.vibebox/wiki/`. If `VIBEBOX_HOME` is set, open `$VIBEBOX_HOME/wiki` instead. The wiki uses normal Markdown, YAML frontmatter, and Obsidian-style `[[links]]`. Open that folder in Obsidian to inspect the active cross-project pattern graph: projects, failures, prevention rules, success patterns, user patterns, design philosophy, validation patterns, process patterns, and decisions. VibeBox only updates managed blocks, so user notes outside those blocks are preserved.
-
-## Locale-Aware Output
-
-Machine-readable JSON field names and enum values remain English. Human-facing headings in wiki pages, Context Packs, Pre-Task Briefs, reports, blackbox output, and doctor output follow `VIBEBOX_LOCALE` or `VIBEBOX_LANGUAGE` when set. Built-in templates currently support `en-US` and `ko-KR`, and VibeBox preserves the original language of approved memory text instead of translating it through an external service.
-
-## Local-First Privacy
-
-VibeBox stores data locally in the user-level global store. It does not send memory anywhere by itself. Sensitive-looking values such as API keys, tokens, passwords, bearer tokens, and connection strings are redacted before they reach active memory, wiki pages, or context output.
-
-Existing project-local `.vibebox/` folders are legacy stores. `vibebox doctor` warns when one is present, but VibeBox does not destructively migrate it automatically.
+- Codex: marketplace/plugin wrapper included
+- Claude: compatible skill guide included
+- Cursor and other agents: usable through the shared skill and CLI when they can read files and run shell commands
+- VibeBox Core: agent-neutral local CLI and memory engine
 
 ## Documentation
 
-- [Concept](docs/CONCEPT.md): AI coding blackbox and local memory model
-- [Usage](docs/USAGE.md): command details and examples
-- [Memory Model](docs/MEMORY_MODEL.md): memory types, scopes, confidence, and conflicts
-- [Obsidian Wiki](docs/OBSIDIAN.md): wiki structure, links, and managed blocks
-- [Common Agent Workflow](skills/vibebox/references/WORKFLOW.md): agent-neutral pre-task and after-task flow
-- [Memory Policy](skills/vibebox/references/MEMORY_POLICY.md): review-first policy, conflicts, and sensitive data
+- [Usage](docs/USAGE.md)
+- [Concept](docs/CONCEPT.md)
+- [Memory Model](docs/MEMORY_MODEL.md)
+- [Obsidian Wiki](docs/OBSIDIAN.md)
+- [Shared Agent Skill](skills/vibebox/SKILL.md)
+- [Agent Workflow](skills/vibebox/references/WORKFLOW.md)
+- [Memory Policy](skills/vibebox/references/MEMORY_POLICY.md)
+- [Common Adapter](adapters/common/README.md)
 
-## License
+## Privacy
 
-MIT License.
+VibeBox is local-first. It does not sync memory to a cloud service by itself. Sensitive-looking values are redacted before active memory, wiki, and context output. Raw logs are diagnostic records, not active guidance.
 
-## Author
+## License / Author
 
-Created by **Boksajang**.
+MIT License. Created by Boksajang.
