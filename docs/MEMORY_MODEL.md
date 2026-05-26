@@ -1,12 +1,13 @@
 # VibeBox Memory Model
 
-VibeBox separates active memory from pending memory.
+VibeBox separates active memory from inactive diagnostic and manual-debug states.
 
-- Pending memory is extracted but not trusted yet.
-- Active memory is reviewed and approved.
+- A blackbox event is captured.
+- Memory candidates are extracted.
+- The Auto Curator decides active, replace, discard, or quarantine.
 - Context and pretask output use active memory first.
-- Pending conflict candidates may appear only as potential conflicts.
-- Replaced or discarded memory is not part of normal retrieval or the active wiki graph.
+- Legacy/manual pending candidates may appear only in debug review flows.
+- Replaced, discarded, quarantined, rejected, and pending memory is not part of normal retrieval, Context Packs, Pre-Task Briefs, the active wiki, or the active relation graph.
 
 ## Memory Types
 
@@ -57,7 +58,7 @@ VibeBox uses:
 - `medium`
 - `high`
 
-Low-confidence memory should not be treated as final fact. It is usually kept pending until the user confirms it.
+Low-confidence memory should not be treated as final fact. It is usually discarded, quarantined, or left in manual-debug pending state instead of becoming active guidance.
 
 ## Status
 
@@ -67,10 +68,11 @@ Memory can be:
 - `pending`
 - `rejected`
 - `discarded`
+- `quarantined`
 
 Only active memory is used as normal retrieval context.
 
-Older `superseded` or `archived` records from previous stores are treated as inactive. Current active replacement removes replaced memory from active indexes and namespace files instead of presenting it as current guidance.
+`pending` is legacy/manual debug state, not the normal workflow. `rejected`, `discarded`, and `quarantined` memory is inactive. Older `superseded` or `archived` records from previous stores are treated as inactive. Current active replacement removes replaced memory from active indexes and namespace files instead of presenting it as current guidance.
 
 ## Conflict Status
 
@@ -84,11 +86,11 @@ New candidates are compared with active memory and marked as:
 - `supersedes`
 - `needs_user_review`
 
-`approve --safe` skips anything that needs explicit review.
+The Auto Curator uses these statuses to decide whether a candidate can become active, should replace an active record, should be discarded as noise, or should be quarantined for manual inspection. `approve --safe` is a manual/debug helper and skips anything that needs explicit review.
 
 ## Review Recommendations
 
-`vibebox review` shows a recommended action:
+`vibebox review` shows a recommended action for legacy/manual debug candidates:
 
 - `approve`
 - `reject`
@@ -96,7 +98,7 @@ New candidates are compared with active memory and marked as:
 - `supersede`
 - `keep pending`
 
-The recommendation is advisory. The user still controls approval.
+The recommendation is advisory. Normal users should not need this after every task; it exists for inspection and override.
 
 ## Sensitive Data
 
@@ -108,12 +110,12 @@ Classification is deterministic and heuristic-based. It considers permanence, sc
 
 ## Conflict Handling Notes
 
-- `duplicate`: do not auto-promote; review or reject as noise.
-- `refinement`: approving a more specific memory for the same subject removes the competing broader active record when they should not stand side by side.
-- `exception`: approve only when the exception scope is clear; keep the broader memory active and attach an `activeCondition` to the exception.
-- `direct_conflict`: keep pending until a human decides.
-- `supersedes`: approving the new memory removes the older memory from active retrieval, active relation graph, namespace files, Context Packs, Pre-Task Briefs, and active wiki sections.
-- `needs_user_review`: keep pending until the missing context is clarified.
+- `duplicate`: discard as noise unless manual inspection finds missing value.
+- `refinement`: activate the better expression and remove the competing older memory when they should not stand side by side.
+- `exception`: activate only when the exception scope is clear; keep the broader memory active and attach an `activeCondition` to the exception.
+- `direct_conflict`: quarantine until a human decides.
+- `supersedes`: activate the new memory and remove the older memory from active retrieval, active relation graph, namespace files, Context Packs, Pre-Task Briefs, and active wiki sections.
+- `needs_user_review`: quarantine or leave in manual-debug pending state until the missing context is clarified.
 
 ## Pattern Fields
 
@@ -138,6 +140,8 @@ Memory records keep stable English field names. Pattern-oriented records may inc
 
 Failure memory can also include `failedApproach`, `failureReason`, `userCorrection`, `recurrenceRisk`, `relatedFiles`, and a `preventionRule`. Success patterns can include `successfulApproach`, `whyItWorked`, and `reuseWhen`.
 
+Technical success and user acceptance are different signals. Passing tests, clean command output, or completed edits can support technical outcome fields, but a user-rejected result must not become `success_pattern`.
+
 ## Relation Index
 
 `index/relation-index.json` stores active graph edges with stable English relation types such as `project_has_failure`, `failure_prevented_by_rule`, `success_resolves_failure`, `user_prefers_validation`, `agent_failed_by_pattern`, `memory_replaces_memory`, `memory_refines_memory`, and `memory_exception_to_memory`.
@@ -146,8 +150,12 @@ Each relation has `id`, `type`, `from`, `to`, `projectId`, `strength`, `evidence
 
 ## Runtime State Policy
 
-Memory records, raw logs, pending candidates, indexes, registry entries, and wiki pages live under the user-level global store, `~/.vibebox` by default. `VIBEBOX_HOME` can override that location.
+Memory records, raw logs, manual-debug pending candidates, indexes, registry entries, and wiki pages live under the user-level global store, `~/.vibebox` by default. `VIBEBOX_HOME` can override that location.
 
 Project memory is stored under `projects/{projectId}/`. User-wide preferences, tooling preferences, avoid rules, workflow rules, coding style, and architecture patterns are stored under `global/`. The Obsidian-compatible wiki under `wiki/` connects all projects into one graph. The current project folder remains clean.
 
 Existing project-local `.vibebox/` folders are legacy stores. VibeBox warns about them in `doctor` and does not run destructive automatic migration.
+
+## Adaptive Language
+
+Stored memory text is preserved as captured. Human-facing output follows explicit CLI options, environment variables, config, and user input language policy, and is not limited to `ko-KR` or `en-US`. JSON field names, enum values, and command names stay English. VibeBox does not use external translation APIs.

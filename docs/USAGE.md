@@ -48,10 +48,10 @@ The global store contains:
 - `wiki/` for the Obsidian-compatible cross-project wiki
 - `index/` for retrieval indexes
 - `logs/events.jsonl` for raw blackbox events with `projectId`
-- `pending/memory-candidates.jsonl` for review candidates with `projectId` or `scope`
+- `pending/memory-candidates.jsonl` for legacy/manual debug candidates with `projectId` or `scope`
 - `registry/projects.json` for known project identities
 
-`config.json` includes `locale`, `outputLanguage`, `wikiLanguage`, `reportLanguage`, and `contextLanguage`. Set `VIBEBOX_LOCALE=ko-KR` or `VIBEBOX_LANGUAGE=ko-KR` to localize human-facing headings. JSON field names, command names, and enum values remain English.
+`config.json` includes `locale`, `outputLanguage`, `wikiLanguage`, `reportLanguage`, and `contextLanguage`. Human-facing output follows explicit CLI options, `VIBEBOX_LOCALE`, `VIBEBOX_LANGUAGE`, config, and user input language policy. It is not limited to Korean or English. Stored memory text is preserved, JSON field names, command names, and enum values remain English, and VibeBox does not use external translation APIs.
 
 ## Project Initialization
 
@@ -97,7 +97,7 @@ For longer notes:
 vibebox aftertask --from-file task-result.txt
 ```
 
-`aftertask` writes a blackbox event and creates pending memory candidates. It does not create active memory.
+`aftertask` writes a blackbox event, extracts candidates, and lets the Auto Curator decide whether each candidate becomes active, replaces older active memory, is discarded, or is quarantined. Users do not need to review memory after every task.
 
 ## Capture And Extract
 
@@ -107,13 +107,15 @@ vibebox aftertask --from-file task-result.txt
 vibebox capture --request "..." --summary "..." --outcome partial
 ```
 
-`extract` turns text or event context into pending candidates:
+`extract` turns text or event context into memory candidates for Auto Curator handling:
 
 ```bash
 vibebox extract --text "Do not modify package.json unless explicitly requested."
 ```
 
-## Review And Approval
+## Manual Review And Override
+
+Normal workflows are auto-curated. Use these commands for debugging, audits, or manual override:
 
 ```bash
 vibebox review
@@ -121,13 +123,13 @@ vibebox approve <candidate-id>
 vibebox reject <candidate-id>
 ```
 
-Safe approval promotes only candidates with sufficient confidence and no known conflict:
+Safe approval is a manual/debug helper for no-conflict candidates:
 
 ```bash
 vibebox approve --safe
 ```
 
-Conflict, exception, supersede, duplicate, low-confidence, and review-needed candidates remain pending for explicit review. When an approved candidate replaces or refines an older active memory for the same subject and scope, the older memory is removed from active retrieval, active wiki sections, active relations, and namespace files.
+Conflict, exception, supersede, duplicate, low-confidence, and review-needed candidates are discarded, quarantined, or left in legacy/manual pending state when automatic handling is not appropriate. When a candidate replaces or refines older active memory for the same subject and scope, the older memory is removed from active retrieval, Context Packs, Pre-Task Briefs, active wiki sections, active relations, and namespace files.
 
 ## Context Pack
 
@@ -146,7 +148,7 @@ vibebox report
 vibebox blackbox --limit 10
 ```
 
-`report` summarizes active and pending memory. `blackbox` summarizes recent task events, failed approaches, successful approaches, changed files, decisions, and prevention rules.
+`report` summarizes active memory and any legacy/manual debug pending state. `blackbox` summarizes recent task events, failed approaches, successful approaches, changed files, decisions, and prevention rules.
 
 Reports and blackbox output are active-graph oriented. Raw logs remain diagnostic and are not treated as current guidance.
 
@@ -168,13 +170,13 @@ vibebox init
 vibebox pretask --task "Check project memory before editing"
 vibebox aftertask --request "Check project memory before editing" --summary "Inspected project state." --outcome success
 vibebox extract --text "Do not modify package.json unless explicitly requested."
-vibebox review
-vibebox approve <candidate-id>
 vibebox context --task "Change dependency handling"
 vibebox report
 vibebox blackbox --limit 5
 vibebox doctor
 ```
+
+For manual debugging or override, add `vibebox review`, `vibebox approve <candidate-id>`, or `vibebox reject <candidate-id>`.
 
 On Windows PowerShell, use `vibebox.cmd` for the same commands if `vibebox` is blocked.
 
@@ -183,7 +185,7 @@ On Windows PowerShell, use `vibebox.cmd` for the same commands if `vibebox` is b
 - If `vibebox` is not found, run `npm link` from the VibeBox repository or use `node bin/vibebox.mjs <command>`.
 - If PowerShell blocks `vibebox.ps1`, use `vibebox.cmd <command>`.
 - If you need an isolated store, set `VIBEBOX_HOME` before running commands.
-- If pre-task output is empty, approve relevant pending memory first with `review` and `approve`.
+- If pre-task output is empty, check whether events were captured and inspect active memory with `report`. Use `review` and `approve` only for legacy/manual override.
 - If indexes or wiki files look inconsistent, run `vibebox doctor`.
 - If `doctor` reports an old project-local `.vibebox/`, treat it as legacy. No destructive migration is performed automatically.
 

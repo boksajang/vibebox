@@ -29,9 +29,9 @@ Project Index.md
 projects/{projectId}.md
 ```
 
-VibeBox may also create concept pages such as `Dependency Management.md` or `Dashboard Development.md` when approved memory links naturally to those topics.
+VibeBox may also create concept pages such as `Dependency Management.md` or `Dashboard Development.md` when active memory links naturally to those topics.
 
-The active graph pages show current guidance only. Replaced, rejected, discarded, or older superseded memory is not rendered as current guidance.
+The active graph pages show current guidance only. Replaced, rejected, discarded, quarantined, legacy pending, or older superseded memory is not rendered as current guidance.
 
 ## Markdown Format
 
@@ -73,12 +73,12 @@ Human notes outside managed blocks are preserved.
 
 ## Raw Logs Stay Out of the Wiki
 
-The wiki stores summaries, rules, decisions, failure causes, prevention guidance, success patterns, user patterns, design philosophy, validation patterns, process patterns, and links. Raw event logs stay in `~/.vibebox/logs/events.jsonl` with `projectId` metadata and are not rendered as active guidance.
+The wiki stores summaries, rules, decisions, failure causes, prevention guidance, success patterns, user patterns, design philosophy, validation patterns, process patterns, and links from the active graph. Raw event logs stay in `~/.vibebox/logs/events.jsonl` with `projectId` metadata and are diagnostic only; they are not rendered as active guidance.
 
 ## Index Consistency
 
-`vibebox doctor` checks whether approved memories are connected to wiki pages and whether active index references point to existing memory records.
+`vibebox doctor` checks whether active memories are connected to wiki pages and whether active index references point to existing memory records.
 
 ## Locale
 
-Wiki filenames remain stable for tooling and Obsidian links. Human-facing page headings and managed section titles follow the configured locale. Built-in locales are `en-US` and `ko-KR`; memory text itself is preserved in the language it was captured in.
+Wiki filenames remain stable for tooling and Obsidian links. Human-facing page headings and managed section titles follow explicit CLI options, environment variables, config, and user input language policy. Memory text itself is preserved in the language it was captured in. JSON field names and enum values stay English, and VibeBox does not call external translation APIs.

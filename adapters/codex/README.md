@@ -76,11 +76,12 @@ After meaningful work:
 vibebox aftertask --request "..." --summary "..." --outcome success
 ```
 
-Then review and promote memory:
+VibeBox extracts candidates and runs Auto Curator by default. Use review commands only for debugging, audits, or manual override:
 
 ```bash
 vibebox review
 vibebox approve <candidate-id>
+vibebox reject <candidate-id>
 ```
 
 ## Current Limitations

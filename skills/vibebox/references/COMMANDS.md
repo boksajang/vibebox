@@ -27,14 +27,15 @@ VIBEBOX_HOME=/path/to/store vibebox <command>
 vibebox <command> --store /path/to/store
 ```
 
-Locale override for human-facing headings:
+Language override for human-facing headings:
 
 ```bash
 VIBEBOX_LOCALE=ko-KR vibebox pretask --task "검증 절차 확인"
 VIBEBOX_LANGUAGE=en-US vibebox report
+vibebox report --language ja-JP
 ```
 
-JSON field names, command names, and enum values stay English.
+Human-facing output follows explicit CLI options, environment variables, config, and user input language policy. Stored memory text is preserved. JSON field names, command names, and enum values stay English.
 
 ## `vibebox init`
 
@@ -46,42 +47,42 @@ JSON field names, command names, and enum values stay English.
 ## `vibebox capture`
 
 - Purpose: Append a raw blackbox event from CLI options to the global log with the current `projectId`.
-- Typical usage: Record a request, summary, command result, changed files, feedback, and outcome.
-- Example: `vibebox capture --request "Fix table scrolling" --summary "Kept package.json unchanged" --changed-files "src/table.mjs" --outcome success`
-- Notes: Supports `--event-type`, `--request`, `--summary`, `--command`, `--command-result`, `--changed-files`, `--feedback`, and `--outcome`.
+- Typical usage: Record a request, summary, command result, changed files, feedback, technical outcome, user acceptance, and final outcome.
+- Example: `vibebox capture --request "Fix table scrolling" --summary "Kept package.json unchanged" --changed-files "src/table.mjs" --technical-outcome success --user-acceptance accepted`
+- Notes: Supports `--event-type`, `--request`, `--summary`, `--command`, `--command-result`, `--changed-files`, `--feedback`, `--outcome`, `--technical-outcome`, `--user-acceptance`, and `--final-outcome`. Technical success and user acceptance are separate; user rejection wins over a passing command.
 
 ## `vibebox extract`
 
-- Purpose: Convert raw text or current-project event context into pending memory candidates in the global store.
-- Typical usage: Create candidates from a task summary or direct user statement.
+- Purpose: Convert raw text or current-project event context into memory candidates, then run the Auto Curator.
+- Typical usage: Create active guidance, replacements, discarded noise, or quarantined candidates from a task summary or direct user statement.
 - Example: `vibebox extract --text "Do not modify package.json unless explicitly requested."`
-- Notes: Supports `--text`, `--file`, `--event`, and `--last-event`. Candidates are not active until approved.
+- Notes: Supports `--text`, `--file`, `--event`, `--last-event`, and `--manual-review`. Normal extraction auto-curates candidates; `--manual-review` keeps candidates pending for debug or override workflows.
 
 ## `vibebox review`
 
-- Purpose: Show pending memory candidates for human review.
-- Typical usage: Inspect candidates before approving or rejecting them.
+- Purpose: Show legacy/manual debug pending candidates.
+- Typical usage: Inspect candidates only when debugging, auditing, or overriding Auto Curator decisions.
 - Example: `vibebox review`
 - Notes: Prints ids, types, scopes, confidence, conflict status, and recommended action.
 
 ## `vibebox approve`
 
-- Purpose: Promote one pending candidate into active memory.
-- Typical usage: Approve a reviewed candidate by id.
+- Purpose: Manually promote one pending candidate into active memory.
+- Typical usage: Override or debug Auto Curator behavior by id.
 - Example: `vibebox approve mem_abc123`
 - Notes: Approval updates active indexes, namespace memory files, relation index, and related wiki pages. `global` memory goes under `global/`; project/task memory goes under `projects/{projectId}/`. Replacement, correction, and same-subject refinement remove older competing memory from active retrieval.
 
 ## `vibebox approve --safe`
 
-- Purpose: Promote only candidates that are safe for batch approval.
-- Typical usage: Approve no-conflict candidates while leaving conflict or uncertain candidates pending.
+- Purpose: Manually promote only candidates that are safe for batch approval.
+- Typical usage: Batch-approve legacy/manual debug candidates while leaving conflict or uncertain candidates pending.
 - Example: `vibebox approve --safe`
 - Notes: Direct conflicts, supersedes, exceptions, duplicates, low-confidence records, and review-needed candidates are skipped.
 
 ## `vibebox reject`
 
-- Purpose: Mark a pending candidate as rejected.
-- Typical usage: Remove an unwanted candidate from review flow without deleting raw history.
+- Purpose: Mark a pending candidate as rejected during manual override.
+- Typical usage: Remove an unwanted candidate from debug review flow without deleting raw history.
 - Example: `vibebox reject mem_abc123 --reason "Too task-specific"`
 - Notes: Rejection applies to pending candidates only.
 
@@ -101,14 +102,14 @@ JSON field names, command names, and enum values stay English.
 
 ## `vibebox aftertask`
 
-- Purpose: Capture task completion details and create pending memory candidates.
+- Purpose: Capture task completion details, extract memory candidates, and run Auto Curator.
 - Typical usage: Run after meaningful coding or design work.
-- Example: `vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling" --files "src/table.mjs" --commands "npm.cmd test" --outcome success`
-- Notes: Supports `--request`, `--summary`, `--files`, `--commands`, `--command-results`, `--errors`, `--feedback`, `--outcome`, `--notes`, and `--from-file`.
+- Example: `vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling" --files "src/table.mjs" --commands "npm.cmd test" --technical-outcome success --user-acceptance accepted`
+- Notes: Supports `--request`, `--summary`, `--files`, `--commands`, `--command-results`, `--errors`, `--feedback`, `--outcome`, `--technical-outcome`, `--user-acceptance`, `--final-outcome`, `--notes`, `--from-file`, and `--manual-review`. User-rejected outcomes become failure/correction/prevention guidance instead of `success_pattern`.
 
 ## `vibebox report`
 
-- Purpose: Summarize current-project active memory, relevant global memory, and pending candidates.
+- Purpose: Summarize current-project active memory, relevant global memory, user patterns, and manual-debug pending state.
 - Typical usage: Inspect memory state without dumping raw logs.
 - Example: `vibebox report`
 - Notes: Useful before cleanup, review, or sharing project memory state with an agent.

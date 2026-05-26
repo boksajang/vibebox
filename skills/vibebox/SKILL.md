@@ -7,16 +7,16 @@ description: Use this skill when an AI coding task should consult VibeBox memory
 
 ## What VibeBox Is
 
-VibeBox is universal agent-neutral local-first active user pattern graph and blackbox memory middleware for AI coding agents.
+VibeBox is universal agent-neutral local-first auto-curated active user pattern graph and blackbox memory middleware for AI coding agents.
 VibeBox Core is a local CLI and memory engine. This skill tells an AI coding agent when and how to call that CLI; it does not replace repository inspection or the user's current request.
 
 Past memory is context, not authority. Pending memory must not be treated as active memory.
-VibeBox is not a passive archive: active memory is the latest reviewed guidance set. Replaced, corrected, or discarded memory must not be treated as current guidance.
+VibeBox is not a passive archive or a review-first memory manager: active memory is the latest optimized guidance set chosen by the Auto Curator or a manual override. Replaced, corrected, discarded, quarantined, rejected, or legacy pending memory must not be treated as current guidance.
 
 For details, load these references only when needed:
 
 - [COMMANDS.md](references/COMMANDS.md) for exact CLI commands and examples.
-- [WORKFLOW.md](references/WORKFLOW.md) for standard pre-task, after-task, review, and reporting flows.
+- [WORKFLOW.md](references/WORKFLOW.md) for standard pre-task, after-task, auto-curation, manual override, and reporting flows.
 - [MEMORY_POLICY.md](references/MEMORY_POLICY.md) for memory types, confidence, conflicts, and privacy rules.
 
 ## Auto-Intervention Principle
@@ -33,13 +33,13 @@ Do not wait for the user to say "use VibeBox" every time. Consider VibeBox autom
 
 Use VibeBox to reduce repeated explanation and repeated mistakes:
 
-- Retrieve reviewed active memory before meaningful repository work.
+- Retrieve active memory before meaningful repository work.
 - Treat avoid rules and failure memory as high-priority warnings.
 - Treat failure memory as prevention guidance, not just history.
 - Apply validation, process, design, correction, and agent failure/success patterns when relevant.
 - Prefer project-specific memory before global memory.
 - Capture meaningful task outcomes after work.
-- Keep memory promotion review-first.
+- Let VibeBox auto-curate captured events into the active graph.
 
 Do not let VibeBox memory override the user's current explicit request. If past memory conflicts with the current request, mention the conflict and follow the current request.
 
@@ -104,21 +104,30 @@ After meaningful coding or design work:
 7. Run after-task capture when appropriate.
 8. Prefer `vibebox aftertask ...`.
 9. If the global command is unavailable inside the VibeBox repository, use `node bin/vibebox.mjs aftertask ...`.
-10. Extract memory candidates if the workflow supports it.
-11. Do not auto-approve memory candidates.
-12. Show review instructions when useful.
+10. Let VibeBox extract candidates and run Auto Curator handling.
+11. Treat user acceptance and technical success as separate signals.
+12. Show review instructions only when debugging or manual override is useful.
 13. Do not store secrets as memory.
 
-## Review-First Memory Policy
+## Auto-Curated Memory Policy
 
-New memory candidates require review before becoming active. Active memory is the only memory that should guide normal pre-task context.
+The normal flow is:
 
-- Do not treat pending memory as an instruction.
-- Do not auto-approve direct conflicts, supersedes, exceptions, duplicate records, or uncertain memory.
-- When an approved memory replaces or refines an older memory for the same subject and scope, expect VibeBox to remove the older memory from active retrieval and active wiki sections.
+```text
+event captured
+-> candidates extracted
+-> Auto Curator decides active / replace / discard / quarantine
+-> active graph, wiki, and context updated
+```
+
+Active memory is the only memory that should guide normal pre-task context.
+
+- Do not treat pending memory as an instruction; pending is legacy/manual debug state.
+- Do not treat rejected, discarded, quarantined, or replaced memory as current guidance.
+- When memory replaces or refines older memory for the same subject and scope, expect VibeBox to remove the older memory from active retrieval, Context Packs, Pre-Task Briefs, active relations, and active wiki sections.
 - Scoped exceptions can coexist with broader rules only when their condition is clear.
-- Use `vibebox review`, `vibebox approve <candidate-id>`, `vibebox approve --safe`, and `vibebox reject <candidate-id>` for promotion decisions.
-- When in doubt, keep memory pending and ask for review.
+- Use `vibebox review`, `vibebox approve <candidate-id>`, `vibebox approve --safe`, and `vibebox reject <candidate-id>` only for debugging, audits, and manual override.
+- If the user rejects an outcome, do not let it become `success_pattern` even when commands passed.
 
 ## Conflict Handling Policy
 
@@ -182,11 +191,11 @@ VibeBox does not create project-local `.vibebox` folders, pointer files, or hidd
 
 ## Locale Notes
 
-Human-facing headings follow `VIBEBOX_LOCALE`, `VIBEBOX_LANGUAGE`, or config locale when available. JSON field names, command names, and enum values stay English. Do not translate the user's stored memory text yourself; preserve the captured language unless the user asks otherwise.
+Human-facing headings follow explicit CLI options, `VIBEBOX_LOCALE`, `VIBEBOX_LANGUAGE`, config, and user input language policy when available. They are not limited to `ko-KR` or `en-US`. JSON field names, command names, and enum values stay English. Do not translate the user's stored memory text yourself; preserve the captured language unless the user asks otherwise. Do not call external translation APIs.
 
 ## Troubleshooting
 
 - If `vibebox` is not found, use `node bin/vibebox.mjs <command>` from the repository root.
 - If the global store is missing and the user wants VibeBox, run `vibebox init` or `node bin/vibebox.mjs init`.
-- If pre-task output looks irrelevant, inspect active memory with `vibebox report` and pending memory with `vibebox review`.
+- If pre-task output looks irrelevant, inspect active memory with `vibebox report`; use `vibebox review` only for legacy/manual debug state.
 - If memory/index health is unclear, run `vibebox doctor`.

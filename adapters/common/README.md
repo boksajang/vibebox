@@ -19,7 +19,8 @@ Reference files live under:
 5. Treat active memory as the current pattern graph: context and constraints, not authority over the current request.
 6. Inspect the repository before editing.
 7. Run `vibebox aftertask ...` after meaningful work.
-8. Keep memory promotion review-first with `review`, `approve`, and `reject`.
+8. Let VibeBox auto-curate captured events into active, replaced, discarded, or quarantined memory.
+9. Use `review`, `approve`, and `reject` only for debugging, audits, or manual override.
 
 ## Storage Roles
 
@@ -28,14 +29,16 @@ Reference files live under:
 - `~/.vibebox/wiki/`: human-readable Markdown for inspection.
 - `~/.vibebox/index/`: JSON indexes for retrieval.
 - `~/.vibebox/logs/`: raw blackbox event records.
-- `~/.vibebox/pending/`: memory candidates awaiting review.
+- `~/.vibebox/pending/`: legacy/manual debug candidates.
 - `~/.vibebox/registry/`: project identity registry data.
 
 Set `VIBEBOX_HOME` to use a different store root. VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects.
 
-The wiki and relation index represent the active graph only: current project decisions, failure prevention rules, success patterns, validation/process/design patterns, user preferences, and agent failure/success patterns. Raw logs are diagnostic and should not be treated as prompt context by default.
+The wiki, relation index, Context Packs, and Pre-Task Briefs represent the active graph only: current project decisions, failure prevention rules, success patterns, validation/process/design patterns, user preferences, and agent failure/success patterns. Rejected, discarded, quarantined, replaced, and legacy pending memory is excluded. Raw logs are diagnostic and should not be treated as prompt context by default.
 
-Set `VIBEBOX_LOCALE` or `VIBEBOX_LANGUAGE` to localize human-facing headings. JSON field names and command names stay English.
+Human-facing output follows explicit CLI options, `VIBEBOX_LOCALE`, `VIBEBOX_LANGUAGE`, config, and user input language policy. It is not limited to Korean or English. Stored memory text is preserved, JSON field names and command names stay English, and adapters must not call external translation APIs.
+
+Technical success and user acceptance are separate. If the user rejects an outcome, adapters must not report it as a reusable `success_pattern`.
 
 ## Privacy Rule
 

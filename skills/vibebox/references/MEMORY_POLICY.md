@@ -1,6 +1,6 @@
 # VibeBox Memory Policy
 
-VibeBox memory is reviewed local context for AI coding work. It is not a replacement for the current user request or the repository's actual state.
+VibeBox memory is auto-curated local context for AI coding work. It is not a replacement for the current user request or the repository's actual state.
 
 ## Memory Types
 
@@ -47,12 +47,13 @@ Low-confidence memory must not be treated as final fact.
 
 ## Active Vs Pending Memory
 
-- `active`: reviewed memory available for Context Packs and Pre-Task Briefs.
-- `pending`: candidate memory awaiting review.
-- `rejected`: reviewed and declined.
-- `discarded`: replaced or declined and not part of active retrieval.
+- `active`: optimized current memory available for Context Packs and Pre-Task Briefs.
+- `pending`: legacy/manual debug candidate state.
+- `rejected`: manually declined and inactive.
+- `discarded`: replaced or declined and inactive.
+- `quarantined`: held out of normal use because it is risky, conflicting, or unclear.
 
-Pending memory must not be treated as active memory.
+Pending, rejected, discarded, quarantined, and replaced memory must not be treated as active memory.
 Older `superseded` or `archived` records from previous stores are inactive and must not guide normal work.
 
 ## Conflict Statuses
@@ -65,27 +66,38 @@ Older `superseded` or `archived` records from previous stores are inactive and m
 - `supersedes`
 - `needs_user_review`
 
-Direct conflicts, supersedes, exceptions, duplicate records, and unclear candidates require review.
+Direct conflicts, supersedes, exceptions, duplicate records, and unclear candidates are handled by the Auto Curator. Risky or unclear candidates are discarded, quarantined, or left in legacy/manual debug pending state instead of becoming active guidance.
 
 ## Active Replacement Policy
 
 VibeBox maintains the latest optimized active graph, not a pile of competing rules.
 
-- Replacement or correction: approving the new memory removes the older same-subject memory from active retrieval, active wiki sections, namespace files, and active relations.
+- Replacement or correction: activating the new memory removes the older same-subject memory from active retrieval, active wiki sections, namespace files, and active relations.
 - Refinement: if the new memory is the latest better expression of the same subject and scope, keep the refined memory and remove the competing older memory.
 - Exception: keep the broader memory only when the exception has a clear `activeCondition`.
-- Ambiguous candidates stay pending.
+- Ambiguous candidates are quarantined or left in legacy/manual debug pending state.
 - Raw logs can preserve diagnostic events, but raw logs are not normal retrieval context.
 
 ## Pattern Memory Policy
 
-User patterns may describe question style, response preference, process habits, validation requirements, design philosophy, decision style, communication style, correction patterns, agent failure patterns, agent success patterns, and handoff style. A single vague statement should remain pending or low confidence; explicit or repeated behavior can become active after review.
+User patterns may describe question style, response preference, process habits, validation requirements, design philosophy, decision style, communication style, correction patterns, agent failure patterns, agent success patterns, and handoff style. A single vague statement should be discarded, quarantined, or marked low confidence; explicit or repeated behavior can become active through auto-curation or manual override.
 
 Failure memory must include prevention guidance when possible. Success patterns should describe when to reuse the successful approach.
 
-## Review-First Policy
+Technical success and user acceptance are separate. Passing tests, clean command output, or completed edits can support technical outcome fields, but a user-rejected result must not become `success_pattern`.
 
-New memory candidates are never authority by default. They must be reviewed before active use.
+## Auto-Curated Policy
+
+New memory candidates are never authority by default. The normal flow is:
+
+```text
+event captured
+-> candidates extracted
+-> Auto Curator decides active / replace / discard / quarantine
+-> active graph, wiki, and context updated
+```
+
+Manual commands remain available for debugging, audits, and override:
 
 Use:
 
@@ -140,7 +152,7 @@ The same word can mean different things depending on intent and context. For exa
 
 When uncertain:
 
-- Keep the candidate pending.
+- Quarantine the candidate or leave it in legacy/manual debug pending state.
 - Mark low confidence when appropriate.
 - Use `needs_user_review` for unclear conflicts.
 - Do not include it as an active constraint in normal pre-task output.
@@ -151,8 +163,12 @@ The user's current explicit request wins over past memory. If active memory warn
 
 ## Runtime State Exclusion Policy
 
-VibeBox runtime state lives in one global user store at `~/.vibebox` by default, or under `VIBEBOX_HOME` when configured. Global preferences and rules live under `global/`; project memory lives under `projects/{projectId}/`; wiki, index, logs, pending, and registry data live under the global store.
+VibeBox runtime state lives in one global user store at `~/.vibebox` by default, or under `VIBEBOX_HOME` when configured. Global preferences and rules live under `global/`; project memory lives under `projects/{projectId}/`; wiki, index, logs, manual-debug pending, and registry data live under the global store.
 
 The project id is derived from the current working directory using git remote `origin`, `package.json` name, git root folder name, then current folder name.
 
 VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects. Old project-local stores are legacy; `doctor` warns about them, and migration remains explicit and non-destructive.
+
+## Adaptive Language Policy
+
+Human-facing output follows explicit CLI options, environment variables, config, and user input language policy. It is not limited to `ko-KR` or `en-US`. Stored memory text is preserved in the captured language. JSON field names, enum values, and command names stay English. VibeBox does not use external translation APIs.

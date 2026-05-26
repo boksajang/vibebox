@@ -1,8 +1,8 @@
 # VibeBox
 
-A local blackbox memory layer for AI coding agents.
+A local auto-curated active user pattern graph for AI coding agents.
 
-AI coding agents often forget the decisions, failed attempts, review habits, and design preferences that made earlier work succeed. VibeBox keeps the latest useful user and project patterns in a local global store, then returns relevant guidance before the next task. After work, it captures what happened and turns useful lessons into reviewable memory candidates. The approved memory becomes an Obsidian-compatible active graph that humans can inspect. Your repositories stay clean because VibeBox uses one user-level store instead of creating project-local metadata folders.
+AI coding agents often forget the decisions, failed attempts, review habits, and design preferences that made earlier work succeed. VibeBox captures blackbox events, extracts memory candidates, lets the Auto Curator decide what becomes active, replaced, discarded, or quarantined, then returns only the latest useful guidance before the next task. The active memory becomes an Obsidian-compatible graph and wiki that humans can inspect. Your repositories stay clean because VibeBox uses one user-level store instead of creating project-local metadata folders.
 
 ## Why VibeBox Exists
 
@@ -23,11 +23,12 @@ User task
 -> VibeBox returns active guidance
 -> Agent works with fewer wrong assumptions
 -> VibeBox captures the result
--> Useful memory stays pending until review
--> Approved memory updates the active graph
+-> Candidates are extracted
+-> Auto Curator decides active / replace / discard / quarantine
+-> Active graph, wiki, and context are updated
 ```
 
-VibeBox does not blindly pile up memories. It keeps the latest active guidance for each subject and scope. When approved memory replaces, corrects, or refines older memory, the outdated version is removed from normal retrieval, Context Packs, Pre-Task Briefs, and the active wiki.
+VibeBox does not blindly pile up memories. It keeps the latest optimized active guidance for each subject and scope. When new memory replaces, corrects, or refines older memory, the outdated version is removed from normal retrieval, Context Packs, Pre-Task Briefs, the active relation graph, and the active wiki. Discarded, quarantined, rejected, and legacy pending memory are excluded from normal guidance.
 
 ## What VibeBox Remembers
 
@@ -91,9 +92,9 @@ After adding the marketplace, enable VibeBox from Codex's plugin UI and start a 
 
 ## Typical Agent Workflow
 
-Before meaningful repository work, the agent checks VibeBox memory. During work, the agent uses active guidance as constraints, warnings, and preferences. After meaningful work, the agent captures a blackbox event. New memories stay pending until review and approval.
+Before meaningful repository work, the agent checks VibeBox memory. During work, the agent uses active guidance as constraints, warnings, and preferences. After meaningful work, the agent captures a blackbox event; VibeBox extracts candidates and the Auto Curator updates the active graph when the candidate is good enough. Users do not manage memory after every task.
 
-The CLI commands are the engine interface. AI agents can call them automatically through skills or adapters, and users can run them manually when needed.
+The CLI commands are the engine interface. AI agents can call them automatically through skills or adapters, and users can run review commands manually for debugging or override.
 
 ## Global Store
 
@@ -130,6 +131,7 @@ vibebox pretask --task "..."
 vibebox aftertask --request "..." --summary "..." --outcome success
 vibebox review
 vibebox approve <candidate-id>
+vibebox reject <candidate-id>
 vibebox report
 vibebox blackbox
 ```

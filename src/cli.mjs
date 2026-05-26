@@ -85,22 +85,22 @@ function help() {
 
 Usage:
   vibebox init [--store <path>]
-  vibebox capture --request <text> --summary <text> [--command <text>] [--command-result <text>] [--changed-files a,b] [--feedback <text>] [--outcome success|failure|partial|unknown]
-  vibebox extract --text <text>
+  vibebox capture --request <text> --summary <text> [--command <text>] [--command-result <text>] [--changed-files a,b] [--feedback <text>] [--outcome success|failure|partial|unknown] [--technical-outcome success|failure|partial|unknown] [--user-acceptance accepted|rejected|mixed|unknown]
+  vibebox extract --text <text> [--manual-review]
   vibebox review
   vibebox approve <candidate-id>
   vibebox approve --safe
   vibebox reject <candidate-id>
   vibebox context --task <text>
   vibebox pretask --task <text>
-  vibebox aftertask --request <text> --summary <text> [--files a,b] [--commands <text>] [--outcome success|failure|partial|unknown]
+  vibebox aftertask --request <text> --summary <text> [--files a,b] [--commands <text>] [--outcome success|failure|partial|unknown] [--technical-outcome success|failure|partial|unknown] [--user-acceptance accepted|rejected|mixed|unknown] [--manual-review]
   vibebox report
   vibebox blackbox [--limit 10] [--type success|failure|task_summary] [--since YYYY-MM-DD]
   vibebox doctor
 
 Global store:
   Defaults to ~/.vibebox and can be overridden with VIBEBOX_HOME or --store <path>.
-  Human-facing output can be localized with VIBEBOX_LOCALE, VIBEBOX_LANGUAGE, or --locale.
+  Human-facing output can be localized with VIBEBOX_LOCALE, VIBEBOX_LANGUAGE, --locale, or --language.
 `;
 }
 
@@ -112,6 +112,12 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
   }
   if (flags.locale) {
     process.env.VIBEBOX_LOCALE = String(flags.locale);
+  }
+  if (flags.language) {
+    if (!flags.locale) {
+      delete process.env.VIBEBOX_LOCALE;
+    }
+    process.env.VIBEBOX_LANGUAGE = String(flags.language);
   }
 
   switch (command) {
@@ -134,6 +140,9 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
         commandResult: flags['command-result'] || flags.commandResult || '',
         changedFiles: parseChangedFiles(flags['changed-files'] || flags.changedFiles),
         userFeedback: flags.feedback || flags.userFeedback || '',
+        technicalOutcome: flags['technical-outcome'] || flags.technicalOutcome,
+        userAcceptance: flags['user-acceptance'] || flags.userAcceptance,
+        finalOutcome: flags['final-outcome'] || flags.finalOutcome,
         outcome: flags.outcome || 'unknown'
       });
       return `Captured event ${event.id}\nProject: ${event.projectId}\nGlobal store: ${getVibeBoxHome()}`;
@@ -151,10 +160,11 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
         text,
         eventId: flags.event,
         fromLastEvent: flags['last-event'] || false,
+        manualReview: flags['manual-review'] || flags.review || false,
         source: { kind: flags.event ? 'event' : 'cli_extract', id: flags.event || null }
       });
       const projectId = candidates.find((candidate) => candidate.projectId)?.projectId || 'global';
-      return `Extracted ${candidates.length} pending candidate(s).\nProject: ${projectId}`;
+      return `Extracted ${candidates.length} candidate(s).\nProject: ${projectId}`;
     }
 
     case 'review':
@@ -204,7 +214,11 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
         commandResults: parseList(flags['command-results'] || flags['command-result'] || flags.commandResult),
         errors: parseList(flags.errors || flags.error),
         userFeedback: flags.feedback || flags.userFeedback || '',
+        technicalOutcome: flags['technical-outcome'] || flags.technicalOutcome,
+        userAcceptance: flags['user-acceptance'] || flags.userAcceptance,
+        finalOutcome: flags['final-outcome'] || flags.finalOutcome,
         outcome: flags.outcome || 'unknown',
+        manualReview: flags['manual-review'] || flags.review || false,
         notes: flags.notes || fileText
       });
       return result.message;

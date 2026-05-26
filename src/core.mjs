@@ -142,7 +142,9 @@ const GLOBAL_MEMORY_FILE_NAMES = [
   'tooling-preferences.json',
   'coding-style.json',
   'workflow-rules.json',
-  'architecture-patterns.json'
+  'architecture-patterns.json',
+  'failure-memory.json',
+  'success-patterns.json'
 ];
 
 const PROJECT_MEMORY_FILE_NAMES = [
@@ -209,6 +211,18 @@ const CONFIDENCE_PRIORITY = {
   medium: 9,
   low: 2
 };
+
+const AUTO_CURATED_STATUSES = new Set(['active', 'discarded', 'quarantined', 'rejected']);
+const TECHNICAL_OUTCOMES = new Set(['success', 'failure', 'partial', 'unknown']);
+const USER_ACCEPTANCE_VALUES = new Set(['accepted', 'rejected', 'mixed', 'unknown']);
+const FINAL_OUTCOMES = new Set([
+  'accepted_success',
+  'technical_success_user_rejected',
+  'technical_failure_user_direction_valid',
+  'failed',
+  'partial',
+  'unknown'
+]);
 
 const STOP_WORDS = new Set([
   'about',
@@ -364,29 +378,74 @@ function detectSystemLocale() {
 
 function normalizeLocale(locale) {
   const value = String(locale || '').trim();
+  if (!value || value.toLowerCase() === 'auto') return 'auto';
   if (/^ko(?:-|$)/iu.test(value)) return 'ko-KR';
   if (/^en(?:-|$)/iu.test(value)) return 'en-US';
   return value || 'en-US';
 }
 
 function languageFromLocale(locale) {
-  return normalizeLocale(locale).startsWith('ko') ? 'ko' : 'en';
+  const normalized = normalizeLocale(locale);
+  if (normalized === 'auto') return 'auto';
+  const match = normalized.match(/^([a-z]{2,3})(?:-|$)/iu);
+  return match ? match[1].toLowerCase() : 'en';
+}
+
+function countScript(text, regex) {
+  return (String(text || '').match(regex) || []).length;
+}
+
+function detectLanguageFromText(text) {
+  const value = String(text || '');
+  if (!value.trim()) return '';
+  const counts = {
+    ko: countScript(value, /\p{Script=Hangul}/gu),
+    ja: countScript(value, /[\p{Script=Hiragana}\p{Script=Katakana}]/gu),
+    zh: countScript(value, /\p{Script=Han}/gu),
+    ar: countScript(value, /\p{Script=Arabic}/gu),
+    latin: countScript(value, /\p{Script=Latin}/gu)
+  };
+  if (counts.ko > 0) return 'ko-KR';
+  if (counts.ja > 0) return 'ja-JP';
+  if (counts.ar > 0) return 'ar';
+  if (counts.zh >= Math.max(2, counts.latin)) return 'zh';
+  if (counts.latin > 0) return 'en-US';
+  return '';
+}
+
+function languageDetectionText(input = {}) {
+  return [
+    input.text,
+    input.task,
+    input.userRequest,
+    input.request,
+    input.aiActionSummary,
+    input.summary,
+    input.userFeedback,
+    input.feedback,
+    input.notes
+  ].filter(Boolean).join('\n');
 }
 
 function defaultConfig() {
   const timestamp = nowIso();
   const locale = normalizeLocale(process.env.VIBEBOX_LOCALE || process.env.VIBEBOX_LANGUAGE || detectSystemLocale());
+  const outputLanguage = languageFromLocale(locale);
   return {
     version: VIBEBOX_VERSION,
-    memoryMode: 'review',
+    memoryMode: 'auto',
+    curationMode: 'auto',
+    legacyReviewMode: false,
+    quarantineOnConflict: true,
+    autoActivateConfidence: 'medium',
     obsidianCompatible: true,
     maxContextItems: 8,
     maxContextChars: 6000,
     locale,
-    outputLanguage: languageFromLocale(locale),
-    wikiLanguage: languageFromLocale(locale),
-    reportLanguage: languageFromLocale(locale),
-    contextLanguage: languageFromLocale(locale),
+    outputLanguage,
+    wikiLanguage: outputLanguage,
+    reportLanguage: outputLanguage,
+    contextLanguage: outputLanguage,
     createdAt: timestamp,
     updatedAt: timestamp
   };
@@ -540,13 +599,20 @@ const LOCALE_TEMPLATES = {
 };
 
 function resolveLocale(input = {}, config = {}) {
-  return normalizeLocale(
-    input.locale
+  const explicit = input.locale
+    || input.language
     || process.env.VIBEBOX_LOCALE
-    || process.env.VIBEBOX_LANGUAGE
-    || config.locale
-    || detectSystemLocale()
-  );
+    || process.env.VIBEBOX_LANGUAGE;
+  const configured = config.outputLanguage
+    || config.contextLanguage
+    || config.reportLanguage
+    || config.wikiLanguage
+    || config.locale;
+  const selected = explicit || configured || detectLanguageFromText(languageDetectionText(input)) || detectSystemLocale();
+  if (String(selected).toLowerCase() === 'auto') {
+    return normalizeLocale(detectLanguageFromText(languageDetectionText(input)) || config.locale || detectSystemLocale());
+  }
+  return normalizeLocale(selected);
 }
 
 function localeTemplates(locale) {
@@ -960,11 +1026,16 @@ async function ensureConfigFields(root) {
   const merged = { ...defaults, ...existing };
   let changed = false;
 
-  for (const key of ['maxContextItems', 'maxContextChars', 'memoryMode', 'obsidianCompatible', 'locale', 'outputLanguage', 'wikiLanguage', 'reportLanguage', 'contextLanguage']) {
+  for (const key of ['maxContextItems', 'maxContextChars', 'memoryMode', 'curationMode', 'legacyReviewMode', 'quarantineOnConflict', 'autoActivateConfidence', 'obsidianCompatible', 'locale', 'outputLanguage', 'wikiLanguage', 'reportLanguage', 'contextLanguage']) {
     if (existing[key] === undefined) {
       merged[key] = defaults[key];
       changed = true;
     }
+  }
+  if (existing.legacyReviewMode !== true && (merged.memoryMode === 'review' || merged.curationMode === 'review')) {
+    merged.memoryMode = 'auto';
+    merged.curationMode = 'auto';
+    changed = true;
   }
   if (changed) {
     merged.updatedAt = nowIso();
@@ -1037,10 +1108,95 @@ export function redactSensitive(value) {
   return redacted;
 }
 
+function normalizeEnum(value, allowed, fallback = 'unknown') {
+  const normalized = String(value || '').trim().toLowerCase().replace(/-/gu, '_');
+  return allowed.has(normalized) ? normalized : fallback;
+}
+
+function inferUserFeedbackSignal(feedback = '') {
+  const text = normalizeText(feedback);
+  if (!text) return 'none';
+  if (textHasAny(text, ['reject', 'rejected', 'not the right direction', 'wrong direction', 'this is not', 'redo', 'start over', 'instead'])) return 'rejection';
+  if (textHasAny(text, ['confirmed', 'accepted', 'approved', 'keep this', 'looks good', 'good direction', 'works for me'])) return 'acceptance';
+  if (textHasAny(text, ['mixed', 'partly', 'partially', 'but', 'however'])) return 'mixed';
+  return 'comment';
+}
+
+function inferUserAcceptance(input = {}) {
+  const explicit = normalizeEnum(input.userAcceptance || input.user_acceptance, USER_ACCEPTANCE_VALUES, '');
+  if (explicit) return explicit;
+  const signal = inferUserFeedbackSignal(input.userFeedback || input.feedback || '');
+  if (signal === 'rejection') return 'rejected';
+  if (signal === 'acceptance') return 'accepted';
+  if (signal === 'mixed') return 'mixed';
+  return 'unknown';
+}
+
+function inferTechnicalOutcome(input = {}) {
+  const explicit = normalizeEnum(input.technicalOutcome || input.technical_outcome, TECHNICAL_OUTCOMES, '');
+  if (explicit) return explicit;
+  const legacy = normalizeEnum(input.outcome, new Set(['success', 'failure', 'partial', 'unknown']), '');
+  return legacy || 'unknown';
+}
+
+function deriveFinalOutcome(technicalOutcome, userAcceptance, explicitFinalOutcome = '') {
+  const explicit = normalizeEnum(explicitFinalOutcome, FINAL_OUTCOMES, '');
+  if (explicit) return explicit;
+  if (technicalOutcome === 'success' && userAcceptance === 'accepted') return 'accepted_success';
+  if (technicalOutcome === 'success' && userAcceptance === 'rejected') return 'technical_success_user_rejected';
+  if (technicalOutcome === 'failure' && ['accepted', 'mixed'].includes(userAcceptance)) return 'technical_failure_user_direction_valid';
+  if (technicalOutcome === 'failure') return 'failed';
+  if (technicalOutcome === 'partial' || userAcceptance === 'mixed') return 'partial';
+  return 'unknown';
+}
+
+function legacyOutcomeFromFinal(finalOutcome) {
+  if (finalOutcome === 'accepted_success') return 'success';
+  if (['technical_success_user_rejected', 'technical_failure_user_direction_valid', 'failed'].includes(finalOutcome)) return 'failure';
+  if (finalOutcome === 'partial') return 'partial';
+  return 'unknown';
+}
+
+function extractCorrectionDirection(feedback = '') {
+  const text = String(feedback || '').trim();
+  const match = text.match(/\b(?:instead|use|prefer)\b[:\s]+(.+)/iu);
+  return summarizeStatement(match?.[1] || text);
+}
+
+function deriveOutcomeFields(input = {}) {
+  const technicalOutcome = inferTechnicalOutcome(input);
+  const userAcceptance = inferUserAcceptance(input);
+  const finalOutcome = deriveFinalOutcome(technicalOutcome, userAcceptance, input.finalOutcome || input.final_outcome);
+  const userFeedbackSignal = inferUserFeedbackSignal(input.userFeedback || input.feedback || '');
+  const rejectionReason = userAcceptance === 'rejected'
+    ? summarizeStatement(input.userFeedback || input.feedback || input.aiActionSummary || input.summary || '')
+    : '';
+  const correctionDirection = userAcceptance === 'rejected' || userAcceptance === 'mixed'
+    ? extractCorrectionDirection(input.userFeedback || input.feedback || input.notes || '')
+    : '';
+  const preventionRule = userAcceptance === 'rejected'
+    ? `Do not repeat the rejected direction without confirmation. ${correctionDirection ? `Prefer: ${correctionDirection}` : ''}`.trim()
+    : '';
+  const legacyInputOutcome = normalizeEnum(input.outcome, new Set(['success', 'failure', 'partial', 'unknown']), '');
+  return {
+    technicalOutcome,
+    userAcceptance,
+    userFeedbackSignal,
+    finalOutcome,
+    rejectionReason,
+    correctionDirection,
+    preventionRule,
+    outcome: userAcceptance === 'rejected'
+      ? 'failure'
+      : legacyInputOutcome || legacyOutcomeFromFinal(finalOutcome)
+  };
+}
+
 export async function captureEvent(root = process.cwd(), input = {}) {
   await initVibeBox(root);
   const project = await resolveCurrentProjectIdentity(root);
   const timestamp = nowIso();
+  const outcomeFields = deriveOutcomeFields(input);
   const event = redactSensitive({
     id: input.id || `evt_${randomUUID()}`,
     projectId: project.projectId,
@@ -1055,7 +1211,14 @@ export async function captureEvent(root = process.cwd(), input = {}) {
     errors: Array.isArray(input.errors) ? input.errors : [],
     changedFiles: Array.isArray(input.changedFiles) ? input.changedFiles : [],
     userFeedback: input.userFeedback || '',
-    outcome: input.outcome || 'unknown',
+    technicalOutcome: outcomeFields.technicalOutcome,
+    userAcceptance: outcomeFields.userAcceptance,
+    userFeedbackSignal: outcomeFields.userFeedbackSignal,
+    finalOutcome: outcomeFields.finalOutcome,
+    rejectionReason: outcomeFields.rejectionReason,
+    correctionDirection: outcomeFields.correctionDirection,
+    preventionRule: outcomeFields.preventionRule,
+    outcome: outcomeFields.outcome,
     notes: input.notes || '',
     createdAt: input.createdAt || timestamp
   });
@@ -1281,6 +1444,22 @@ function summarizeStatement(statement) {
   return text.length > 220 ? `${text.slice(0, 217)}...` : text;
 }
 
+function sourceOutcomeFields(source = {}, statement = '') {
+  const feedbackAcceptance = inferUserAcceptance({ userFeedback: statement });
+  const technicalOutcome = normalizeEnum(source.technicalOutcome, TECHNICAL_OUTCOMES, 'unknown');
+  const userAcceptance = normalizeEnum(source.userAcceptance, USER_ACCEPTANCE_VALUES, feedbackAcceptance || 'unknown');
+  const finalOutcome = normalizeEnum(source.finalOutcome, FINAL_OUTCOMES, deriveFinalOutcome(technicalOutcome, userAcceptance));
+  return {
+    technicalOutcome,
+    userAcceptance,
+    userFeedbackSignal: source.userFeedbackSignal || inferUserFeedbackSignal(statement),
+    finalOutcome,
+    rejectionReason: source.rejectionReason || '',
+    correctionDirection: source.correctionDirection || '',
+    preventionRule: source.preventionRule || ''
+  };
+}
+
 function buildCandidate(statement, source, activeMemories) {
   if (containsSensitive(statement)) {
     return null;
@@ -1299,6 +1478,7 @@ function buildCandidate(statement, source, activeMemories) {
   const timestamp = nowIso();
   const summary = summarizeStatement(statement);
   const appliesTo = inferAppliesTo(statement, scope, domains, topic);
+  const outcomeFields = sourceOutcomeFields(source, statement);
   const candidate = {
     id: hashId('mem', `${type}|${scope}|${topic}|${summary}`),
     type,
@@ -1316,6 +1496,13 @@ function buildCandidate(statement, source, activeMemories) {
       kind: source?.kind || 'text',
       summary
     }],
+    technicalOutcome: outcomeFields.technicalOutcome,
+    userAcceptance: outcomeFields.userAcceptance,
+    userFeedbackSignal: outcomeFields.userFeedbackSignal,
+    finalOutcome: outcomeFields.finalOutcome,
+    rejectionReason: outcomeFields.rejectionReason,
+    correctionDirection: outcomeFields.correctionDirection,
+    preventionRule: outcomeFields.preventionRule,
     confidence,
     status: 'pending',
     conflictStatus: 'no_conflict',
@@ -1497,11 +1684,26 @@ function isMemoryVisibleForProject(memory, project) {
   return memory.projectId === project.projectId;
 }
 
+function sourceFromEvent(event) {
+  return {
+    kind: 'event',
+    id: event.id,
+    technicalOutcome: event.technicalOutcome,
+    userAcceptance: event.userAcceptance,
+    userFeedbackSignal: event.userFeedbackSignal,
+    finalOutcome: event.finalOutcome,
+    rejectionReason: event.rejectionReason,
+    correctionDirection: event.correctionDirection,
+    preventionRule: event.preventionRule
+  };
+}
+
 export async function extractMemoryCandidates(root = process.cwd(), input = {}) {
   await initVibeBox(root);
   const project = await resolveCurrentProjectIdentity(root);
+  const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
   let text = input.text || '';
-  const source = input.source || { kind: 'manual_extract' };
+  let source = input.source || { kind: 'manual_extract' };
 
   if (!text && input.eventId) {
     const events = await readJsonl(vibeboxPath(root, 'logs/events.jsonl'));
@@ -1518,6 +1720,7 @@ export async function extractMemoryCandidates(root = process.cwd(), input = {}) 
         event.notes,
         event.outcome ? `Outcome: ${event.outcome}` : ''
       ].filter(Boolean).join('\n');
+      source = sourceFromEvent(event);
     }
   }
 
@@ -1536,6 +1739,7 @@ export async function extractMemoryCandidates(root = process.cwd(), input = {}) 
         event.notes,
         event.outcome ? `Outcome: ${event.outcome}` : ''
       ].filter(Boolean).join('\n');
+      source = sourceFromEvent(event);
     }
   }
 
@@ -1552,8 +1756,25 @@ export async function extractMemoryCandidates(root = process.cwd(), input = {}) 
         candidate.id = hashId('mem', `${candidate.id}|${project.projectId}`);
       }
       if (existingIds.has(candidate.id)) {
-        continue;
+        if (!isManualReviewMode(input, config)) {
+          const duplicateOf = candidate.id;
+          candidate.id = hashId('mem', `${duplicateOf}|duplicate|${nowIso()}`);
+          candidate.conflictStatus = 'duplicate';
+          candidate.related = [...new Set([...(candidate.related || []), duplicateOf])];
+        } else {
+          continue;
+        }
       }
+      candidate.sourceProjectRoot = project.rootPath;
+      candidate.sourceProjectId = project.projectId;
+      candidate.repositoryName = project.repositoryName || project.projectName;
+      newCandidates.push(candidate);
+      existingIds.add(candidate.id);
+    } else if (candidate && !isManualReviewMode(input, config)) {
+      const duplicateOf = candidate.id;
+      candidate.id = hashId('mem', `${duplicateOf}|duplicate|${nowIso()}`);
+      candidate.conflictStatus = 'duplicate';
+      candidate.related = [...new Set([...(candidate.related || []), duplicateOf])];
       candidate.sourceProjectRoot = project.rootPath;
       candidate.sourceProjectId = project.projectId;
       candidate.repositoryName = project.repositoryName || project.projectName;
@@ -1570,7 +1791,10 @@ export async function extractMemoryCandidates(root = process.cwd(), input = {}) 
     );
   }
   await updatePendingIndex(root);
-  return newCandidates;
+  if (newCandidates.length === 0 || isManualReviewMode(input, config)) {
+    return newCandidates;
+  }
+  return autoCurateCandidates(root, newCandidates);
 }
 
 function setOverlap(left = [], right = []) {
@@ -1659,6 +1883,95 @@ export function classifyCandidateConflict(activeMemoryRecords = [], candidate) {
   return { status: 'needs_user_review', related, supersedes: [], reason: 'Candidate overlaps existing memory but relation is ambiguous.' };
 }
 
+function isManualReviewMode(input = {}, config = {}) {
+  return Boolean(input.manualReview || input.reviewOnly || input.debugReview)
+    || input.curationMode === 'review'
+    || input.memoryMode === 'review'
+    || (config.legacyReviewMode === true && (config.curationMode === 'review' || config.memoryMode === 'review'));
+}
+
+function isAcceptedSuccessCandidate(candidate) {
+  if (candidate.type !== 'success_pattern') return true;
+  if (candidate.userAcceptance === 'accepted' || candidate.finalOutcome === 'accepted_success') return true;
+  return textHasAny(candidate.summary, ['worked successfully', 'successful', 'should be reused', 'approved', 'confirmed', 'accepted', 'keep this approach']);
+}
+
+function isRejectedSuccessCandidate(candidate) {
+  return ['success_pattern', 'agent_success_pattern'].includes(candidate.type)
+    && (candidate.userAcceptance === 'rejected' || candidate.finalOutcome === 'technical_success_user_rejected');
+}
+
+function inferAutoCurationDecision(candidate) {
+  if (containsSensitive(candidate)) {
+    return { action: 'quarantine', status: 'quarantined', reason: 'Sensitive value suspected.' };
+  }
+  if (isRejectedSuccessCandidate(candidate)) {
+    return { action: 'discard', status: 'discarded', reason: 'User rejected the technically successful result; do not promote as success.' };
+  }
+  if (!isAcceptedSuccessCandidate(candidate)) {
+    return { action: 'quarantine', status: 'quarantined', reason: 'Success memory requires user acceptance or explicit confirmation.' };
+  }
+  if (candidate.conflictStatus === 'duplicate') {
+    return { action: 'discard', status: 'discarded', reason: 'Duplicate of active memory.' };
+  }
+  if (['task', 'temporary'].includes(candidate.scope) && candidate.confidence === 'low') {
+    return { action: 'discard', status: 'discarded', reason: 'Low-value task-scoped candidate.' };
+  }
+  if (candidate.conflictStatus === 'exception') {
+    const activeCondition = candidate.activeCondition || inferActiveCondition(candidate);
+    if (activeCondition?.keywords?.length) {
+      candidate.activeCondition = activeCondition;
+      return { action: 'active', status: 'active', reason: 'Scoped exception has an active condition.' };
+    }
+    return { action: 'quarantine', status: 'quarantined', reason: 'Exception scope is unclear.' };
+  }
+  if (['supersedes', 'refinement'].includes(candidate.conflictStatus)) {
+    return { action: 'replace', status: 'active', reason: `Candidate ${candidate.conflictStatus} existing active memory.` };
+  }
+  if (['direct_conflict', 'needs_user_review'].includes(candidate.conflictStatus)) {
+    return { action: 'quarantine', status: 'quarantined', reason: `Ambiguous conflict: ${candidate.conflictStatus}.` };
+  }
+  if (candidate.confidence === 'low') {
+    return { action: 'quarantine', status: 'quarantined', reason: 'Low-confidence candidate needs more evidence.' };
+  }
+  if (candidate.conflictStatus === 'no_conflict' && ['medium', 'high'].includes(candidate.confidence)) {
+    return { action: 'active', status: 'active', reason: 'Clear reusable memory with sufficient confidence.' };
+  }
+  return { action: 'discard', status: 'discarded', reason: 'No durable active guidance detected.' };
+}
+
+async function markCandidateLifecycle(root, candidateId, decision) {
+  const records = await readJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl'));
+  const candidate = records.find((record) => record.id === candidateId);
+  if (!candidate) return null;
+  candidate.status = decision.status;
+  candidate.curationDecision = decision.action;
+  candidate.curationReason = decision.reason;
+  candidate.updatedAt = nowIso();
+  if (decision.status === 'discarded') candidate.discardReason = decision.reason;
+  if (decision.status === 'quarantined') candidate.quarantineReason = decision.reason;
+  if (decision.status === 'rejected') candidate.rejectionReason = decision.reason;
+  await writeJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl'), records);
+  await updatePendingIndex(root);
+  return candidate;
+}
+
+async function autoCurateCandidates(root, candidates = []) {
+  const curated = [];
+  for (const candidate of candidates) {
+    const decision = inferAutoCurationDecision(candidate);
+    if (decision.status === 'active') {
+      curated.push(await approveMemory(root, candidate.id, {
+        curationDecision: decision.action,
+        curationReason: decision.reason
+      }));
+      continue;
+    }
+    curated.push(await markCandidateLifecycle(root, candidate.id, decision));
+  }
+  return curated.filter(Boolean);
+}
+
 async function updatePendingIndex(root) {
   const candidates = await readJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl'));
   await saveJson(vibeboxPath(root, 'index/pending-index.json'), {
@@ -1679,6 +1992,14 @@ function toPendingIndexEntry(candidate) {
     sourceProjectRoot: candidate.sourceProjectRoot || null,
     confidence: candidate.confidence,
     status: candidate.status,
+    curationDecision: candidate.curationDecision,
+    curationReason: candidate.curationReason,
+    discardReason: candidate.discardReason,
+    quarantineReason: candidate.quarantineReason,
+    rejectionReason: candidate.rejectionReason,
+    technicalOutcome: candidate.technicalOutcome,
+    userAcceptance: candidate.userAcceptance,
+    finalOutcome: candidate.finalOutcome,
     conflictStatus: candidate.conflictStatus,
     recommendedAction: recommendCandidateAction(candidate).action,
     related: candidate.related || [],
@@ -1729,6 +2050,8 @@ function toMemoryIndexEntry(memory) {
     evidence: memory.evidence || [],
     confidence: memory.confidence,
     status: memory.status,
+    curationDecision: memory.curationDecision,
+    curationReason: memory.curationReason,
     conflictStatus: memory.conflictStatus,
     supersedes: memory.supersedes || [],
     related: memory.related || [],
@@ -1753,6 +2076,12 @@ function toMemoryIndexEntry(memory) {
     failedApproach: memory.failedApproach,
     failureReason: memory.failureReason,
     preventionRule: memory.preventionRule,
+    technicalOutcome: memory.technicalOutcome,
+    userAcceptance: memory.userAcceptance,
+    userFeedbackSignal: memory.userFeedbackSignal,
+    finalOutcome: memory.finalOutcome,
+    rejectionReason: memory.rejectionReason,
+    correctionDirection: memory.correctionDirection,
     relatedFiles: memory.relatedFiles,
     recurrenceRisk: memory.recurrenceRisk,
     successfulApproach: memory.successfulApproach,
@@ -1822,7 +2151,7 @@ function replacementIdsForMemory(memory, existingMemories = []) {
   return [...new Set(memory.supersedes || [])];
 }
 
-export async function approveMemory(root = process.cwd(), candidateId) {
+export async function approveMemory(root = process.cwd(), candidateId, options = {}) {
   await initVibeBox(root);
   const project = await resolveCurrentProjectIdentity(root);
   const records = await readJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl'));
@@ -1830,11 +2159,23 @@ export async function approveMemory(root = process.cwd(), candidateId) {
   if (!candidate) {
     throw new Error(`Pending candidate not found: ${candidateId}`);
   }
+  if (candidate.status === 'active') {
+    const memoryIndex = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
+    return memoryIndex.memories.find((memory) => memory.id === candidateId) || candidate;
+  }
   if (candidate.status !== 'pending') {
     throw new Error(`Candidate is not pending: ${candidateId}`);
   }
   if (!isMemoryVisibleForProject(candidate, project)) {
     throw new Error(`Pending candidate does not belong to current project: ${candidateId}`);
+  }
+  if (isRejectedSuccessCandidate(candidate)) {
+    candidate.status = 'rejected';
+    candidate.updatedAt = nowIso();
+    candidate.rejectionReason = 'User rejected this outcome; cannot promote as success memory.';
+    await writeJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl'), records);
+    await updatePendingIndex(root);
+    throw new Error(`Candidate was rejected by user feedback and cannot become success memory: ${candidateId}`);
   }
   if (containsSensitive(candidate)) {
     candidate.status = 'rejected';
@@ -1854,6 +2195,8 @@ export async function approveMemory(root = process.cwd(), candidateId) {
       : candidate.projectId,
     sourceProjectRoot: candidate.sourceProjectRoot || project.rootPath,
     status: 'active',
+    curationDecision: options.curationDecision || candidate.curationDecision || 'manual_approve',
+    curationReason: options.curationReason || candidate.curationReason || 'Manual approval.',
     updatedAt: timestamp
   };
   const replaceIds = replacementIdsForMemory(memory, memoryIndex.memories);
@@ -1876,6 +2219,8 @@ export async function approveMemory(root = process.cwd(), candidateId) {
   await saveJson(vibeboxPath(root, 'index/global-memory-index.json'), memoryIndex);
 
   candidate.status = 'active';
+  candidate.curationDecision = memory.curationDecision;
+  candidate.curationReason = memory.curationReason;
   candidate.updatedAt = timestamp;
   await writeJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl'), records);
   await rebuildIndexes(root);
@@ -2841,20 +3186,30 @@ export async function afterTask(root = process.cwd(), input = {}) {
     changedFiles: input.changedFiles || input.files || [],
     userFeedback: input.userFeedback || input.feedback || '',
     outcome: input.outcome || 'unknown',
+    technicalOutcome: input.technicalOutcome || input.technical_outcome,
+    userAcceptance: input.userAcceptance || input.user_acceptance,
+    finalOutcome: input.finalOutcome || input.final_outcome,
     notes: input.notes || ''
   });
 
+  const wasRejected = event.userAcceptance === 'rejected' || event.finalOutcome === 'technical_success_user_rejected';
+  const wasAccepted = event.userAcceptance === 'accepted' || event.finalOutcome === 'accepted_success';
   const extractionText = [
     input.userRequest || input.request ? `User requested: ${input.userRequest || input.request}` : '',
     input.aiActionSummary || input.summary ? `AI action summary: ${input.aiActionSummary || input.summary}` : '',
     ...(input.errors || []).map((error) => `The approach failed: ${error}. Prevent this by avoiding the failed approach unless the user explicitly asks for it.`),
-    input.userFeedback && textHasAny(input.userFeedback, ['reject', 'rejected', 'instead'])
-      ? `User rejected this direction: ${input.userFeedback}. Do not repeat it without confirmation.`
+    wasRejected
+      ? [
+        `User rejected this direction: ${event.userFeedback}. Do not repeat it without confirmation.`,
+        `Correction pattern: when the user rejects a technically completed result, treat it as user rejection and follow this correction direction: ${event.correctionDirection || event.userFeedback}.`,
+        `Agent failure pattern: technical success was not user accepted. Prevent this by separating technical success from user acceptance before storing success memory.`,
+        `This task failed from the user's perspective: ${input.aiActionSummary || input.summary}. Failure reason: ${event.rejectionReason || event.userFeedback || 'user rejection'}. Prevent this by ${event.correctionDirection || 'confirming the direction with the user before repeating it'}.`
+      ].join('\n')
       : '',
-    input.outcome === 'success'
-      ? `This approach worked successfully: ${input.aiActionSummary || input.summary}. Reuse when the task is similar to: ${input.userRequest || input.request}.`
+    wasAccepted
+      ? `This approach was confirmed by the user and worked successfully: ${input.aiActionSummary || input.summary}. Reuse when the task is similar to: ${input.userRequest || input.request}.`
       : '',
-    input.outcome === 'failure'
+    event.finalOutcome === 'failed' || event.technicalOutcome === 'failure'
       ? `This task failed: ${input.aiActionSummary || input.summary}. Failure reason: ${(input.errors || []).join('; ') || input.commandResult || 'unknown'}.`
       : '',
     input.notes || ''
@@ -2862,16 +3217,37 @@ export async function afterTask(root = process.cwd(), input = {}) {
 
   const candidates = await extractMemoryCandidates(root, {
     text: extractionText,
-    source: { kind: 'aftertask', id: event.id }
+    manualReview: input.manualReview || input.reviewOnly || input.debugReview,
+    source: {
+      kind: 'aftertask',
+      id: event.id,
+      technicalOutcome: event.technicalOutcome,
+      userAcceptance: event.userAcceptance,
+      userFeedbackSignal: event.userFeedbackSignal,
+      finalOutcome: event.finalOutcome,
+      rejectionReason: event.rejectionReason,
+      correctionDirection: event.correctionDirection,
+      preventionRule: event.preventionRule
+    }
   });
 
+  const counts = candidates.reduce((accumulator, candidate) => {
+    const status = candidate?.status || 'unknown';
+    accumulator[status] = (accumulator[status] || 0) + 1;
+    return accumulator;
+  }, {});
+  const summary = AUTO_CURATED_STATUSES.has(candidates[0]?.status)
+    ? `Auto-curated ${candidates.length} candidate(s): ${Object.entries(counts).map(([status, count]) => `${status}=${count}`).join(', ') || 'none'}.`
+    : `Created ${candidates.length} pending memory candidate(s).`;
   return {
     event,
     candidates,
     message: [
       `Captured blackbox event ${event.id}.`,
-      `Created ${candidates.length} pending memory candidate(s).`,
-      'Review pending memory with `vibebox review`, then approve or reject candidate ids.'
+      summary,
+      input.manualReview || input.reviewOnly || input.debugReview
+        ? 'Review pending memory with `vibebox review`, then approve or reject candidate ids.'
+        : 'Use `vibebox review` only for manual debug or override workflows.'
     ].join('\n')
   };
 }

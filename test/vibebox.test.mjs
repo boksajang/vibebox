@@ -59,7 +59,8 @@ test('init creates the VibeBox storage layout and preserves existing wiki files'
   const result = await initVibeBox(root);
 
   const config = await loadJson(storePath(root, 'config.json'));
-  assert.equal(config.memoryMode, 'review');
+  assert.equal(config.memoryMode, 'auto');
+  assert.equal(config.curationMode, 'auto');
   assert.equal(config.obsidianCompatible, true);
   assert.equal(config.maxContextItems, 8);
   assert.equal(config.maxContextChars, 6000);
@@ -120,6 +121,24 @@ test('init enriches project identity without locking config to an absolute path'
   assert.equal(project.primaryDomain, 'dashboard');
   assert.ok(project.techStackHints.includes('echarts'));
   await assertNoLocalStore(root);
+});
+
+test('init migrates legacy review-mode config to auto-curation by default', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+  const configPath = storePath(root, 'config.json');
+  const config = await loadJson(configPath);
+  await writeFile(
+    configPath,
+    `${JSON.stringify({ ...config, memoryMode: 'review', curationMode: 'review', legacyReviewMode: false }, null, 2)}\n`,
+    'utf8'
+  );
+
+  await initVibeBox(root);
+
+  const migrated = await loadJson(configPath);
+  assert.equal(migrated.memoryMode, 'auto');
+  assert.equal(migrated.curationMode, 'auto');
 });
 
 test('project identity prefers git remote names and falls back to package or folder names', async () => {
@@ -204,7 +223,7 @@ test('capture redacts common plain secret formats before raw log persistence', a
   assert.doesNotMatch(serialized, /my secret password/);
 });
 
-test('extract creates conservative pending candidates across memory types, scopes, confidence, and wiki-safe content', async () => {
+test('extract auto-curates candidates across memory types, scopes, confidence, and wiki-safe content', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
 
@@ -235,7 +254,9 @@ test('extract creates conservative pending candidates across memory types, scope
   assert.ok(candidates.some((candidate) => candidate.confidence === 'low'));
   assert.ok(candidates.some((candidate) => candidate.confidence === 'medium'));
   assert.ok(candidates.some((candidate) => candidate.confidence === 'high'));
-  assert.equal(candidates.every((candidate) => candidate.status === 'pending'), true);
+  assert.equal(candidates.some((candidate) => candidate.status === 'active'), true);
+  assert.equal(candidates.some((candidate) => ['discarded', 'quarantined'].includes(candidate.status)), true);
+  assert.equal(candidates.every((candidate) => candidate.status !== 'pending'), true);
   assert.equal(candidates.every((candidate) => !JSON.stringify(candidate).includes('sk-test-1234567890abcdef')), true);
   assert.equal(candidates.some((candidate) => candidate.summary.includes('sidebar color')), false);
 
@@ -243,8 +264,7 @@ test('extract creates conservative pending candidates across memory types, scope
   assert.equal(pendingIndex.candidates.length, candidates.length);
 
   const review = await reviewPending(root);
-  assert.match(review, /ID\s+TYPE\s+SCOPE/i);
-  assert.match(review, /failure_memory/);
+  assert.match(review, /No pending VibeBox memory candidates/);
 });
 
 test('extract ignores one-off statements that only contain generic should or must wording', async () => {
@@ -268,6 +288,7 @@ test('approve and reject move only reviewed memory into active indexes, wiki, an
   const { projectId } = await initVibeBox(root);
 
   const candidates = await extractMemoryCandidates(root, {
+    manualReview: true,
     text: [
       'For dashboard projects, prefer MSSQL because reporting data lives there.',
       'Do not modify package.json unless explicitly requested because dependency churn is risky.',
@@ -318,11 +339,13 @@ test('pretask creates an agent-ready brief that prioritizes project guardrails a
   await initVibeBox(root);
 
   const globalCandidates = await extractMemoryCandidates(root, {
+    manualReview: true,
     text: 'Always prefer Supabase for dashboard database work when no project-specific database decision exists.'
   });
   await approveMemory(root, globalCandidates[0].id);
 
   const projectCandidates = await extractMemoryCandidates(root, {
+    manualReview: true,
     text: [
       'We decided this project uses MSSQL for dashboard database modules after rejecting Supabase.',
       'Global body overflow changes caused layout regressions before; prevent this by using wrapper scrolling.',
@@ -370,6 +393,7 @@ test('domain memory can support other projects while project memory stays namesp
   await initVibeBox(projectB);
 
   const domainCandidates = await extractMemoryCandidates(projectA, {
+    manualReview: true,
     text: 'For dashboard projects, prefer MSSQL because reporting data lives there.'
   });
   assert.equal(domainCandidates[0].scope, 'domain');
@@ -377,6 +401,7 @@ test('domain memory can support other projects while project memory stays namesp
   await approveMemory(projectA, domainCandidates[0].id);
 
   const projectCandidates = await extractMemoryCandidates(projectA, {
+    manualReview: true,
     text: 'We decided this project uses ECharts for dashboard visualization after rejecting Chart.js.'
   });
   await approveMemory(projectA, projectCandidates[0].id);
@@ -412,7 +437,7 @@ test('project memory is not crowded out by matching global memory limits', async
   assert.ok(brief.indexOf('MSSQL') < brief.indexOf('risky approach'));
 });
 
-test('aftertask records a blackbox event and creates pending candidates without active promotion', async () => {
+test('aftertask records a blackbox event and auto-curates failure guidance without approval', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
 
@@ -429,7 +454,7 @@ test('aftertask records a blackbox event and creates pending candidates without 
   });
 
   assert.match(result.message, /Captured blackbox event/);
-  assert.match(result.message, /Review pending memory/);
+  assert.match(result.message, /Auto-curated/);
   assert.ok(result.candidates.some((candidate) => candidate.type === 'failure_memory'));
   assert.ok(result.candidates.some((candidate) => candidate.type === 'avoid_rule'));
 
@@ -439,7 +464,114 @@ test('aftertask records a blackbox event and creates pending candidates without 
   assert.deepEqual(events[0].changedFiles, ['src/table.mjs', 'src/layout.css']);
 
   const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
-  assert.equal(memoryIndex.memories.length, 0);
+  assert.ok(memoryIndex.memories.some((memory) => memory.type === 'failure_memory' && memory.status === 'active'));
+  assert.ok(memoryIndex.memories.some((memory) => memory.type === 'avoid_rule' && memory.status === 'active'));
+});
+
+test('technical success with user rejection becomes failure and correction memory, not success memory', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const result = await afterTask(root, {
+    userRequest: 'Redesign the dashboard table interaction.',
+    aiActionSummary: 'Implemented the table with a global body overflow change and all tests passed.',
+    changedFiles: ['src/table.mjs'],
+    commands: ['npm.cmd test'],
+    commandResults: ['42 tests passed'],
+    technicalOutcome: 'success',
+    userAcceptance: 'rejected',
+    userFeedback: 'This is not the right direction. Rejected. Use wrapper scrolling instead.',
+    outcome: 'success'
+  });
+
+  assert.equal(result.event.technicalOutcome, 'success');
+  assert.equal(result.event.userAcceptance, 'rejected');
+  assert.equal(result.event.finalOutcome, 'technical_success_user_rejected');
+  assert.equal(result.event.outcome, 'failure');
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.equal(memoryIndex.memories.some((memory) => memory.type === 'success_pattern'), false);
+  assert.ok(memoryIndex.memories.some((memory) => ['failure_memory', 'agent_failure_pattern', 'correction_pattern', 'avoid_rule'].includes(memory.type)));
+  assert.ok(memoryIndex.memories.some((memory) => memory.preventionRule || memory.forbiddenAction || /wrapper scrolling/i.test(memory.summary)));
+
+  const brief = await generatePreTaskBrief(root, {
+    task: 'Adjust dashboard table scrolling.'
+  });
+  assert.match(brief, /Known Failure Risks|Project Guardrails/);
+  assert.match(brief, /wrapper scrolling|global body overflow/i);
+});
+
+test('extracting a rejected captured event cannot promote success memory', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  await captureEvent(root, {
+    userRequest: 'Try a dashboard table direction.',
+    aiActionSummary: 'The global body overflow approach worked successfully and all tests passed.',
+    commandResult: '42 tests passed',
+    technicalOutcome: 'success',
+    userAcceptance: 'rejected',
+    userFeedback: 'Rejected. Use wrapper scrolling instead.'
+  });
+
+  const candidates = await extractMemoryCandidates(root, {
+    fromLastEvent: true
+  });
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.equal(memoryIndex.memories.some((memory) => memory.type === 'success_pattern'), false);
+  assert.equal(candidates.some((candidate) => candidate.type === 'success_pattern' && candidate.status === 'active'), false);
+  assert.ok(candidates.some((candidate) => ['failure_memory', 'agent_failure_pattern', 'correction_pattern', 'avoid_rule'].includes(candidate.type)));
+});
+
+test('accepted technical success can become active success memory without manual approval', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const result = await afterTask(root, {
+    userRequest: 'Fix dashboard table scrolling.',
+    aiActionSummary: 'Used wrapper-based table scrolling and kept dependencies unchanged.',
+    changedFiles: ['src/table.mjs'],
+    commands: ['npm.cmd test'],
+    commandResults: ['42 tests passed'],
+    technicalOutcome: 'success',
+    userAcceptance: 'accepted',
+    userFeedback: 'Confirmed. Keep this approach.'
+  });
+
+  assert.equal(result.event.finalOutcome, 'accepted_success');
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.ok(memoryIndex.memories.some((memory) => memory.type === 'success_pattern' && memory.status === 'active'));
+});
+
+test('auto-curation discards duplicates and quarantines ambiguous conflicting candidates', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const [base] = await extractMemoryCandidates(root, {
+    text: 'For dashboard projects, prefer MSSQL because reporting data lives there.'
+  });
+  assert.equal(base.status, 'active');
+
+  const [duplicate] = await extractMemoryCandidates(root, {
+    text: 'For dashboard projects, prefer MSSQL because reporting data lives there.'
+  });
+  assert.equal(duplicate.status, 'discarded');
+
+  const [ambiguous] = await extractMemoryCandidates(root, {
+    text: 'Maybe for dashboard projects, prefer Supabase later.'
+  });
+  assert.equal(ambiguous.status, 'quarantined');
+
+  const brief = await generatePreTaskBrief(root, {
+    task: 'Plan dashboard database work.'
+  });
+  assert.match(brief, /MSSQL/);
+  assert.doesNotMatch(brief, /Supabase later/);
+
+  const relationIndex = await loadJson(storePath(root, 'index', 'relation-index.json'));
+  assert.equal(relationIndex.relations.some((relation) => relation.to === ambiguous.id || relation.from === ambiguous.id), false);
 });
 
 test('report and blackbox summarize reviewed memory and recent task outcomes without dumping raw logs', async () => {
@@ -538,11 +670,13 @@ test('review recommends actions and safe approval skips conflict candidates', as
   await initVibeBox(root);
 
   const base = await extractMemoryCandidates(root, {
+    manualReview: true,
     text: 'For dashboard projects, prefer MSSQL because reporting data lives there.'
   });
   await approveMemory(root, base[0].id);
 
   const candidates = await extractMemoryCandidates(root, {
+    manualReview: true,
     text: [
       'Do not modify package.json unless explicitly requested.',
       'For dashboard projects, use Supabase as the database.'
@@ -883,6 +1017,26 @@ test('active replacement clears stale concept wiki references for discarded memo
   assert.doesNotMatch(redisWikiAfter, new RegExp(oldMemory.id));
 });
 
+test('active replacement clears stale global success and failure namespace files', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const [oldSuccess] = await extractMemoryCandidates(root, {
+    text: 'Wrapper-based table scrolling worked successfully for wide dashboard tables and should be reused there.'
+  });
+  assert.equal(oldSuccess.status, 'active');
+  const before = await loadJson(storePath(root, 'global', 'success-patterns.json'));
+  assert.ok(before.memories.some((memory) => memory.id === oldSuccess.id));
+
+  const [replacement] = await extractMemoryCandidates(root, {
+    text: 'Replace the table layout scrolling rule: do not use wrapper-based table scrolling because the user rejected that direction.'
+  });
+  assert.equal(replacement.status, 'active');
+
+  const after = await loadJson(storePath(root, 'global', 'success-patterns.json'));
+  assert.equal(after.memories.some((memory) => memory.id === oldSuccess.id), false);
+});
+
 test('refinement merges competing memory while scoped exceptions remain conditional', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
@@ -952,7 +1106,7 @@ test('failure memory injects prevention rules and links to success patterns and 
   assert.match(failureWiki, /\[\[Success Patterns\]\]/);
 });
 
-test('user pattern memory is extracted as pending and applied by situation-aware context', async () => {
+test('user pattern memory is auto-curated and applied by situation-aware context', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
 
@@ -971,7 +1125,7 @@ test('user pattern memory is extracted as pending and applied by situation-aware
   assert.ok(byType(candidates, 'design_philosophy'));
   assert.ok(byType(candidates, 'agent_failure_pattern'));
   assert.ok(byType(candidates, 'agent_success_pattern'));
-  assert.equal(candidates.every((candidate) => candidate.status === 'pending'), true);
+  assert.equal(candidates.every((candidate) => candidate.status === 'active'), true);
 
   for (const candidate of candidates) {
     await approveMemory(root, candidate.id);
@@ -1032,6 +1186,44 @@ test('locale controls human-facing headings while JSON fields and Korean memory 
   });
   assert.match(briefEn, /VibeBox Pre-Task Brief/);
   assert.match(briefEn, /Relevant Validation Patterns/);
+});
+
+test('adaptive language policy preserves Japanese, Chinese, Arabic, and mixed memory text', async () => {
+  const root = await makeWorkspace();
+  delete process.env.VIBEBOX_LOCALE;
+  process.env.VIBEBOX_LANGUAGE = 'ja-JP';
+  await initVibeBox(root);
+
+  const candidates = await extractMemoryCandidates(root, {
+    text: [
+      'validation pattern: 変更後は npm.cmd test を実行する。',
+      'validation pattern: 修改后运行 npm.cmd test。',
+      'validation pattern: بعد التغيير شغّل npm.cmd test.',
+      'validation pattern: keep the original mixed-language note 그대로.'
+    ].join('\n')
+  });
+
+  assert.equal(candidates.every((candidate) => candidate.status === 'active'), true);
+  assert.ok(candidates.some((candidate) => candidate.summary.includes('変更後')));
+  assert.ok(candidates.some((candidate) => candidate.summary.includes('修改后')));
+  assert.ok(candidates.some((candidate) => candidate.summary.includes('بعد التغيير')));
+  assert.ok(candidates.some((candidate) => candidate.summary.includes('그대로')));
+
+  const context = await generateContextPack(root, {
+    task: 'validation process',
+    language: 'auto'
+  });
+  assert.match(context, /変更後/);
+  assert.match(context, /修改后/);
+  assert.match(context, /بعد التغيير/);
+  assert.match(context, /그대로/);
+
+  const config = await loadJson(storePath(root, 'config.json'));
+  assert.equal(config.outputLanguage, 'ja');
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'summary'), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'userAcceptance'), true);
 });
 
 test('ko-KR locale applies to report, blackbox, doctor headings and empty states', async () => {
@@ -1172,6 +1364,20 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.doesNotMatch(combined, /marketplace distribution is available|official Claude install is available|cloud install is available/i);
 });
 
+test('CLI --language overrides environment locale for new store configuration', async () => {
+  const root = await makeWorkspace();
+  const bin = path.resolve('bin/vibebox.mjs');
+  const result = spawnSync(process.execPath, [bin, 'init', '--language', 'ja-JP'], {
+    cwd: root,
+    encoding: 'utf8'
+  });
+
+  assert.equal(result.status, 0);
+  const config = await loadJson(storePath(root, 'config.json'));
+  assert.equal(config.locale, 'ja-JP');
+  assert.equal(config.outputLanguage, 'ja');
+});
+
 test('CLI exposes init, capture, extract, review, approve, context, pretask, aftertask, report, blackbox, and doctor commands', async () => {
   const root = await makeWorkspace();
   const bin = path.resolve('bin/vibebox.mjs');
@@ -1185,7 +1391,7 @@ test('CLI exposes init, capture, extract, review, approve, context, pretask, aft
 
   assert.equal(run(['init']).status, 0);
   assert.equal(run(['capture', '--request', 'Use wrapper table scrolling.', '--summary', 'Captured result.', '--outcome', 'success']).status, 0);
-  assert.equal(run(['extract', '--text', 'Do not modify package.json unless explicitly requested. Wrapper-based table scrolling worked successfully for wide dashboard tables and should be reused there.']).status, 0);
+  assert.equal(run(['extract', '--manual-review', '--text', 'Do not modify package.json unless explicitly requested. Wrapper-based table scrolling worked successfully for wide dashboard tables and should be reused there.']).status, 0);
 
   const review = run(['review']);
   assert.equal(review.status, 0);
