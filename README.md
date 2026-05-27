@@ -2,7 +2,7 @@
 
 A local-first active user model and coding blackbox for AI coding agents.
 
-AI coding agents often forget the decisions, failed attempts, review habits, design preferences, validation style, and success criteria that made earlier work succeed. VibeBox interprets user requests, user feedback, project context, and outcomes into a compact reusable user model. It does not store the user's words as a prompt log and it does not treat AI action summaries as the main memory signal. The Auto Curator decides what becomes active, replaced, discarded, or quarantined, then returns only the latest useful guidance before the next task.
+AI coding agents often forget the decisions, failed attempts, review habits, design preferences, validation style, and success criteria that made earlier work succeed. VibeBox interprets user requests, user corrections, user feedback, project context, and outcomes into a compact reusable user model. The user's instruction is the success criteria; the user's correction is a more precise success criteria; user dissatisfaction is an AI failure signal, not user failure. VibeBox does not store the user's words as a prompt log and it does not treat AI action summaries as the main memory signal. The Auto Curator decides what becomes active, replaced, discarded, or quarantined, then returns only the latest useful guidance before the next task.
 
 ## Why VibeBox Exists
 
@@ -11,7 +11,9 @@ VibeBox helps when AI coding agents:
 - repeat failed approaches
 - forget project decisions
 - suggest tools or patterns the user already rejected
+- miss the user's success criteria
 - ignore the user's preferred workflow or validation style
+- repeat technical, permission, environment, or tool failures
 - lose context across long-running projects and new sessions
 - miss recurring agent failure patterns that should become prevention rules
 
@@ -33,18 +35,19 @@ VibeBox does not blindly pile up memories. It keeps the latest optimized active 
 ## What VibeBox Remembers
 
 - project decisions
+- user success criteria
 - user preferences and rejection criteria
 - domain preferences and avoidances
-- failed approaches
+- AI failure memory for preference mismatches, instruction misses, technical failures, environment failures, and tool failures
 - failure prevention rules
-- success patterns
+- AI successful approaches and recovery patterns
 - validation style
 - process habits
 - design philosophy
 - response preferences
 - agent failure and success patterns
 
-Memory is separated into User Model, Domain Model, Project Model, Task Context, and Discarded Detail. Project facts stay project-local. Only reusable user tendencies, validation habits, reporting preferences, design philosophy, and failure-prevention rules can become broader active memory.
+Memory is separated into User Model, Domain Model, Project Model, Task Context, AI Failure Memory, AI Successful Approach, and Discarded Detail. Project facts stay project-local. Only reusable user success criteria, validation habits, reporting preferences, design philosophy, AI failure-prevention rules, and recovery approaches can become broader active memory.
 
 ## What VibeBox Is Not
 
@@ -131,7 +134,7 @@ The wiki connects projects, failures, prevention rules, success patterns, user p
 vibebox init
 vibebox doctor
 vibebox pretask --task "..."
-vibebox aftertask --request "..." --summary "..." --technical-outcome success --user-acceptance accepted
+vibebox aftertask --request "..." --summary "..." --technical-outcome success
 vibebox review
 vibebox approve <candidate-id>
 vibebox reject <candidate-id>
@@ -142,6 +145,8 @@ vibebox restore --from ./vibebox-backup --confirm-replace
 VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko en
 VIBEBOX_AGENT_RUNTIME=adapter vibebox rebuild
 ```
+
+`review`, `approve`, and `reject` are debug/manual override commands, not the normal memory promotion path. The Auto Curator can activate confirmed or inferred success memory automatically; inferred success must not be described as user-confirmed.
 
 See the usage guide for the full command reference and fallback forms.
 

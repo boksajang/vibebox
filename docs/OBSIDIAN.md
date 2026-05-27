@@ -35,7 +35,7 @@ The current visible filename is chosen from the configured memory language and s
 
 VibeBox may also create concept pages such as `Dependency Management.md` or `Dashboard Development.md` when active memory links naturally to those topics.
 
-The active graph pages show current guidance only. Replaced, rejected, discarded, quarantined, legacy pending, or older superseded memory is not rendered as current guidance.
+The active graph pages show current guidance only. Replaced, rejected, discarded, quarantined, legacy pending, or older superseded memory is not rendered as current guidance. The wiki represents user success criteria, AI failure avoidance, and AI successful approaches as active graph content; it is not a raw transcript and it does not show user dissatisfaction as user failure.
 
 ## Markdown Format
 

@@ -263,6 +263,14 @@ const FINAL_OUTCOMES = new Set([
   'partial',
   'unknown'
 ]);
+const SUCCESS_EVIDENCE_VALUES = new Set(['confirmed', 'inferred', 'rejected', 'unknown']);
+const MEMORY_ROLE_VALUES = new Set([
+  'user_success_criteria',
+  'ai_failure_memory',
+  'ai_successful_approach',
+  'task_context',
+  'discarded_detail'
+]);
 
 const STOP_WORDS = new Set([
   'about',
@@ -431,6 +439,24 @@ function languageFromLocale(locale) {
   return match ? match[1].toLowerCase() : 'en';
 }
 
+function localeFromLanguage(language = 'en') {
+  const value = languageFromLocale(language);
+  if (value === 'ko') return 'ko-KR';
+  if (value === 'en') return 'en-US';
+  if (value === 'auto') return 'auto';
+  return normalizeLocale(value || 'en');
+}
+
+function configuredMemoryLanguage(config = {}) {
+  const explicit = config.memoryLanguage || config.outputLanguage || config.wikiLanguage || config.reportLanguage || config.contextLanguage;
+  const language = languageFromLocale(explicit || config.locale || 'en-US');
+  return language === 'auto' ? 'en' : language;
+}
+
+function configuredMemoryLocale(config = {}) {
+  return localeFromLanguage(configuredMemoryLanguage(config));
+}
+
 function countScript(text, regex) {
   return (String(text || '').match(regex) || []).length;
 }
@@ -482,6 +508,7 @@ function defaultConfig() {
     maxContextItems: 8,
     maxContextChars: 6000,
     locale,
+    memoryLanguage: outputLanguage === 'auto' ? 'en' : outputLanguage,
     outputLanguage,
     wikiLanguage: outputLanguage,
     reportLanguage: outputLanguage,
@@ -522,6 +549,9 @@ const LOCALE_TEMPLATES = {
     relevantQuestionPatterns: 'Relevant Question Patterns',
     relevantDecisionPatterns: 'Relevant Decision Patterns',
     relevantHandoffPatterns: 'Relevant Handoff Patterns',
+    userSuccessCriteria: 'User Success Criteria',
+    aiFailureAvoidance: 'AI Failure Avoidance',
+    aiSuccessfulApproaches: 'AI Successful Approaches',
     projectGuardrails: 'Project Guardrails',
     potentialConflicts: 'Potential Conflicts',
     guidanceForAgent: 'Guidance for AI Agent',
@@ -678,15 +708,14 @@ const LOCALE_TEMPLATES = {
 
 function resolveLocale(input = {}, config = {}) {
   const explicit = input.locale
-    || input.language
-    || process.env.VIBEBOX_LOCALE
-    || process.env.VIBEBOX_LANGUAGE;
-  const configured = config.outputLanguage
+    || input.language;
+  const configured = config.memoryLanguage
+    || config.outputLanguage
     || config.contextLanguage
     || config.reportLanguage
     || config.wikiLanguage
     || config.locale;
-  const selected = explicit || configured || detectLanguageFromText(languageDetectionText(input)) || detectSystemLocale();
+  const selected = explicit || configured || process.env.VIBEBOX_LANGUAGE || process.env.VIBEBOX_LOCALE || detectLanguageFromText(languageDetectionText(input)) || detectSystemLocale();
   if (String(selected).toLowerCase() === 'auto') {
     return normalizeLocale(detectLanguageFromText(languageDetectionText(input)) || config.locale || detectSystemLocale());
   }
@@ -1145,10 +1174,11 @@ export async function initVibeBox(root = process.cwd()) {
   const base = vibeboxPath(root);
   const created = [];
   const config = await createDefaultConfig();
+  const memoryLocale = configuredMemoryLocale(config);
 
   await ensureDir(vibeboxPath(root, 'registry'));
   await writeIfMissing(vibeboxPath(root, 'registry/projects.json'), `${JSON.stringify(defaultRegistry(), null, 2)}\n`);
-  await writeIfMissing(vibeboxPath(root, 'registry/wiki-docs.json'), `${JSON.stringify(defaultWikiDocRegistry(config.locale), null, 2)}\n`);
+  await writeIfMissing(vibeboxPath(root, 'registry/wiki-docs.json'), `${JSON.stringify(defaultWikiDocRegistry(memoryLocale), null, 2)}\n`);
   const project = await resolveCurrentProjectIdentity(root);
   const hasProject = isRealProjectIdentity(project);
 
@@ -1183,11 +1213,11 @@ export async function initVibeBox(root = process.cwd()) {
     }
   }
   for (const doc of WIKI_DOCS) {
-    const page = localizedDocFileName(doc.docKey, config.locale);
-    files.push([`wiki/${page}`, initialWikiDocPage(doc.docKey, config.locale)]);
+    const page = localizedDocFileName(doc.docKey, memoryLocale);
+    files.push([`wiki/${page}`, initialWikiDocPage(doc.docKey, memoryLocale)]);
   }
   if (hasProject) {
-    files.push([`wiki/projects/${project.projectId}.md`, initialProjectWikiPage(project, config.locale)]);
+    files.push([`wiki/projects/${project.projectId}.md`, initialProjectWikiPage(project, memoryLocale)]);
   }
 
   for (const [relative, content] of files) {
@@ -1199,13 +1229,14 @@ export async function initVibeBox(root = process.cwd()) {
 
   await ensureConfigFields(root);
   const actualConfig = await loadJson(vibeboxPath(root, 'config.json'), config);
-  await saveJson(vibeboxPath(root, 'registry/wiki-docs.json'), defaultWikiDocRegistry(actualConfig.locale || config.locale));
+  const actualLocale = configuredMemoryLocale(actualConfig);
+  await saveJson(vibeboxPath(root, 'registry/wiki-docs.json'), defaultWikiDocRegistry(actualLocale));
   if (hasProject) {
     await saveJson(vibeboxPath(root, `projects/${project.projectId}/project.json`), project);
   }
   await rebuildIndexes(root, { syncNamespaceFiles: false });
   const registry = await loadJson(vibeboxPath(root, 'registry/projects.json'), defaultRegistry());
-  await writeManagedWikiDoc(root, 'project_index', renderProjectIndexShell(actualConfig.locale || config.locale), renderProjectIndexManaged((registry.projects || []).filter(isRegistryProject), actualConfig.locale || config.locale), actualConfig.locale || config.locale);
+  await writeManagedWikiDoc(root, 'project_index', renderProjectIndexShell(actualLocale), renderProjectIndexManaged((registry.projects || []).filter(isRegistryProject), actualLocale), actualLocale);
 
   return {
     root: path.resolve(root),
@@ -1224,7 +1255,7 @@ async function ensureConfigFields(root) {
   const merged = { ...defaults, ...existing };
   let changed = false;
 
-  for (const key of ['maxContextItems', 'maxContextChars', 'memoryMode', 'curationMode', 'legacyReviewMode', 'quarantineOnConflict', 'autoActivateConfidence', 'obsidianCompatible', 'locale', 'outputLanguage', 'wikiLanguage', 'reportLanguage', 'contextLanguage']) {
+  for (const key of ['maxContextItems', 'maxContextChars', 'memoryMode', 'curationMode', 'legacyReviewMode', 'quarantineOnConflict', 'autoActivateConfidence', 'obsidianCompatible', 'locale', 'memoryLanguage', 'outputLanguage', 'wikiLanguage', 'reportLanguage', 'contextLanguage']) {
     if (existing[key] === undefined) {
       merged[key] = defaults[key];
       changed = true;
@@ -1314,8 +1345,8 @@ function normalizeEnum(value, allowed, fallback = 'unknown') {
 function inferUserFeedbackSignal(feedback = '') {
   const text = normalizeText(feedback);
   if (!text) return 'none';
-  if (textHasAny(text, ['reject', 'rejected', 'not the right direction', 'wrong direction', 'this is not', 'redo', 'start over', 'instead'])) return 'rejection';
-  if (textHasAny(text, ['confirmed', 'accepted', 'approved', 'keep this', 'looks good', 'good direction', 'works for me'])) return 'acceptance';
+  if (textHasAny(text, ['reject', 'rejected', 'not the right direction', 'wrong direction', 'this is not', 'redo', 'start over', 'instead', '\uB9C8\uC74C\uC5D0 \uC548', '\uB2E4\uC2DC \uD574', '\uADF8\uAC70 \uC544\uB2C8', '\uBC29\uD5A5\uC774 \uD2C0'])) return 'rejection';
+  if (textHasAny(text, ['confirmed', 'accepted', 'approved', 'keep this', 'looks good', 'good direction', 'works for me', 'reuse this', 'go with this', 'this is right', '\uC88B\uB2E4', '\uC774\uB300\uB85C', '\uC720\uC9C0', '\uC774\uAC8C \uB9DE'])) return 'acceptance';
   if (textHasAny(text, ['mixed', 'partly', 'partially', 'but', 'however'])) return 'mixed';
   return 'comment';
 }
@@ -1327,6 +1358,13 @@ function inferUserAcceptance(input = {}) {
   if (signal === 'rejection') return 'rejected';
   if (signal === 'acceptance') return 'accepted';
   if (signal === 'mixed') return 'mixed';
+  return 'unknown';
+}
+
+function inferStatementAcceptance(statement = '', source = {}) {
+  if (source.role === 'userFeedback') {
+    return inferUserAcceptance({ userFeedback: statement });
+  }
   return 'unknown';
 }
 
@@ -1357,7 +1395,11 @@ function legacyOutcomeFromFinal(finalOutcome) {
 
 function extractCorrectionDirection(feedback = '') {
   const text = String(feedback || '').trim();
-  const match = text.match(/\b(?:instead|use|prefer)\b[:\s]+(.+)/iu);
+  const negative = text.match(/\b(?:do not|don't|dont|never|avoid|must not|stop)\b\s+(.+)/iu);
+  if (negative) return summarizeStatement(`${negative[0]}`);
+  const match = text.match(/(?:^|[.;]\s*)\b(?:use|prefer)\b[:\s]+(.+)/iu)
+    || text.match(/\binstead\b[:,\s]+(?:use|prefer)\b[:\s]+(.+)/iu)
+    || text.match(/\binstead\b[:]\s+(.+)/iu);
   return summarizeStatement(match?.[1] || text);
 }
 
@@ -1366,6 +1408,20 @@ function deriveOutcomeFields(input = {}) {
   const userAcceptance = inferUserAcceptance(input);
   const finalOutcome = deriveFinalOutcome(technicalOutcome, userAcceptance, input.finalOutcome || input.final_outcome);
   const userFeedbackSignal = inferUserFeedbackSignal(input.userFeedback || input.feedback || '');
+  const successEvidenceText = [
+    input.userFeedback || input.feedback || '',
+    input.aiActionSummary || input.summary || '',
+    input.commandResult || '',
+    ...(Array.isArray(input.commandResults) ? input.commandResults : []),
+    input.notes || ''
+  ].filter(Boolean).join('\n');
+  const successEvidence = normalizeEnum(input.successEvidence || input.acceptanceBasis, SUCCESS_EVIDENCE_VALUES, inferSuccessEvidence(successEvidenceText, {
+    ...input,
+    technicalOutcome,
+    userAcceptance,
+    finalOutcome,
+    userFeedbackSignal
+  }));
   const rejectionReason = userAcceptance === 'rejected'
     ? summarizeStatement(input.userFeedback || input.feedback || input.aiActionSummary || input.summary || '')
     : '';
@@ -1380,6 +1436,8 @@ function deriveOutcomeFields(input = {}) {
     technicalOutcome,
     userAcceptance,
     userFeedbackSignal,
+    successEvidence,
+    acceptanceBasis: successEvidence,
     finalOutcome,
     rejectionReason,
     correctionDirection,
@@ -1412,6 +1470,8 @@ export async function captureEvent(root = process.cwd(), input = {}) {
     technicalOutcome: outcomeFields.technicalOutcome,
     userAcceptance: outcomeFields.userAcceptance,
     userFeedbackSignal: outcomeFields.userFeedbackSignal,
+    successEvidence: outcomeFields.successEvidence,
+    acceptanceBasis: outcomeFields.acceptanceBasis,
     finalOutcome: outcomeFields.finalOutcome,
     rejectionReason: outcomeFields.rejectionReason,
     correctionDirection: outcomeFields.correctionDirection,
@@ -1436,6 +1496,7 @@ function extractDomains(statement) {
   if (textHasAny(statement, ['app', 'prototype', 'prototypes', 'native', 'mobile'])) domains.add('app');
   if (textHasAny(statement, ['landing page', 'homepage', 'marketing page', 'brand landing', 'catalog landing'])) domains.add('landing_page');
   if (textHasAny(statement, ['brand', 'premium', 'catalog'])) domains.add('brand_design');
+  if (textHasAny(statement, ['saas style', 'catalog direction', 'catalog-style', 'card-heavy'])) domains.add('brand_design');
   if (textHasAny(statement, ['native app', 'mobile app', 'receipt', 'expense', 'approval', 'business trip'])) domains.add('native_internal_app');
   if (textHasAny(statement, ['backend', 'api'])) domains.add('backend');
   if (textHasAny(statement, ['frontend', 'ui', 'ux', 'layout'])) domains.add('frontend');
@@ -1456,7 +1517,13 @@ function extractTags(statement) {
     'landing page',
     'brand',
     'catalog',
+    'catalog direction',
     'premium',
+    'saas',
+    'saas style',
+    'violet',
+    'blue',
+    'color palette',
     'marketing',
     'native',
     'mobile',
@@ -1600,6 +1667,9 @@ function normalizeCandidateScope(type, scope, statement) {
 }
 
 function determineConfidence(statement, type, scope) {
+  if (type === 'agent_failure_pattern' && textHasAny(statement, ['permission denied', 'access denied', 'eperm', 'eacces', 'enoent', 'command failed', 'tool failed', 'api failed', 'browser failed', 'image generation failed'])) {
+    return 'high';
+  }
   if (textHasAny(statement, ['maybe', 'might', 'feels', 'try later', 'can try'])) {
     return 'low';
   }
@@ -1618,10 +1688,13 @@ function determineConfidence(statement, type, scope) {
   if (type === 'project_decision' && textHasAny(statement, ['decided', 'confirmed', 'uses', 'use echarts'])) {
     return 'high';
   }
-  if (type === 'success_pattern' && textHasAny(statement, ['worked successfully', 'approved', 'confirmed'])) {
+  if (type === 'success_pattern' && textHasAny(statement, ['worked successfully', 'approved', 'confirmed', 'accepted', 'reuse', 'should be reused'])) {
     return 'high';
   }
   if (type === 'failure_memory' && textHasAny(statement, ['caused', 'failed', 'regression', 'rejected'])) {
+    return 'medium';
+  }
+  if (type === 'design_preference' && textHasAny(statement, ['visual direction', 'catalog direction', 'saas style', 'color palette', 'landing page', 'brand landing', 'native app'])) {
     return 'medium';
   }
   if (['workflow_rule', 'process_pattern', 'response_preference'].includes(type) && textHasAny(statement, ['subagent workflow', 'before coding', 'create a concise plan', 'final report should include', 'report changed files'])) {
@@ -1642,15 +1715,21 @@ function inferType(statement) {
   const hasRejection = textHasAny(statement, ['do not', 'never', 'must not', 'avoid', 'forbidden', 'unless explicitly requested']);
   const hasFailure = textHasAny(statement, ['failed', 'failure', 'caused', 'regression', 'broke', 'rejected', 'wrong approach']);
   const hasSuccess = textHasAny(statement, ['worked successfully', 'successful', 'approved', 'confirmed', 'reuse', 'should be reused']);
+  const hasReusableSuccess = textHasAny(statement, ['worked successfully', 'successful', 'reuse', 'should be reused', 'keep this approach', 'accepted reusable approach']);
   const hasDecision = textHasAny(statement, ['we decided', 'decided this project', 'this project uses', 'uses echarts', 'after rejecting']);
   const hasPreference = textHasAny(statement, ['prefer', 'usually prefer', 'i prefer']);
   const hasDurableUseInstruction = textHasAny(statement, ['for dashboard projects, use', 'dashboard projects use', 'for app projects, use', 'app projects use', 'this project uses']);
   const hasWorkflow = textHasAny(statement, ['review first', 'approval', 'workflow', 'subagent workflow', 'before coding', 'before implementation', 'inspect the existing project structure', 'create a concise plan']);
   const hasArchitecture = textHasAny(statement, ['architecture', 'component-level', 'preserve existing behavior', 'simple maintainable architecture']);
 
+  if (textHasAny(statement, ['user rejected a technically completed result', 'technical success did not match', 'ai failed because', 'failed from the ai perspective'])) return 'agent_failure_pattern';
+  if (textHasAny(statement, ['ai execution failure', 'permission denied', 'access denied', 'eperm', 'eacces', 'enoent', 'command failed', 'tool failed', 'api failed', 'browser failed', 'image generation failed'])) return 'agent_failure_pattern';
+  if (textHasAny(statement, ['recovered by', 'recovery approach', 'workaround', 'alternative command'])) return 'agent_success_pattern';
+
   if (textHasAny(statement, ['agent repeatedly fails', 'ai repeatedly fails', 'agent failed', 'ai failed', 'agent failure', 'repeatedly fails by', '에이전트가 반복적으로 실패'])) return 'agent_failure_pattern';
   if (textHasAny(statement, ['agent succeeded', 'ai succeeded', 'agent success', 'succeeded by', 'successfully handled by', '에이전트가 성공'])) return 'agent_success_pattern';
   if (isTaskOnlyImplementationBoundary(statement) || isCurrentTaskChecklist(statement)) return 'task_context';
+  if (hasReusableSuccess && !hasRejection) return 'success_pattern';
   if (textHasAny(statement, ['reference material', 'reference image', 'extract design principles', 'do not copy', 'not copied literally'])) return 'user_preference';
   if (textHasAny(statement, ['final report should include', 'report changed files', 'remaining risks', 'remaining limitations'])) return 'response_preference';
   if (textHasAny(statement, ['when validating', 'validation pattern', 'verification pattern', 'verify changes', 'before claiming completion', 'run checks before', 'before reporting completion', 'validation result', 'build or type checks', 'manual flow', '검증할 때', '검증 방식', '완료를 말하기 전에'])) return 'validation_pattern';
@@ -1665,7 +1744,7 @@ function inferType(statement) {
   if (textHasAny(statement, ['allowed files', 'only edit', 'for this task', 'current section structure', 'current report checklist', 'receipt image attachment', 'trip request creation', 'approval status tracking'])) return 'task_context';
   if (textHasAny(statement, ['raw instruction text', 'one-off', 'exact text', 'generated logo', 'fake testimonials', 'pricing', 'login', 'analytics', 'cms', 'unrelated files'])) return hasRejection ? 'avoid_rule' : 'discarded_detail';
   if (hasPreference && textHasAny(statement, ['technology', 'stack', 'library', 'framework'])) return 'technology_preference';
-  if (textHasAny(statement, ['visual direction', 'dark premium', 'cinematic', '3d hero', 'clean practical readable', 'business-like', 'card-heavy', 'dashboard-like'])) return 'design_preference';
+  if (textHasAny(statement, ['visual direction', 'dark premium', 'cinematic', '3d hero', 'clean practical readable', 'business-like', 'card-heavy', 'dashboard-like', 'color palette', 'blue palette', 'violet palette', 'catalog direction', 'saas style'])) return 'design_preference';
   if (textHasAny(statement, ['project type', 'different project type', 'do not assume the same design direction', 'not a marketing landing page', 'not a saas product homepage'])) return 'user_preference';
   if (textHasAny(statement, ['i want to build', 'current tool', 'existing logo', 'preserve current', 'keep the page', 'one-page landing', 'internal company use'])) return 'project_decision';
   if (textHasAny(statement, ['except for', 'exception', 'only when', 'apart from']) && textHasAny(statement, ['use', 'prefer', 'instead of'])) return 'user_preference';
@@ -1729,21 +1808,147 @@ function toTitle(type, topic) {
   return `${label}: ${topic}`;
 }
 
+const METADATA_LABEL_PREFIX_PATTERN = /^(?:direct|english file|korean file|fixture|test fixture|test|example\s+[a-z0-9]+|user requested|user request|original request|original user request|ai action summary|action summary|summary|notes|source|parser|section|\uC0AC\uC6A9\uC790\s+\uC694\uCCAD|\uC6D0\s+\uC0AC\uC6A9\uC790\s+\uC694\uCCAD|\uC694\uCCAD|\uC694\uC57D)\s*[:\uFF1A]\s*/iu;
+const EMBEDDED_METADATA_LABEL_PATTERN = /(^|[.;]\s*)(?:direct|english file|korean file|fixture|test fixture|test|example\s+[a-z0-9]+|user requested|user request|original request|original user request|ai action summary|action summary|summary|notes|source|parser|section|\uC0AC\uC6A9\uC790\s+\uC694\uCCAD|\uC6D0\s+\uC0AC\uC6A9\uC790\s+\uC694\uCCAD|\uC694\uCCAD|\uC694\uC57D)\s*[:\uFF1A]\s*/giu;
+const GENERATED_STATEMENT_PREFIX_PATTERN = /^(?:accepted reusable approach|user accepted this approach|this approach was confirmed by the user and worked successfully|this task failed from the user's perspective|user rejected this direction|correction pattern|agent failure pattern|ai execution failure|agent success recovery approach|the approach failed|this task failed)\s*[:\uFF1A]\s*/iu;
+const MEMORY_METADATA_LABEL_PATTERN = /(?:^|\b)(?:english file|korean file|fixture|test fixture|test|example\s+[a-z0-9]+|user request|original request|ai action summary|action summary|source|parser|section)\s*[:\uFF1A]/iu;
+
+function stripMemoryMetadataLabels(value) {
+  let text = String(value ?? '').replace(/\s+/gu, ' ').trim();
+  for (let index = 0; index < 6; index += 1) {
+    const before = text;
+    text = text
+      .replace(METADATA_LABEL_PREFIX_PATTERN, '')
+      .replace(GENERATED_STATEMENT_PREFIX_PATTERN, '')
+      .trim();
+    if (text === before) break;
+  }
+  return text
+    .replace(EMBEDDED_METADATA_LABEL_PATTERN, '$1')
+    .replace(/\s+/gu, ' ')
+    .replace(/\s+([,.;:])/gu, '$1')
+    .replace(/;+\s*\./gu, '.')
+    .replace(/\.{2,}/gu, '.')
+    .trim();
+}
+
+function normalizeStatementForMemory(statement) {
+  return stripMemoryMetadataLabels(redactSensitive(statement));
+}
+
+function generatedSnippet(value) {
+  return normalizeStatementForMemory(value)
+    .replace(/[.!?]+(?=\s|$)/gu, ';')
+    .replace(/;{2,}/gu, ';')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .replace(/;$/u, '');
+}
+
+function cleanRecoverySnippet(value) {
+  const text = generatedSnippet(value)
+    .replace(/^(?:recovered by|recovery approach|workaround|alternative command)\s*[:\s-]*/iu, '')
+    .trim();
+  return text || generatedSnippet(value);
+}
+
+function uniqueNonEmpty(values = []) {
+  const seen = new Set();
+  return values.filter(Boolean).filter((value) => {
+    const key = String(value);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function correctionContextSnippet(value) {
+  const text = generatedSnippet(value)
+    .replace(/^(?:redesign|build|fix|update|implement|create)\s+/iu, '')
+    .replace(/[.;:]+$/u, '')
+    .trim();
+  return text || 'the current task';
+}
+
+function containsMemoryMetadataLabel(value) {
+  const text = String(value ?? '');
+  return MEMORY_METADATA_LABEL_PATTERN.test(text)
+    || /confirmed by the user and worked successfully/iu.test(text);
+}
+
 function summarizeStatement(statement) {
-  const text = redactSensitive(statement).replace(/\s+/gu, ' ').trim();
+  const text = normalizeStatementForMemory(statement);
   return text.length > 220 ? `${text.slice(0, 217)}...` : text;
 }
 
+function hasReusableSuccessSignal(statement = '') {
+  return textHasAny(statement, [
+    'should be reused',
+    'reuse when',
+    'reusable approach',
+    'reusable pattern',
+    'reuse this',
+    'kept dependencies unchanged',
+    'component-level wrapper',
+    'wrapper-based',
+    'focused tests',
+    'ran checks',
+    'verified'
+  ]);
+}
+
+function hasTechnicalSuccessSignal(statement = '', source = {}) {
+  if (normalizeEnum(source.technicalOutcome, TECHNICAL_OUTCOMES, 'unknown') === 'success') return true;
+  return textHasAny(statement, [
+    'worked successfully',
+    'validation passed',
+    'tests passed',
+    'checks passed',
+    'build passed',
+    'type checks passed',
+    'verified',
+    'ran checks',
+    'all tests passed'
+  ]);
+}
+
+function inferSuccessEvidence(statement = '', source = {}) {
+  const userAcceptance = normalizeEnum(source.userAcceptance, USER_ACCEPTANCE_VALUES, 'unknown');
+  const finalOutcome = normalizeEnum(source.finalOutcome, FINAL_OUTCOMES, 'unknown');
+  const feedbackSignal = source.userFeedbackSignal || 'none';
+  if (userAcceptance === 'rejected' || finalOutcome === 'technical_success_user_rejected' || feedbackSignal === 'rejection') return 'rejected';
+  if (userAcceptance === 'accepted' || finalOutcome === 'accepted_success' || feedbackSignal === 'acceptance') return 'confirmed';
+  if (
+    userAcceptance === 'unknown'
+    && finalOutcome !== 'failed'
+    && !textHasAny(statement, ['rejected', 'wrong direction', 'not the right direction', 'redo', 'start over'])
+    && hasTechnicalSuccessSignal(statement, source)
+    && hasReusableSuccessSignal(statement)
+  ) {
+    return 'inferred';
+  }
+  return 'unknown';
+}
+
 function sourceOutcomeFields(source = {}, statement = '') {
-  const feedbackAcceptance = inferUserAcceptance({ userFeedback: statement });
+  const canUseStatementAsFeedback = source.role === 'userFeedback' || source.kind === 'userFeedback' || source.kind === 'user_feedback';
+  const statementAcceptance = canUseStatementAsFeedback ? inferStatementAcceptance(statement, source) : 'unknown';
   const technicalOutcome = normalizeEnum(source.technicalOutcome, TECHNICAL_OUTCOMES, 'unknown');
-  const userAcceptance = normalizeEnum(source.userAcceptance, USER_ACCEPTANCE_VALUES, feedbackAcceptance || 'unknown');
+  const userAcceptance = normalizeEnum(source.userAcceptance, USER_ACCEPTANCE_VALUES, statementAcceptance || 'unknown');
   const finalOutcome = normalizeEnum(source.finalOutcome, FINAL_OUTCOMES, deriveFinalOutcome(technicalOutcome, userAcceptance));
+  const successEvidence = normalizeEnum(source.successEvidence || source.acceptanceBasis, SUCCESS_EVIDENCE_VALUES, inferSuccessEvidence(statement, {
+    ...source,
+    technicalOutcome,
+    userAcceptance,
+    finalOutcome
+  }));
   return {
     technicalOutcome,
     userAcceptance,
-    userFeedbackSignal: source.userFeedbackSignal || inferUserFeedbackSignal(statement),
+    userFeedbackSignal: source.userFeedbackSignal || (statementAcceptance === 'unknown' ? 'none' : statementAcceptance === 'accepted' ? 'acceptance' : 'rejection'),
     finalOutcome,
+    successEvidence,
+    acceptanceBasis: successEvidence,
     rejectionReason: source.rejectionReason || '',
     correctionDirection: source.correctionDirection || '',
     preventionRule: source.preventionRule || ''
@@ -1806,6 +2011,83 @@ function inferModelSubClass(candidate) {
   return byType[candidate.type] || 'preference_model';
 }
 
+function sourceIndicatesFailure(source = {}, statement = '') {
+  return normalizeEnum(source.userAcceptance, USER_ACCEPTANCE_VALUES, 'unknown') === 'rejected'
+    || normalizeEnum(source.finalOutcome, FINAL_OUTCOMES, 'unknown') === 'technical_success_user_rejected'
+    || normalizeEnum(source.technicalOutcome, TECHNICAL_OUTCOMES, 'unknown') === 'failure'
+    || source.userFeedbackSignal === 'rejection'
+    || textHasAny(statement, [
+      'user rejected',
+      'technically completed result',
+      'ai execution failure',
+      'agent failure',
+      'approach failed',
+      'failed approach',
+      'command failed',
+      'permission denied',
+      'access denied',
+      'tool failed',
+      'api failed',
+      'browser failed',
+      'image generation failed'
+    ]);
+}
+
+function inferMemoryRole(candidate, source = {}, statement = '') {
+  if (!candidate) return 'discarded_detail';
+  if (candidate.type === 'discarded_detail' || candidate.modelClass === 'discarded_detail') return 'discarded_detail';
+  if (candidate.type === 'task_context' || candidate.modelClass === 'task_context' || ['task', 'temporary'].includes(candidate.scope)) return 'task_context';
+  if (['success_pattern', 'agent_success_pattern'].includes(candidate.type)) return 'ai_successful_approach';
+  if (['failure_memory', 'agent_failure_pattern', 'correction_pattern'].includes(candidate.type)) return 'ai_failure_memory';
+  if (candidate.type === 'avoid_rule' && source?.role === 'userFeedback') return 'user_success_criteria';
+  if (candidate.type === 'avoid_rule' && sourceIndicatesFailure(source, statement)) return 'ai_failure_memory';
+  return 'user_success_criteria';
+}
+
+function inferAffectedContext(statement = '') {
+  if (textHasAny(statement, ['permission denied', 'access denied', 'eperm', 'eacces'])) return 'filesystem permissions';
+  if (textHasAny(statement, ['enoent', 'path', 'directory', 'folder'])) return 'filesystem path access';
+  if (textHasAny(statement, ['command failed', 'npm', 'test', 'build', 'check'])) return 'command execution';
+  if (textHasAny(statement, ['browser failed', 'browser access'])) return 'browser automation';
+  if (textHasAny(statement, ['api failed', 'image generation failed', 'tool failed'])) return 'tool runtime';
+  if (textHasAny(statement, ['visual', 'design', 'saas', 'catalog', 'direction'])) return 'visual direction';
+  return 'current AI coding task';
+}
+
+function inferRecoveryApproach(statement = '') {
+  const text = String(statement || '').trim();
+  const match = text.match(/\b(?:recovered by|recovery approach|workaround|alternative command)\b[:\s-]*(.+)/iu);
+  if (match) return summarizeStatement(match[1]);
+  if (textHasAny(text, ['instead of'])) return summarizeStatement(text);
+  return '';
+}
+
+function applyMemoryRoleFields(candidate, statement, source = {}) {
+  candidate.memoryRole = normalizeEnum(candidate.memoryRole, MEMORY_ROLE_VALUES, inferMemoryRole(candidate, source, statement));
+  if (candidate.memoryRole === 'user_success_criteria') {
+    candidate.successCriterion = candidate.summary;
+    candidate.successEvidence = candidate.successEvidence === 'rejected' ? 'unknown' : candidate.successEvidence;
+    candidate.acceptanceBasis = candidate.acceptanceBasis === 'rejected' ? 'unknown' : candidate.acceptanceBasis;
+    candidate.userAcceptance = candidate.userAcceptance === 'rejected' ? 'unknown' : candidate.userAcceptance;
+    candidate.finalOutcome = candidate.finalOutcome === 'technical_success_user_rejected' ? 'unknown' : candidate.finalOutcome;
+  }
+  if (candidate.memoryRole === 'ai_failure_memory') {
+    candidate.failureType = candidate.failureType || inferFailureType(statement);
+    candidate.failureCategory = candidate.failureType;
+    candidate.failedApproach = candidate.failedApproach || inferFailureApproach(statement);
+    candidate.failureReason = candidate.failureReason || candidate.summary;
+    candidate.preventionRule = candidate.preventionRule || inferPreventionRule(statement);
+    candidate.affectedContext = candidate.affectedContext || inferAffectedContext(statement);
+    candidate.recurrenceRisk = candidate.recurrenceRisk || (candidate.confidence === 'high' ? 'high' : 'medium');
+  }
+  if (candidate.memoryRole === 'ai_successful_approach') {
+    candidate.successfulApproach = candidate.successfulApproach || candidate.summary;
+    candidate.recoveryApproach = candidate.recoveryApproach || inferRecoveryApproach(statement);
+    candidate.reuseWhen = candidate.reuseWhen || candidate.appliesTo;
+  }
+  return candidate;
+}
+
 function normalizeCandidateModel(candidate) {
   candidate.modelClass = candidate.modelClass || inferModelClass(candidate);
   candidate.modelSubClass = candidate.modelSubClass || inferModelSubClass(candidate);
@@ -1818,7 +2100,12 @@ function buildCandidate(statement, source, activeMemories) {
     return null;
   }
 
-  const type = inferType(statement);
+  const normalizedStatement = normalizeStatementForMemory(statement);
+  if (!normalizedStatement) {
+    return null;
+  }
+
+  const type = inferType(normalizedStatement);
   if (!type || !MEMORY_TYPES.has(type)) {
     return null;
   }
@@ -1826,15 +2113,15 @@ function buildCandidate(statement, source, activeMemories) {
     return null;
   }
 
-  const domains = extractDomains(statement);
-  const tags = extractTags(statement);
-  const scope = normalizeCandidateScope(type, determineScope(statement, domains), statement);
-  const confidence = determineConfidence(statement, type, scope);
-  const topic = inferTopic(statement, tags, domains);
+  const domains = extractDomains(normalizedStatement);
+  const tags = extractTags(normalizedStatement);
+  const scope = normalizeCandidateScope(type, determineScope(normalizedStatement, domains), normalizedStatement);
+  const confidence = determineConfidence(normalizedStatement, type, scope);
+  const topic = inferTopic(normalizedStatement, tags, domains);
   const timestamp = nowIso();
-  const summary = summarizeStatement(statement);
-  const appliesTo = inferAppliesTo(statement, scope, domains, topic);
-  const outcomeFields = sourceOutcomeFields(source, statement);
+  const summary = summarizeStatement(normalizedStatement);
+  const appliesTo = inferAppliesTo(normalizedStatement, scope, domains, topic);
+  const outcomeFields = sourceOutcomeFields(source, normalizedStatement);
   const candidate = {
     id: hashId('mem', `${type}|${scope}|${topic}|${summary}`),
     type,
@@ -1858,6 +2145,8 @@ function buildCandidate(statement, source, activeMemories) {
     technicalOutcome: outcomeFields.technicalOutcome,
     userAcceptance: outcomeFields.userAcceptance,
     userFeedbackSignal: outcomeFields.userFeedbackSignal,
+    successEvidence: outcomeFields.successEvidence,
+    acceptanceBasis: outcomeFields.acceptanceBasis,
     finalOutcome: outcomeFields.finalOutcome,
     rejectionReason: outcomeFields.rejectionReason,
     correctionDirection: outcomeFields.correctionDirection,
@@ -1872,8 +2161,9 @@ function buildCandidate(statement, source, activeMemories) {
     lastUsedAt: null
   };
 
-  enrichTypedFields(candidate, statement);
+  enrichTypedFields(candidate, normalizedStatement);
   normalizeCandidateModel(candidate);
+  applyMemoryRoleFields(candidate, normalizedStatement, source);
   const conflict = classifyCandidateConflict(activeMemories, candidate);
   candidate.conflictStatus = conflict.status;
   candidate.related = [...new Set([...(candidate.related || []), ...(conflict.related || [])])];
@@ -1908,7 +2198,9 @@ function enrichTypedFields(candidate, statement) {
     candidate.successfulApproach = candidate.summary;
     candidate.whyItWorked = textHasAny(statement, ['because'])
       ? candidate.summary.split(/\bbecause\b/iu).slice(1).join('because').trim()
-      : 'Confirmed by prior successful task outcome.';
+      : candidate.acceptanceBasis === 'confirmed'
+        ? 'Confirmed by user acceptance or positive feedback.'
+        : 'Validation or technical success suggests this approach is reusable.';
     candidate.reuseWhen = candidate.appliesTo;
     candidate.relatedFiles = [];
   }
@@ -1978,6 +2270,14 @@ function inferPreferredBehavior(candidate, statement) {
 }
 
 function inferFailureType(statement) {
+  if (textHasAny(statement, ['permission denied', 'access denied', 'eperm', 'eacces'])) return 'permission_failure';
+  if (textHasAny(statement, ['enoent', 'file not found', 'directory not found', 'path not found', 'file lock', 'locked'])) return 'environment_failure';
+  if (textHasAny(statement, ['command failed', 'build failed', 'test failed', 'exit code', 'nonzero'])) return 'technical_failure';
+  if (textHasAny(statement, ['tool failed', 'api failed', 'browser failed', 'image generation failed', 'plugin failed'])) return 'tool_failure';
+  if (textHasAny(statement, ['wrong direction', 'not the right direction', 'generic', 'saas', 'card-heavy', 'visual direction'])) return 'preference_mismatch';
+  if (textHasAny(statement, ['misread', 'missed instruction', 'did not follow', 'instruction'])) return 'instruction_misread';
+  if (textHasAny(statement, ['overgeneralized', 'previous project', 'same design direction'])) return 'overgeneralization_failure';
+  if (textHasAny(statement, ['hardcode', 'fixture', 'example overfit'])) return 'example_overfit_failure';
   if (textHasAny(statement, ['regression', 'layout'])) return 'regression';
   if (textHasAny(statement, ['dependency', 'package.json'])) return 'dependency_violation';
   if (textHasAny(statement, ['wrong stack', 'wrong technology'])) return 'wrong_stack_choice';
@@ -2070,7 +2370,17 @@ function extractionSegmentsFromEvent(event, baseSource = {}) {
     source: {
       ...baseSource,
       role: segment.role,
-      priority: segment.priority
+      priority: segment.priority,
+      ...(segment.role === 'userRequest'
+        ? {
+          technicalOutcome: 'unknown',
+          userAcceptance: 'unknown',
+          userFeedbackSignal: 'none',
+          finalOutcome: 'unknown',
+          successEvidence: 'unknown',
+          acceptanceBasis: 'unknown'
+        }
+        : {})
     }
   }));
 }
@@ -2105,7 +2415,17 @@ function extractionSegmentsFromInput(input = {}, baseSource = {}) {
     source: {
       ...baseSource,
       role: segment.role,
-      priority: segment.priority
+      priority: segment.priority,
+      ...(segment.role === 'userRequest'
+        ? {
+          technicalOutcome: 'unknown',
+          userAcceptance: 'unknown',
+          userFeedbackSignal: 'none',
+          finalOutcome: 'unknown',
+          successEvidence: 'unknown',
+          acceptanceBasis: 'unknown'
+        }
+        : {})
     }
   }));
 }
@@ -2224,10 +2544,54 @@ function hasTargetOverlap(memory, candidate) {
     || setOverlap(memory.appliesTo, candidate.appliesTo) >= 1;
 }
 
+function isNonDurableMemoryCandidate(candidate) {
+  return !candidate
+    || candidate.type === 'discarded_detail'
+    || candidate.type === 'task_context'
+    || candidate.modelClass === 'discarded_detail'
+    || candidate.modelClass === 'task_context'
+    || ['task', 'temporary'].includes(candidate.scope);
+}
+
 function hasSameActiveSubject(memory, candidate) {
   return memory.topic === candidate.topic
     || setOverlap(memory.tags, candidate.tags) >= 2
     || (memory.type === candidate.type && setOverlap(memory.appliesTo, candidate.appliesTo) >= 1);
+}
+
+function valuesCompatible(leftValue, rightValue) {
+  if (!leftValue || !rightValue) return true;
+  return normalizeText(leftValue) === normalizeText(rightValue);
+}
+
+function domainsCompatible(memory, candidate) {
+  const memoryDomains = memory.domains || [];
+  const candidateDomains = candidate.domains || [];
+  if (memoryDomains.length === 0 || candidateDomains.length === 0) return true;
+  return setOverlap(memoryDomains, candidateDomains) > 0;
+}
+
+function projectCompatibleForReplacement(memory, candidate) {
+  const memoryProject = memory.projectId || null;
+  const candidateProject = candidate.projectId || null;
+  if (memoryProject || candidateProject) return memoryProject === candidateProject;
+  return true;
+}
+
+function canReplaceMemory(existing, candidate) {
+  if (isNonDurableMemoryCandidate(candidate) || isNonDurableMemoryCandidate(existing)) return false;
+  const existingModelClass = existing.modelClass || inferModelClass(existing);
+  const candidateModelClass = candidate.modelClass || inferModelClass(candidate);
+  const existingModelSubClass = existing.modelSubClass || inferModelSubClass(existing);
+  const candidateModelSubClass = candidate.modelSubClass || inferModelSubClass(candidate);
+  if (!valuesCompatible(existingModelClass, candidateModelClass)) return false;
+  if (!valuesCompatible(existingModelSubClass, candidateModelSubClass)) return false;
+  if (!valuesCompatible(existing.type, candidate.type)) return false;
+  if (!valuesCompatible(existing.scope, candidate.scope)) return false;
+  if (!domainsCompatible(existing, candidate)) return false;
+  if (!projectCompatibleForReplacement(existing, candidate)) return false;
+  if (!valuesCompatible(existing.situation, candidate.situation)) return false;
+  return hasSameActiveSubject(existing, candidate);
 }
 
 function hasOpposingChoice(memory, candidate) {
@@ -2263,8 +2627,10 @@ export function classifyCandidateConflict(activeMemoryRecords = [], candidate) {
 
   const candidateText = normalizeText([candidate.rule, candidate.summary, candidate.details].filter(Boolean).join(' '));
   const related = relatedMemories.map((memory) => memory.id);
+  const replaceableMemories = relatedMemories.filter((memory) => canReplaceMemory(memory, candidate));
+  const replaceable = replaceableMemories.map((memory) => memory.id);
 
-  for (const memory of relatedMemories) {
+  for (const memory of replaceableMemories) {
     const memoryText = normalizeText([memory.rule, memory.summary, memory.details].filter(Boolean).join(' '));
     const sameShape = memory.type === candidate.type && memory.scope === candidate.scope && memory.topic === candidate.topic;
     const sameCore = normalizeText(memory.rule) === normalizeText(candidate.rule)
@@ -2280,7 +2646,13 @@ export function classifyCandidateConflict(activeMemoryRecords = [], candidate) {
   }
 
   if (textHasAny(candidateText, ['replace', 'supersede', 'supersedes', 'instead of', 'no longer', 'override'])) {
-    return { status: 'supersedes', related, supersedes: related, reason: 'Candidate explicitly replaces existing memory.' };
+    if (replaceable.length > 0) {
+      return { status: 'supersedes', related, supersedes: replaceable, reason: 'Candidate explicitly replaces compatible active memory.' };
+    }
+    if (relatedMemories.some((memory) => hasOpposingChoice(memory, candidate))) {
+      return { status: 'direct_conflict', related, supersedes: [], reason: 'Candidate conflicts with overlapping memory but is outside the safe replacement scope.' };
+    }
+    return { status: 'needs_user_review', related, supersedes: [], reason: 'Candidate asks to replace memory outside the safe model, scope, domain, or project boundary.' };
   }
 
   if (relatedMemories.some((memory) => hasOpposingChoice(memory, candidate))) {
@@ -2291,8 +2663,9 @@ export function classifyCandidateConflict(activeMemoryRecords = [], candidate) {
     return { status: 'needs_user_review', related, supersedes: [], reason: 'Low-confidence candidate overlaps existing memory.' };
   }
 
-  if (relatedMemories.some((memory) => hasSameActiveSubject(memory, candidate) && isMoreSpecific(memory, candidate))) {
-    return { status: 'refinement', related, supersedes: [], reason: 'Candidate adds a more specific condition to existing memory.' };
+  const refinable = replaceableMemories.filter((memory) => hasSameActiveSubject(memory, candidate) && isMoreSpecific(memory, candidate));
+  if (refinable.length > 0) {
+    return { status: 'refinement', related: refinable.map((memory) => memory.id), supersedes: refinable.map((memory) => memory.id), reason: 'Candidate adds a more specific condition to compatible active memory.' };
   }
 
   return { status: 'needs_user_review', related, supersedes: [], reason: 'Candidate overlaps existing memory but relation is ambiguous.' };
@@ -2305,20 +2678,86 @@ function isManualReviewMode(input = {}, config = {}) {
     || (config.legacyReviewMode === true && (config.curationMode === 'review' || config.memoryMode === 'review'));
 }
 
+function candidateHasMetadataLabels(candidate) {
+  const fields = [
+    candidate.title,
+    candidate.summary,
+    candidate.rule,
+    candidate.details,
+    candidate.preferredBehavior,
+    candidate.successfulApproach,
+    candidate.whyItWorked,
+    candidate.successCriterion,
+    candidate.recoveryApproach,
+    candidate.affectedContext
+  ];
+  return fields.some((field) => containsMemoryMetadataLabel(field));
+}
+
 function isAcceptedSuccessCandidate(candidate) {
-  if (candidate.type !== 'success_pattern') return true;
+  if (!['success_pattern', 'agent_success_pattern'].includes(candidate.type)) return true;
   if (candidate.userAcceptance === 'accepted' || candidate.finalOutcome === 'accepted_success') return true;
-  return textHasAny(candidate.summary, ['worked successfully', 'successful', 'should be reused', 'approved', 'confirmed', 'accepted', 'keep this approach']);
+  if (candidate.userFeedbackSignal === 'acceptance') return true;
+  if (candidate.acceptanceBasis === 'confirmed' || candidate.successEvidence === 'confirmed') return true;
+  if (candidate.acceptanceBasis === 'inferred' || candidate.successEvidence === 'inferred') return true;
+  if (candidate.type === 'agent_success_pattern' && textHasAny(candidate.summary, ['agent succeeded', 'ai succeeded', 'agent success', 'succeeded by', 'successfully handled by'])) return true;
+  return false;
 }
 
 function isRejectedSuccessCandidate(candidate) {
   return ['success_pattern', 'agent_success_pattern'].includes(candidate.type)
-    && (candidate.userAcceptance === 'rejected' || candidate.finalOutcome === 'technical_success_user_rejected');
+    && (
+      candidate.userAcceptance === 'rejected'
+      || candidate.finalOutcome === 'technical_success_user_rejected'
+      || candidate.acceptanceBasis === 'rejected'
+      || candidate.successEvidence === 'rejected'
+    );
+}
+
+function hasConcreteFailureOrRecoveryEvidence(candidate = {}) {
+  const source = candidate.source || {};
+  return normalizeEnum(source.userAcceptance, USER_ACCEPTANCE_VALUES, 'unknown') === 'rejected'
+    || normalizeEnum(source.finalOutcome, FINAL_OUTCOMES, 'unknown') === 'technical_success_user_rejected'
+    || normalizeEnum(source.technicalOutcome, TECHNICAL_OUTCOMES, 'unknown') === 'failure'
+    || source.userFeedbackSignal === 'rejection'
+    || ['aftertask', 'event'].includes(source.kind);
+}
+
+function isLatestUserCorrectionCriteria(candidate = {}) {
+  const source = candidate.source || {};
+  return candidate.memoryRole === 'user_success_criteria'
+    && (source.role === 'userFeedback' || textHasAny(candidate.summary, ['latest user success criteria', 'latest success criteria']))
+    && hasConcreteFailureOrRecoveryEvidence(candidate);
+}
+
+function canDemoteRejectedSuccessMemory(memory, contextText, project = {}) {
+  if (!['success_pattern', 'agent_success_pattern'].includes(memory.type)) return false;
+  if (memory.projectId && memory.projectId !== project.projectId) return false;
+  const tags = extractTags(contextText);
+  const domains = extractDomains(contextText);
+  const topic = inferTopic(contextText, tags, domains);
+  const scope = memory.scope || normalizeCandidateScope(memory.type, determineScope(contextText, domains), contextText);
+  const candidate = normalizeCandidateModel({
+    type: memory.type,
+    scope,
+    topic,
+    summary: contextText,
+    rule: contextText,
+    details: contextText,
+    tags,
+    domains,
+    appliesTo: inferAppliesTo(contextText, scope, domains, topic),
+    projectId: memory.projectId ? project.projectId : null
+  });
+  return canReplaceMemory(memory, candidate);
 }
 
 function inferAutoCurationDecision(candidate) {
   if (containsSensitive(candidate)) {
     return { action: 'quarantine', status: 'quarantined', reason: 'Sensitive value suspected.' };
+  }
+  if (candidateHasMetadataLabels(candidate)) {
+    return { action: 'quarantine', status: 'quarantined', reason: 'Memory text still contains parser or source labels and needs normalization.' };
   }
   if (candidate.type === 'discarded_detail') {
     candidate.modelClass = 'discarded_detail';
@@ -2335,7 +2774,7 @@ function inferAutoCurationDecision(candidate) {
     return { action: 'discard', status: 'discarded', reason: 'User rejected the technically successful result; do not promote as success.' };
   }
   if (!isAcceptedSuccessCandidate(candidate)) {
-    return { action: 'quarantine', status: 'quarantined', reason: 'Success memory requires user acceptance or explicit confirmation.' };
+    return { action: 'quarantine', status: 'quarantined', reason: 'Success memory requires confirmed or inferred reusable success evidence.' };
   }
   if (candidate.conflictStatus === 'duplicate') {
     return { action: 'discard', status: 'discarded', reason: 'Duplicate of active memory.' };
@@ -2354,11 +2793,33 @@ function inferAutoCurationDecision(candidate) {
   if (['supersedes', 'refinement'].includes(candidate.conflictStatus)) {
     return { action: 'replace', status: 'active', reason: `Candidate ${candidate.conflictStatus} existing active memory.` };
   }
+  if (
+    ['direct_conflict', 'needs_user_review'].includes(candidate.conflictStatus)
+    && isLatestUserCorrectionCriteria(candidate)
+    && ['medium', 'high'].includes(candidate.confidence)
+  ) {
+    return { action: 'active', status: 'active', reason: 'Latest user correction is an active success criterion.' };
+  }
+  if (
+    ['direct_conflict', 'needs_user_review'].includes(candidate.conflictStatus)
+    && ['ai_failure_memory', 'ai_successful_approach'].includes(candidate.memoryRole)
+    && ['medium', 'high'].includes(candidate.confidence)
+    && hasConcreteFailureOrRecoveryEvidence(candidate)
+  ) {
+    return { action: 'active', status: 'active', reason: `${candidate.memoryRole === 'ai_failure_memory' ? 'AI failure memory' : 'AI successful approach'} coexists with user success criteria.` };
+  }
   if (['direct_conflict', 'needs_user_review'].includes(candidate.conflictStatus)) {
     return { action: 'quarantine', status: 'quarantined', reason: `Ambiguous conflict: ${candidate.conflictStatus}.` };
   }
   if (candidate.confidence === 'low') {
     return { action: 'quarantine', status: 'quarantined', reason: 'Low-confidence candidate needs more evidence.' };
+  }
+  if (candidate.conflictStatus === 'no_conflict' && ['success_pattern', 'agent_success_pattern'].includes(candidate.type) && ['confirmed', 'inferred'].includes(candidate.acceptanceBasis || candidate.successEvidence)) {
+    return {
+      action: 'active',
+      status: 'active',
+      reason: `${candidate.acceptanceBasis === 'confirmed' || candidate.successEvidence === 'confirmed' ? 'Confirmed' : 'Inferred'} reusable success evidence.`
+    };
   }
   if (candidate.conflictStatus === 'no_conflict' && ['medium', 'high'].includes(candidate.confidence)) {
     return { action: 'active', status: 'active', reason: 'Clear reusable memory with sufficient confidence.' };
@@ -2416,6 +2877,8 @@ function toPendingIndexEntry(candidate) {
     summary: candidate.summary,
     modelClass: candidate.modelClass,
     modelSubClass: candidate.modelSubClass,
+    memoryRole: candidate.memoryRole,
+    successCriterion: candidate.successCriterion,
     docKey: candidate.docKey,
     projectId: candidate.projectId || null,
     sourceProjectRoot: candidate.sourceProjectRoot || null,
@@ -2426,8 +2889,13 @@ function toPendingIndexEntry(candidate) {
     discardReason: candidate.discardReason,
     quarantineReason: candidate.quarantineReason,
     rejectionReason: candidate.rejectionReason,
+    failureCategory: candidate.failureCategory,
+    affectedContext: candidate.affectedContext,
+    recoveryApproach: candidate.recoveryApproach,
     technicalOutcome: candidate.technicalOutcome,
     userAcceptance: candidate.userAcceptance,
+    successEvidence: candidate.successEvidence,
+    acceptanceBasis: candidate.acceptanceBasis,
     finalOutcome: candidate.finalOutcome,
     conflictStatus: candidate.conflictStatus,
     recommendedAction: recommendCandidateAction(candidate).action,
@@ -2470,6 +2938,8 @@ function toMemoryIndexEntry(memory) {
     details: memory.details,
     modelClass: memory.modelClass || inferModelClass(memory),
     modelSubClass: memory.modelSubClass || inferModelSubClass(memory),
+    memoryRole: memory.memoryRole,
+    successCriterion: memory.successCriterion,
     docKey: memory.docKey || docKeyForType(memory.type),
     tags: memory.tags || [],
     domains: memory.domains || [],
@@ -2505,25 +2975,31 @@ function toMemoryIndexEntry(memory) {
     relatedDecisions: memory.relatedDecisions,
     relatedPreferences: memory.relatedPreferences,
     failureType: memory.failureType,
+    failureCategory: memory.failureCategory,
     failedApproach: memory.failedApproach,
     failureReason: memory.failureReason,
     preventionRule: memory.preventionRule,
+    affectedContext: memory.affectedContext,
     technicalOutcome: memory.technicalOutcome,
     userAcceptance: memory.userAcceptance,
     userFeedbackSignal: memory.userFeedbackSignal,
+    successEvidence: memory.successEvidence,
+    acceptanceBasis: memory.acceptanceBasis,
     finalOutcome: memory.finalOutcome,
     rejectionReason: memory.rejectionReason,
     correctionDirection: memory.correctionDirection,
     relatedFiles: memory.relatedFiles,
     recurrenceRisk: memory.recurrenceRisk,
     successfulApproach: memory.successfulApproach,
+    recoveryApproach: memory.recoveryApproach,
     whyItWorked: memory.whyItWorked,
     reuseWhen: memory.reuseWhen,
     forbiddenAction: memory.forbiddenAction,
     reason: memory.reason,
     severity: memory.severity,
     decision: memory.decision,
-    alternativesRejected: memory.alternativesRejected
+    alternativesRejected: memory.alternativesRejected,
+    displayLanguage: memory.displayLanguage
   };
 }
 
@@ -2577,10 +3053,13 @@ function replacementIdsForMemory(memory, existingMemories = []) {
     const candidateIds = [...new Set([...(memory.supersedes || []), ...(memory.related || [])])];
     return candidateIds.filter((id) => {
       const existing = existingMemories.find((item) => item.id === id);
-      return !existing || hasSameActiveSubject(existing, memory);
+      return existing && canReplaceMemory(existing, memory);
     });
   }
-  return [...new Set(memory.supersedes || [])];
+  return [...new Set(memory.supersedes || [])].filter((id) => {
+    const existing = existingMemories.find((item) => item.id === id);
+    return existing && canReplaceMemory(existing, memory);
+  });
 }
 
 export async function approveMemory(root = process.cwd(), candidateId, options = {}) {
@@ -2601,6 +3080,22 @@ export async function approveMemory(root = process.cwd(), candidateId, options =
   if (!isMemoryVisibleForProject(candidate, project)) {
     throw new Error(`Pending candidate does not belong to current project: ${candidateId}`);
   }
+  if (candidateHasMetadataLabels(candidate)) {
+    candidate.status = 'quarantined';
+    candidate.updatedAt = nowIso();
+    candidate.quarantineReason = 'Memory text still contains parser or source labels and needs normalization.';
+    await writeJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl'), records);
+    await updatePendingIndex(root);
+    throw new Error(`Candidate still contains parser or source labels and cannot become active memory: ${candidateId}`);
+  }
+  if (isNonDurableMemoryCandidate(candidate)) {
+    candidate.status = 'discarded';
+    candidate.updatedAt = nowIso();
+    candidate.discardReason = 'Task context and discarded detail cannot become durable active memory.';
+    await writeJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl'), records);
+    await updatePendingIndex(root);
+    throw new Error(`Candidate is task-only or discarded detail and cannot become active memory: ${candidateId}`);
+  }
   if (isRejectedSuccessCandidate(candidate)) {
     candidate.status = 'rejected';
     candidate.updatedAt = nowIso();
@@ -2608,6 +3103,20 @@ export async function approveMemory(root = process.cwd(), candidateId, options =
     await writeJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl'), records);
     await updatePendingIndex(root);
     throw new Error(`Candidate was rejected by user feedback and cannot become success memory: ${candidateId}`);
+  }
+  const manualSuccessApproval = ['success_pattern', 'agent_success_pattern'].includes(candidate.type)
+    && (!options.curationDecision || options.curationDecision === 'manual_approve');
+  if (manualSuccessApproval && !isAcceptedSuccessCandidate(candidate)) {
+    candidate.successEvidence = candidate.successEvidence === 'unknown' ? 'inferred' : candidate.successEvidence || 'inferred';
+    candidate.acceptanceBasis = candidate.acceptanceBasis === 'unknown' ? 'inferred' : candidate.acceptanceBasis || candidate.successEvidence;
+  }
+  if (!isAcceptedSuccessCandidate(candidate)) {
+    candidate.status = 'quarantined';
+    candidate.updatedAt = nowIso();
+    candidate.quarantineReason = 'Success memory requires confirmed or inferred reusable success evidence.';
+    await writeJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl'), records);
+    await updatePendingIndex(root);
+    throw new Error(`Success memory requires confirmed or inferred reusable success evidence: ${candidateId}`);
   }
   if (containsSensitive(candidate)) {
     candidate.status = 'rejected';
@@ -2618,9 +3127,12 @@ export async function approveMemory(root = process.cwd(), candidateId, options =
     throw new Error(`Candidate contains suspected sensitive data and was rejected: ${candidateId}`);
   }
 
+  const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
+  const memoryLanguage = configuredMemoryLanguage(config);
+  const memoryLocale = configuredMemoryLocale(config);
   const memoryIndex = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
   const timestamp = nowIso();
-  const memory = {
+  let memory = {
     ...candidate,
     projectId: ['project', 'task', 'temporary'].includes(candidate.scope)
       ? candidate.projectId || project.projectId
@@ -2632,6 +3144,8 @@ export async function approveMemory(root = process.cwd(), candidateId, options =
     updatedAt: timestamp
   };
   normalizeCandidateModel(memory);
+  applyMemoryRoleFields(memory, memory.summary || memory.rule || memory.details || '', memory.source || {});
+  memory = normalizeMemoryLanguage(memory, memoryLanguage, memoryLocale);
   const replaceIds = replacementIdsForMemory(memory, memoryIndex.memories);
   memory.replaces = [...new Set([...(memory.replaces || []), ...replaceIds])];
   memory.related = (memory.related || []).filter((id) => !replaceIds.includes(id));
@@ -3038,7 +3552,7 @@ function wikiLinkForDocKey(docKey, locale = 'en-US', alias = '') {
 async function rebuildWiki(root) {
   const memoryIndex = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
   const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
-  const locale = normalizeLocale(config.locale || config.wikiLanguage || config.outputLanguage || 'en-US');
+  const locale = configuredMemoryLocale(config);
   const active = memoryIndex.memories.filter((memory) => memory.status === 'active');
   const registry = await loadJson(vibeboxPath(root, 'registry/projects.json'), defaultRegistry());
   const projects = (registry.projects || []).filter(isRegistryProject);
@@ -3398,6 +3912,10 @@ function scoreMemoryDetailed(memory, task, config = {}) {
     score += 18;
     matchScore += 18;
   }
+  if (memory.memoryRole === 'user_success_criteria' && textHasAny(memory.summary, ['latest user success criteria', 'latest success criteria'])) {
+    score += 45;
+    matchScore += 12;
+  }
   if (memory.scope === 'project' && memory.projectId && memory.projectId === config.projectId) score += 25;
   if (memory.scope === 'project') score += 16;
   if (memory.scope === 'global') score -= 6;
@@ -3446,9 +3964,12 @@ function situationPreferredTypes(situation) {
 function selectRelevantMemories(memories, task, config) {
   const maxItems = config.maxContextItems || 8;
   const situation = config.situation || detectSituation(task);
+  const taskDomains = extractDomains(task);
+  const taskTags = extractTags(task);
   const scored = memories
     .filter((memory) => memory.status === 'active')
     .filter((memory) => matchesActiveCondition(memory, task))
+    .filter((memory) => memoryMatchesTaskDomain(memory, { taskDomains, taskTags, task }, config.projectId))
     .map((memory) => ({ memory, ...scoreMemoryDetailed(memory, task, { ...config, situation }) }))
     .filter((item) => item.matchScore > 0)
     .sort((left, right) => right.score - left.score);
@@ -3466,6 +3987,21 @@ function selectRelevantMemories(memories, task, config) {
     .slice(0, maxItems)
     .map((item) => ({ ...item.memory, retrievalScore: item.score, retrievalMatchScore: item.matchScore, lastUsedAt: nowIso() }));
   return includeSuccessFailurePairs(selected, scored.map((item) => item.memory), maxItems);
+}
+
+function memoryMatchesTaskDomain(memory, taskContext = {}, projectId = null) {
+  if (memoryBelongsToCurrentProject(memory, projectId)) return true;
+  const taskDomains = taskContext.taskDomains || [];
+  const taskTags = taskContext.taskTags || [];
+  const task = taskContext.task || '';
+  if (taskDomains.length === 0) return true;
+  const memoryDomains = memory.domains || [];
+  if (memoryDomains.length === 0) return true;
+  const domainScoped = memory.scope === 'domain' || (memory.modelClass || inferModelClass(memory)) === 'domain_model';
+  if (!domainScoped) return true;
+  if (setOverlap(memory.tags || [], taskTags) > 0) return true;
+  if (memory.topic && normalizeText(task).includes(normalizeText(memory.topic))) return true;
+  return setOverlap(memoryDomains, taskDomains) > 0;
 }
 
 function memoryBelongsToCurrentProject(memory, projectId) {
@@ -3533,6 +4069,9 @@ export async function generateContextPack(root = process.cwd(), input = {}) {
     .filter((candidate) => scoreMemoryDetailed(candidate, task, retrievalConfig).matchScore > 0)
     .slice(0, 4);
   const activeConflicts = findActiveMemoryConflicts(scored);
+  const userSuccessCriteria = scored.filter((memory) => memory.memoryRole === 'user_success_criteria');
+  const aiFailureAvoidance = scored.filter((memory) => memory.memoryRole === 'ai_failure_memory' || ['failure_memory', 'agent_failure_pattern'].includes(memory.type));
+  const aiSuccessfulApproaches = scored.filter((memory) => memory.memoryRole === 'ai_successful_approach' || ['success_pattern', 'agent_success_pattern'].includes(memory.type));
 
   const sections = [
     t(locale, 'contextTitle'),
@@ -3540,6 +4079,9 @@ export async function generateContextPack(root = process.cwd(), input = {}) {
     `${t(locale, 'task')}:`,
     redactSensitive(task),
     '',
+    renderContextSection(t(locale, 'userSuccessCriteria'), userSuccessCriteria, { locale, allMemories: scored }),
+    renderContextSection(t(locale, 'aiFailureAvoidance'), aiFailureAvoidance, { locale, allMemories: scored }),
+    renderContextSection(t(locale, 'aiSuccessfulApproaches'), aiSuccessfulApproaches, { locale, allMemories: scored }),
     renderContextSection(t(locale, 'relevantUserPreferences'), scored.filter((memory) => ['user_preference', 'tooling_preference', 'technology_preference', 'coding_style', 'design_preference', 'workflow_rule'].includes(memory.type)), { locale, allMemories: scored }),
     renderContextSection(t(locale, 'relevantUserPatterns'), scored.filter((memory) => ['question_pattern', 'response_preference', 'communication_pattern', 'correction_pattern', 'decision_pattern', 'handoff_pattern'].includes(memory.type)), { locale, allMemories: scored }),
     renderContextSection(t(locale, 'relevantValidationPatterns'), scored.filter((memory) => memory.type === 'validation_pattern'), { locale, allMemories: scored }),
@@ -3571,6 +4113,9 @@ function formatMemoryLine(memory, options = {}) {
   const details = [];
   if (['failure_memory', 'agent_failure_pattern'].includes(memory.type) && memory.preventionRule) {
     details.push(`${t(locale, 'prevention')}: ${memory.preventionRule}`);
+    if (memory.affectedContext) {
+      details.push(`Context: ${memory.affectedContext}`);
+    }
     const alternative = (options.allMemories || []).find((candidate) => (
       ['success_pattern', 'agent_success_pattern'].includes(candidate.type)
       && (
@@ -3585,6 +4130,9 @@ function formatMemoryLine(memory, options = {}) {
   }
   if (memory.type === 'success_pattern' && (memory.reuseWhen || []).length > 0) {
     details.push(`Reuse when: ${(memory.reuseWhen || []).join(', ')}`);
+  }
+  if (memory.type === 'agent_success_pattern' && memory.recoveryApproach) {
+    details.push(`Recovery: ${memory.recoveryApproach}`);
   }
   if (memory.patternType && memory.preferredBehavior && memory.preferredBehavior !== memory.summary) {
     details.push(`${t(locale, 'guidanceForAgent')}: ${memory.preferredBehavior}`);
@@ -3655,6 +4203,9 @@ export async function generatePreTaskBrief(root = process.cwd(), input = {}) {
   ].slice(0, 6);
   const broaderConflictIds = new Set(conflicts.map((conflict) => conflict.broaderMemoryId).filter(Boolean));
 
+  const userSuccessCriteria = relevant.filter((memory) => memory.memoryRole === 'user_success_criteria');
+  const aiFailureAvoidance = relevant.filter((memory) => memory.memoryRole === 'ai_failure_memory' || ['failure_memory', 'agent_failure_pattern'].includes(memory.type));
+  const aiSuccessfulApproaches = relevant.filter((memory) => memory.memoryRole === 'ai_successful_approach' || ['success_pattern', 'agent_success_pattern'].includes(memory.type));
   const memoryContext = relevant.filter((memory) => !broaderConflictIds.has(memory.id) && ['user_preference', 'tooling_preference', 'technology_preference', 'coding_style', 'design_preference', 'workflow_rule', 'question_pattern', 'response_preference', 'communication_pattern', 'correction_pattern', 'decision_pattern', 'handoff_pattern'].includes(memory.type));
   const projectGuardrails = relevant.filter((memory) => ['avoid_rule', 'architecture_rule', 'project_decision'].includes(memory.type));
   const lines = [
@@ -3663,6 +4214,9 @@ export async function generatePreTaskBrief(root = process.cwd(), input = {}) {
     `${t(locale, 'userTask')}:`,
     redactSensitive(task),
     '',
+    renderBriefSection(t(locale, 'userSuccessCriteria'), userSuccessCriteria, { locale, allMemories: relevant }),
+    renderBriefSection(t(locale, 'aiFailureAvoidance'), aiFailureAvoidance, { locale, allMemories: relevant }),
+    renderBriefSection(t(locale, 'aiSuccessfulApproaches'), aiSuccessfulApproaches, { locale, allMemories: relevant }),
     renderBriefSection(t(locale, 'relevantMemoryContext'), memoryContext, { locale, allMemories: relevant }),
     renderBriefSection(t(locale, 'relevantValidationPatterns'), relevant.filter((memory) => memory.type === 'validation_pattern'), { locale, allMemories: relevant }),
     renderBriefSection(t(locale, 'relevantProcessPatterns'), relevant.filter((memory) => memory.type === 'process_pattern'), { locale, allMemories: relevant }),
@@ -3703,6 +4257,84 @@ function renderBriefSection(title, memories, options = {}) {
   ].join('\n');
 }
 
+function executionFailureText(input = {}, event = {}) {
+  return uniqueNonEmpty([
+    input.command || event.command || '',
+    input.commandResult || event.commandResult || '',
+    ...(input.commandResults || []),
+    ...(event.commandResults || []),
+    ...(input.errors || []),
+    ...(event.errors || []),
+    input.aiActionSummary || input.summary || event.aiActionSummary || '',
+    input.notes || event.notes || ''
+  ]).join('\n');
+}
+
+function primaryExecutionFailureText(input = {}, event = {}) {
+  const errors = uniqueNonEmpty([
+    ...(input.errors || []),
+    ...(event.errors || [])
+  ]);
+  if (errors.length > 0) return errors.join('\n');
+  return uniqueNonEmpty([
+    input.command || event.command || '',
+    input.commandResult || event.commandResult || '',
+    ...(input.commandResults || []),
+    ...(event.commandResults || [])
+  ]).join('\n');
+}
+
+function hasExecutionFailureSignal(input = {}, event = {}) {
+  const text = executionFailureText(input, event);
+  return event.technicalOutcome === 'failure'
+    || input.technicalOutcome === 'failure'
+    || (input.errors || []).length > 0
+    || (event.errors || []).length > 0
+    || textHasAny(text, [
+      'permission denied',
+      'access denied',
+      'eperm',
+      'eacces',
+      'enoent',
+      'command failed',
+      'build failed',
+      'test failed',
+      'exit code',
+      'not found',
+      'tool failed',
+      'api failed',
+      'browser failed',
+      'image generation failed'
+    ]);
+}
+
+async function demoteRejectedSuccessMemories(root, event = {}, input = {}) {
+  if (!(event.userAcceptance === 'rejected' || event.finalOutcome === 'technical_success_user_rejected')) return [];
+  const project = await resolveCurrentProjectIdentity(root);
+  const contextText = [
+    input.userRequest || input.request || event.userRequest || '',
+    input.aiActionSummary || input.summary || event.aiActionSummary || '',
+    event.userFeedback || input.userFeedback || input.feedback || '',
+    event.rejectionReason || '',
+    event.correctionDirection || ''
+  ].filter(Boolean).join('\n');
+  if (!contextText.trim()) return [];
+  const memoryIndexPath = vibeboxPath(root, 'index/global-memory-index.json');
+  const memoryIndex = await loadJson(memoryIndexPath, defaultMemoryIndex());
+  const demoted = (memoryIndex.memories || []).filter((memory) => (
+    memory.status === 'active'
+    && canDemoteRejectedSuccessMemory(memory, contextText, project)
+  ));
+  if (demoted.length === 0) return [];
+  const demotedIds = new Set(demoted.map((memory) => memory.id));
+  memoryIndex.memories = memoryIndex.memories.filter((memory) => !demotedIds.has(memory.id));
+  memoryIndex.updatedAt = nowIso();
+  await saveJson(memoryIndexPath, memoryIndex);
+  await rebuildIndexes(root);
+  await rebuildWiki(root);
+  return [...demotedIds];
+}
+
 export async function afterTask(root = process.cwd(), input = {}) {
   await initVibeBox(root);
   const userRequestText = input.userRequest || input.request || '';
@@ -3724,13 +4356,15 @@ export async function afterTask(root = process.cwd(), input = {}) {
     notes: input.notes || ''
   });
 
-  if (!userRequestText.trim()) {
+  const hasFailureWithoutRequest = hasExecutionFailureSignal(input, event);
+  if (!userRequestText.trim() && !hasFailureWithoutRequest) {
     return {
       event,
       candidates: [],
       message: [
         `Captured blackbox event ${event.id}.`,
-        'Warning: userRequest was empty, so active memory extraction was skipped.',
+        'Warning: userRequest is missing; active user model extraction was skipped.',
+        'Pass the original user request with --request to enable model extraction.',
         'Use `vibebox review` only for manual debug or override workflows.'
       ].join('\n')
     };
@@ -3738,29 +4372,56 @@ export async function afterTask(root = process.cwd(), input = {}) {
 
   const wasRejected = event.userAcceptance === 'rejected' || event.finalOutcome === 'technical_success_user_rejected';
   const wasAccepted = event.userAcceptance === 'accepted' || event.finalOutcome === 'accepted_success';
-  const extractionText = [
-    input.userRequest || input.request ? `User requested: ${input.userRequest || input.request}` : '',
-    event.userFeedback ? `User feedback: ${event.userFeedback}` : '',
-    ...(input.errors || []).map((error) => `The approach failed: ${error}. Prevent this by avoiding the failed approach unless the user explicitly asks for it.`),
+  const actionSummaryText = input.aiActionSummary || input.summary || '';
+  const validationEvidenceText = [
+    actionSummaryText,
+    input.commandResult || '',
+    event.commandResult || '',
+    ...(input.commandResults || []),
+    ...(event.commandResults || [])
+  ].filter(Boolean).join('\n');
+  const canInferReusableSuccess = !wasRejected
+    && !wasAccepted
+    && hasTechnicalSuccessSignal(validationEvidenceText, event)
+    && hasReusableSuccessSignal(validationEvidenceText);
+  const demotedSuccessIds = wasRejected ? await demoteRejectedSuccessMemories(root, event, input) : [];
+  const correctionText = generatedSnippet(event.correctionDirection || event.userFeedback) || 'confirming the direction with the user before repeating it';
+  const recoveryText = cleanRecoverySnippet(actionSummaryText);
+  const errorSnippets = (input.errors || []).map((error) => generatedSnippet(error)).filter(Boolean);
+  const generatedExtractionText = [
+    ...errorSnippets,
+    ...errorSnippets.map((error) => `Do not repeat this failed approach: ${error}.`),
+    hasFailureWithoutRequest && errorSnippets.length === 0
+      ? `AI execution failure: ${generatedSnippet(primaryExecutionFailureText(input, event))}. Prevent this by checking the command, path, permission, or tool state before repeating the same attempt.`
+      : '',
+    hasFailureWithoutRequest && hasTechnicalSuccessSignal(validationEvidenceText, event) && actionSummaryText
+      ? `Agent succeeded by ${recoveryText} after the execution failure. Reuse this recovery approach when the same failure appears.`
+      : '',
     wasRejected
       ? [
-        `User rejected this direction: ${event.userFeedback}. Do not repeat it without confirmation.`,
-        `Correction pattern: when the user rejects a technically completed result, treat it as user rejection and follow this correction direction: ${event.correctionDirection || event.userFeedback}.`,
-        `Agent failure pattern: technical success was not user accepted. Prevent this by separating technical success from user acceptance before storing success memory.`,
-        `This task failed from the user's perspective: ${input.aiActionSummary || input.summary}. Failure reason: ${event.rejectionReason || event.userFeedback || 'user rejection'}. Prevent this by ${event.correctionDirection || 'confirming the direction with the user before repeating it'}.`
+        `User rejected a technically completed result; avoid repeating this approach: ${generatedSnippet(input.aiActionSummary || input.summary)}; prefer ${correctionText}.`,
+        `When the user rejects a technically completed result, treat it as AI failure and follow this correction direction: ${event.correctionDirection || event.userFeedback}.`,
+        `AI failed because technical success did not match the user's success criteria. Prevent this by treating the user's latest correction as the success criteria before repeating the work.`,
+        `For ${correctionContextSnippet(event.userRequest)}, treat ${correctionText} as the latest user success criteria instead of the rejected direction.`,
+        `This task failed from the AI perspective: ${input.aiActionSummary || input.summary}. Failure reason: ${event.rejectionReason || event.userFeedback || 'user rejection'}. Prevent this by ${event.correctionDirection || 'confirming the direction with the user before repeating it'}.`
       ].join('\n')
       : '',
     wasAccepted
-      ? `This approach was confirmed by the user and worked successfully: ${input.aiActionSummary || input.summary}. Reuse when the task is similar to: ${input.userRequest || input.request}.`
+      ? `Accepted reusable approach: ${generatedSnippet(actionSummaryText)}; should be reused in similar tasks.`
+      : '',
+    canInferReusableSuccess
+      ? `${generatedSnippet(actionSummaryText)}. Reuse this approach in similar tasks after validation passes.`
       : '',
     event.finalOutcome === 'failed' || event.technicalOutcome === 'failure'
-      ? `This task failed: ${input.aiActionSummary || input.summary}. Failure reason: ${(input.errors || []).join('; ') || input.commandResult || 'unknown'}.`
+      ? `This task failed: ${actionSummaryText}. Failure reason: ${(input.errors || []).join('; ') || input.commandResult || 'unknown'}.`
       : '',
     input.notes || ''
   ].filter(Boolean).join('\n');
 
   const candidates = await extractMemoryCandidates(root, {
-    text: extractionText,
+    userRequest: userRequestText.trim() ? userRequestText : '',
+    userFeedback: event.userFeedback || '',
+    text: generatedExtractionText,
     manualReview: input.manualReview || input.reviewOnly || input.debugReview,
     source: {
       kind: 'aftertask',
@@ -3788,11 +4449,15 @@ export async function afterTask(root = process.cwd(), input = {}) {
     candidates,
     message: [
       `Captured blackbox event ${event.id}.`,
+      demotedSuccessIds.length > 0 ? `Demoted rejected AI success memor${demotedSuccessIds.length === 1 ? 'y' : 'ies'}: ${demotedSuccessIds.join(', ')}.` : '',
       summary,
+      !userRequestText.trim() && hasFailureWithoutRequest
+        ? 'Warning: userRequest is missing; user success criteria extraction was skipped, but AI failure memory extraction was allowed.'
+        : '',
       input.manualReview || input.reviewOnly || input.debugReview
         ? 'Review pending memory with `vibebox review`, then approve or reject candidate ids.'
         : 'Use `vibebox review` only for manual debug or override workflows.'
-    ].join('\n')
+    ].filter(Boolean).join('\n')
   };
 }
 
@@ -3994,6 +4659,15 @@ export async function restoreVibeBox(root = process.cwd(), options = {}) {
 
 const SEMANTIC_GLOSSARY = {
   ko: [
+    [/before coding,?\s+create a concise plan\.?/giu, '\uAD6C\uD604 \uC804\uC5D0 \uAC04\uACB0\uD55C \uACC4\uD68D\uC744 \uC138\uC6B4\uB2E4.'],
+    [/final report should include changed files and validation result\.?/giu, '\uCD5C\uC885 \uBCF4\uACE0\uC5D0\uB294 \uBCC0\uACBD \uD30C\uC77C\uACFC \uAC80\uC99D \uACB0\uACFC\uB97C \uD3EC\uD568\uD55C\uB2E4.'],
+    [/do not modify package\.json unless explicitly requested\.?/giu, '\uBA85\uC2DC \uC694\uCCAD \uC5C6\uC774 package.json\uC744 \uC218\uC815\uD558\uC9C0 \uC54A\uB294\uB2E4.'],
+    [/when validating changes,?\s+report command results\.?/giu, '\uBCC0\uACBD \uC0AC\uD56D\uC744 \uAC80\uC99D\uD560 \uB54C \uBA85\uB839 \uACB0\uACFC\uB97C \uBCF4\uACE0\uD55C\uB2E4.'],
+    [/validation passed and the approach appears reusable for similar tasks\.?/giu, '\uAC80\uC99D\uC744 \uD1B5\uACFC\uD588\uACE0 \uC720\uC0AC \uC791\uC5C5\uC5D0 \uC7AC\uC0AC\uC6A9 \uAC00\uB2A5\uD55C \uC811\uADFC\uC73C\uB85C \uD310\uB2E8\uB41C\uB2E4.'],
+    [/validation or technical success suggests this approach is reusable\.?/giu, '\uAC80\uC99D \uB610\uB294 \uAE30\uC220\uC801 \uC131\uACF5\uC744 \uD1B5\uD574 \uC774 \uC811\uADFC\uC744 \uC7AC\uC0AC\uC6A9\uD560 \uC218 \uC788\uB2E4\uACE0 \uD310\uB2E8\uB41C\uB2E4.'],
+    [/reuse this approach in similar tasks after validation passes\.?/giu, '\uAC80\uC99D\uC744 \uD1B5\uACFC\uD55C \uACBD\uC6B0 \uC720\uC0AC \uC791\uC5C5\uC5D0 \uC774 \uC811\uADFC\uC744 \uC7AC\uC0AC\uC6A9\uD55C\uB2E4.'],
+    [/used wrapper-based table scrolling and kept dependencies unchanged; should be reused in similar tasks\.?/giu, '\uC758\uC874\uC131\uC744 \uBC14\uAFB8\uC9C0 \uC54A\uACE0 wrapper \uAE30\uBC18 \uD14C\uC774\uBE14 \uC2A4\uD06C\uB864\uC744 \uC801\uC6A9\uD55C \uBC29\uC2DD\uC740 \uC720\uC0AC \uC791\uC5C5\uC5D0 \uC7AC\uC0AC\uC6A9\uD560 \uC218 \uC788\uB2E4.'],
+    [/used wrapper-based implementation, validation passed, and this reusable approach should be reused\.?/giu, 'wrapper \uAE30\uBC18 \uAD6C\uD604\uC774 \uAC80\uC99D\uC744 \uD1B5\uACFC\uD588\uACE0 \uC720\uC0AC \uC791\uC5C5\uC5D0 \uC7AC\uC0AC\uC6A9\uD560 \uC218 \uC788\uB2E4.'],
     [/plan before coding/giu, '코딩 전에 계획한다'],
     [/validate after coding/giu, '코딩 후 검증한다'],
     [/respect project type/giu, '프로젝트 유형을 기준으로 판단한다'],
@@ -4025,7 +4699,7 @@ function normalizeUserFacingTextForLanguage(text, targetLanguage) {
 
 function normalizeMemoryLanguage(memory, targetLanguage, locale) {
   const normalized = { ...memory };
-  for (const field of ['title', 'rule', 'summary', 'details', 'preferredBehavior', 'preventionRule', 'successfulApproach', 'failedApproach', 'forbiddenAction', 'decision']) {
+  for (const field of ['title', 'rule', 'summary', 'details', 'preferredBehavior', 'preventionRule', 'successfulApproach', 'failedApproach', 'forbiddenAction', 'decision', 'whyItWorked', 'reason', 'failureReason', 'correctionDirection', 'successCriterion', 'recoveryApproach', 'affectedContext']) {
     if (normalized[field]) {
       normalized[field] = normalizeUserFacingTextForLanguage(normalized[field], targetLanguage);
     }
@@ -4075,6 +4749,7 @@ export async function convertLanguage(root = process.cwd(), options = {}) {
   const updatedConfig = {
     ...config,
     locale: targetLocale,
+    memoryLanguage: targetLanguage,
     outputLanguage: targetLanguage,
     wikiLanguage: targetLanguage,
     reportLanguage: targetLanguage,
@@ -4104,7 +4779,7 @@ export async function rebuildVibeBox(root = process.cwd(), options = {}) {
     await ensureDir(vibeboxPath(root, 'index'));
   }
   const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
-  const locale = normalizeLocale(config.locale || config.wikiLanguage || config.outputLanguage || 'en-US');
+  const locale = configuredMemoryLocale(config);
   const memoryIndexPath = vibeboxPath(root, 'index/global-memory-index.json');
   const memoryIndex = await loadJson(memoryIndexPath, defaultMemoryIndex());
   memoryIndex.memories = (memoryIndex.memories || [])

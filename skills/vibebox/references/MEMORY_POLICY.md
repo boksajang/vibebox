@@ -84,12 +84,23 @@ VibeBox maintains the latest optimized active graph, not a pile of competing rul
 
 ## Pattern Memory Policy
 
-User patterns may describe question style, response preference, process habits, validation requirements, design philosophy, decision style, communication style, correction patterns, agent failure patterns, agent success patterns, and handoff style. A single vague statement should be discarded, quarantined, or marked low confidence; explicit or repeated behavior can become active through auto-curation or manual override.
+User instructions are success criteria. User corrections are more precise success criteria. User dissatisfaction is an AI failure signal, not user failure. User patterns may describe question style, response preference, process habits, validation requirements, design philosophy, decision style, communication style, correction patterns, agent failure patterns, agent success patterns, and handoff style. A single vague statement should be discarded, quarantined, or marked low confidence; explicit or repeated behavior can become active through auto-curation or manual override.
 
-Failure memory must include prevention guidance when possible. Success patterns should describe when to reuse the successful approach.
+Failure memory must include prevention guidance when possible. Success patterns should describe when to reuse the successful approach and whether the evidence is confirmed by the user or inferred from validation.
 Pretask/context retrieval should consider relevant failure and success nodes together, not only one side.
 
-Technical success and user acceptance are separate. Passing tests, clean command output, or completed edits can support technical outcome fields, but a user-rejected result must not become `success_pattern`.
+Technical success and user acceptance are separate. User acceptance is the user's reaction to the result, not memory approval. Passing tests, clean command output, or completed edits can support inferred AI successful approach when the approach is reusable and no rejection signal exists, but a user-rejected result means the AI missed the user's criteria and must become AI failure/correction/prevention memory.
+
+AI failure memory includes preference mismatch, instruction misread, overgeneralization, example overfit, technical failure, environment failure, permission failure, and tool failure. Recovery or workaround methods that succeed should be stored as AI successful approaches, without replacing user success criteria.
+
+Success evidence:
+
+- `confirmed`: user accepted, confirmed, or asked to keep the result.
+- `inferred`: validation passed, no rejection signal exists, and the approach is reusable.
+- `rejected`: technical success was rejected by the user; route to failure/correction/prevention.
+- `unknown`: insufficient evidence for success memory.
+
+Never describe inferred success as confirmed by the user.
 
 ## Auto-Curated Policy
 

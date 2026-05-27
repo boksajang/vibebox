@@ -2,7 +2,7 @@
 
 VibeBox is a local-first active user model, active graph, and blackbox memory middleware for AI coding agents.
 
-It is not a chat transcript archive, a passive history store, an action-summary recorder, or a remote memory service. VibeBox interprets user requests, user feedback, project context, command outcomes, and prior active memory into normalized reusable guidance. It stores compact development memory in one user-level global store, then keeps only the latest active guidance in retrieval, Context Packs, Pre-Task Briefs, the active relation graph, and the Obsidian-compatible wiki.
+It is not a chat transcript archive, a passive history store, an action-summary recorder, or a remote memory service. VibeBox interprets user requests, user corrections, user feedback, project context, command outcomes, and prior active memory into normalized reusable guidance. User instructions are success criteria. User corrections are more precise success criteria. User dissatisfaction is an AI failure signal, not user failure. VibeBox stores compact development memory in one user-level global store, then keeps only the latest active guidance in retrieval, Context Packs, Pre-Task Briefs, the active relation graph, and the Obsidian-compatible wiki.
 
 ## The Problem
 
@@ -12,6 +12,8 @@ AI coding agents can be effective inside a single task, but they often lose dura
 - which approach the user rejected
 - which command or file change caused trouble
 - which successful pattern should be reused
+- which user success criteria define a good result
+- which AI failure, tool failure, permission failure, or recovery pattern should not be repeated
 - which user preference applies to this project
 - how the user asks, reviews, validates, corrects, and hands work off
 
@@ -68,7 +70,7 @@ VibeBox's active graph is the current optimized guidance set. If memory replaces
 
 Discarded, quarantined, rejected, and legacy pending memory is excluded from normal retrieval, Context Packs, Pre-Task Briefs, the active wiki, and the active relation graph. Raw events in `logs/events.jsonl` are diagnostic blackbox records. They are not normal retrieval input and they are not rendered as current guidance.
 
-Technical success and user acceptance are separate signals. A command can pass while the user rejects the result; rejected user outcomes must not become `success_pattern`.
+Technical success and user acceptance are separate signals. User acceptance is not memory approval. A command can pass while the user rejects the result; that rejection means the AI missed the user's success criteria. Rejected outcomes must become AI failure memory, correction guidance, or updated success criteria, not user failure and not `success_pattern`. A validated reusable approach with no rejection signal may become inferred AI successful approach, but it must not be written as if the user confirmed it.
 
 ## User Model Layers
 
@@ -78,6 +80,8 @@ Active memory is classified by reusable scope:
 - Domain Model: domain-specific preferences, avoidances, validation, process, success criteria, and failure prevention.
 - Project Model: project identity, decisions, constraints, preservation rules, asset rules, structure rules, localization rules, and validation rules.
 - Task Context: current task scope, allowed files, current copy, reference material, validation checklist, and implementation constraints.
+- AI Failure Memory: preference mismatches, instruction misreads, overgeneralization, example overfit, technical failures, environment failures, permission failures, tool failures, and recovery warnings.
+- AI Successful Approach: reusable implementation, validation, command, permission, path, or tool-recovery methods that helped satisfy the user's success criteria.
 - Discarded Detail: raw instruction text, one-off implementation detail, duplicate summaries, low-value action summaries, task-only paths or labels, and test-only fixture details.
 
 Project details do not become global memory by default. Only the user tendencies revealed by a project can be promoted beyond that project.

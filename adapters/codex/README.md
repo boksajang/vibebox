@@ -73,10 +73,12 @@ vibebox pretask --task "<task description>"
 After meaningful work:
 
 ```bash
-vibebox aftertask --request "..." --summary "..." --technical-outcome success --user-acceptance accepted
+vibebox aftertask --request "<original user request or faithful summary>" --summary "..." --technical-outcome success --user-acceptance accepted
 ```
 
-VibeBox extracts candidates and runs Auto Curator by default. Use review commands only for debugging, audits, or manual override:
+The `--request` value is required for active user model extraction. If the request is long, pass a faithful semantic summary with `--request` or include `User request:` in a `--from-file` payload.
+
+VibeBox extracts candidates and runs Auto Curator by default. The user's request is success criteria, user corrections update those criteria, and user dissatisfaction is an AI failure signal. Confirmed and inferred AI successful approaches can become active without memory approval; inferred success must not be described as user-confirmed. Capture command, permission, environment, and tool failures as AI failure memory. Use review commands only for debugging, audits, or manual override:
 
 ```bash
 vibebox review

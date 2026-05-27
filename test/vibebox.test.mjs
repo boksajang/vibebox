@@ -62,6 +62,26 @@ function byType(candidates, type) {
   return candidates.find((candidate) => candidate.type === type);
 }
 
+function memoryText(record) {
+  return [
+    record.title,
+    record.summary,
+    record.rule,
+    record.details,
+    record.preferredBehavior,
+    record.successfulApproach,
+    record.whyItWorked
+  ].filter(Boolean).join('\n');
+}
+
+function assertNoParserLabels(records) {
+  const labelPattern = /\b(?:Korean file|English file|User request|Original request|AI action summary|Example A|Example B|Fixture|Test|Source|Parser|Section)\s*:/i;
+  for (const record of records) {
+    assert.doesNotMatch(memoryText(record), labelPattern, record.id || record.summary);
+    assert.doesNotMatch(memoryText(record), /confirmed by the user and worked successfully/i, record.id || record.summary);
+  }
+}
+
 const EXAMPLE_A = `Use a subagent workflow for this redesign task.
 
 This is a full visual direction reset for the BOKSAJANG landing page, not a small visual tweak.
@@ -533,7 +553,7 @@ test('aftertask records a blackbox event and auto-curates failure guidance witho
 
   const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
   assert.ok(memoryIndex.memories.some((memory) => memory.type === 'failure_memory' && memory.status === 'active'));
-  assert.ok(memoryIndex.memories.some((memory) => memory.type === 'avoid_rule' && memory.status === 'active'));
+  assert.ok(memoryIndex.memories.some((memory) => memory.memoryRole === 'ai_failure_memory' && memory.preventionRule));
 });
 
 test('technical success with user rejection becomes failure and correction memory, not success memory', async () => {
@@ -610,7 +630,215 @@ test('accepted technical success can become active success memory without manual
   assert.equal(result.event.finalOutcome, 'accepted_success');
 
   const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
-  assert.ok(memoryIndex.memories.some((memory) => memory.type === 'success_pattern' && memory.status === 'active'));
+  const success = memoryIndex.memories.find((memory) => memory.type === 'success_pattern' && memory.status === 'active');
+  assert.ok(success);
+  assert.equal(success.acceptanceBasis, 'confirmed');
+  assert.equal(success.successEvidence, 'confirmed');
+});
+
+test('success evidence separates inferred, confirmed, rejected, and unknown outcomes', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const [unknown] = await extractMemoryCandidates(root, {
+    source: { kind: 'test', technicalOutcome: 'unknown' },
+    text: 'Wrapper-based table scrolling should be reused for wide dashboard tables.'
+  });
+  assert.equal(unknown.type, 'success_pattern');
+  assert.equal(unknown.userAcceptance, 'unknown');
+  assert.equal(unknown.status, 'quarantined');
+  assert.equal(unknown.acceptanceBasis, 'unknown');
+
+  const [reuseOnly] = await extractMemoryCandidates(root, {
+    source: { kind: 'test', technicalOutcome: 'success' },
+    text: 'Wrapper-based table scrolling worked successfully for wide dashboard tables and should be reused there.'
+  });
+  assert.equal(reuseOnly.type, 'success_pattern');
+  assert.equal(reuseOnly.userAcceptance, 'unknown');
+  assert.equal(reuseOnly.status, 'active');
+  assert.equal(reuseOnly.acceptanceBasis, 'inferred');
+
+  const [rejected] = await extractMemoryCandidates(root, {
+    source: { kind: 'test', technicalOutcome: 'success', userAcceptance: 'rejected' },
+    text: 'Wrapper-based table scrolling worked successfully for wide dashboard tables and should be reused there.'
+  });
+  assert.equal(rejected.type, 'success_pattern');
+  assert.equal(rejected.status, 'discarded');
+
+  const acceptedRoot = await makeWorkspace();
+  await initVibeBox(acceptedRoot);
+  const acceptedResult = await afterTask(acceptedRoot, {
+    userRequest: 'Fix dashboard table scrolling.',
+    aiActionSummary: 'Used wrapper-based table scrolling and kept dependencies unchanged.',
+    technicalOutcome: 'success',
+    userAcceptance: 'accepted',
+    userFeedback: '좋다. 이 방식으로 가자.'
+  });
+  assert.ok(acceptedResult.candidates.some((candidate) => candidate.type === 'success_pattern' && candidate.status === 'active'));
+  assert.ok(acceptedResult.candidates.some((candidate) => candidate.type === 'success_pattern' && candidate.acceptanceBasis === 'confirmed'));
+
+  const inferredRoot = await makeWorkspace();
+  await initVibeBox(inferredRoot);
+  const inferredResult = await afterTask(inferredRoot, {
+    userRequest: 'Fix dashboard table scrolling without changing dependencies.',
+    aiActionSummary: 'Used wrapper-based table scrolling and kept dependencies unchanged.',
+    commandResults: ['Validation passed. 42 tests passed.'],
+    technicalOutcome: 'success',
+    userAcceptance: 'unknown'
+  });
+  assert.ok(inferredResult.candidates.some((candidate) => candidate.type === 'success_pattern' && candidate.status === 'active' && candidate.acceptanceBasis === 'inferred'));
+
+  const acceptedIndex = await loadJson(storePath(acceptedRoot, 'index', 'global-memory-index.json'));
+  assertNoParserLabels(acceptedIndex.memories);
+  assert.equal(acceptedIndex.memories.some((memory) => /confirmed by the user/i.test(memoryText(memory))), false);
+
+  const inferredIndex = await loadJson(storePath(inferredRoot, 'index', 'global-memory-index.json'));
+  assert.ok(inferredIndex.memories.some((memory) => memory.type === 'success_pattern' && memory.acceptanceBasis === 'inferred'));
+  assert.equal(inferredIndex.memories.some((memory) => /confirmed by user|confirmed by the user/i.test(memoryText(memory))), false);
+  assert.ok(inferredIndex.memories.length > 0);
+});
+
+test('user instructions create active success criteria before any result approval', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const result = await afterTask(root, {
+    userRequest: [
+      'For this project, the landing page should use a violet color palette.',
+      'For brand landing pages, avoid generic SaaS and card-heavy design.',
+      'Before implementation, inspect the existing project structure.',
+      'Final report should include changed files and validation result.'
+    ].join(' '),
+    technicalOutcome: 'unknown',
+    userAcceptance: 'unknown'
+  });
+
+  assert.ok(result.candidates.some((candidate) => candidate.memoryRole === 'user_success_criteria' && candidate.modelClass === 'project_model' && /violet color palette/i.test(candidate.summary)));
+  assert.ok(result.candidates.some((candidate) => candidate.memoryRole === 'user_success_criteria' && candidate.modelClass === 'domain_model' && /generic SaaS|card-heavy/i.test(candidate.summary)));
+  assert.ok(result.candidates.some((candidate) => candidate.memoryRole === 'user_success_criteria' && candidate.modelClass === 'user_model' && /changed files|validation result/i.test(candidate.summary)));
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.ok(memoryIndex.memories.some((memory) => memory.memoryRole === 'user_success_criteria' && memory.status === 'active'));
+  assert.equal(memoryIndex.memories.some((memory) => memory.memoryRole === 'ai_successful_approach'), false);
+});
+
+test('user correction replaces scoped success criteria and keeps model boundaries', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const [oldPreference] = await extractMemoryCandidates(root, {
+    text: 'For brand landing pages, prefer blue color palette.'
+  });
+  assert.equal(oldPreference.status, 'active');
+
+  const [newPreference] = await extractMemoryCandidates(root, {
+    text: 'Replace the brand landing page color palette preference: use violet palette instead of blue.'
+  });
+  assert.equal(newPreference.status, 'active');
+  assert.ok(['supersedes', 'refinement'].includes(newPreference.conflictStatus));
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.equal(memoryIndex.memories.some((memory) => memory.id === oldPreference.id), false);
+  assert.ok(memoryIndex.memories.some((memory) => memory.id === newPreference.id && /violet palette/i.test(memory.summary)));
+});
+
+test('user rejection is AI failure and latest correction becomes success criteria', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const [oldSuccess] = await extractMemoryCandidates(root, {
+    source: { kind: 'test', technicalOutcome: 'success', userAcceptance: 'accepted' },
+    text: 'Card-heavy SaaS landing page redesign worked successfully for brand landing pages and should be reused there.'
+  });
+  assert.equal(oldSuccess.status, 'active');
+
+  const result = await afterTask(root, {
+    userRequest: 'Redesign the brand landing page.',
+    aiActionSummary: 'Used a card-heavy SaaS landing page redesign.',
+    commandResults: ['Validation passed.'],
+    technicalOutcome: 'success',
+    userAcceptance: 'rejected',
+    userFeedback: 'Wrong direction. Use catalog direction instead of SaaS style.'
+  });
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.equal(memoryIndex.memories.some((memory) => memory.id === oldSuccess.id), false);
+  assert.equal(memoryIndex.memories.some((memory) => memory.type === 'success_pattern' && /card-heavy SaaS/i.test(memory.summary)), false);
+  assert.ok(memoryIndex.memories.some((memory) => memory.memoryRole === 'ai_failure_memory' && /card-heavy SaaS|technical success did not match/i.test(memory.summary)));
+  assert.ok(memoryIndex.memories.some((memory) => memory.memoryRole === 'user_success_criteria' && /catalog direction/i.test(memory.summary)));
+  assert.equal(result.event.finalOutcome, 'technical_success_user_rejected');
+
+  const brief = await generatePreTaskBrief(root, {
+    task: 'Redesign brand landing page visual direction.'
+  });
+  assert.match(brief, /User Success Criteria:\n- .*catalog direction/s);
+  assert.match(brief, /AI Failure Avoidance:\n- .*card-heavy SaaS|AI Failure Avoidance:\n- .*technical success did not match/s);
+});
+
+test('negative user rejection correction stays negative and does not demote other project success', async () => {
+  const shared = await mkdtemp(path.join(os.tmpdir(), 'vibebox-shared-store-'));
+  const projectA = await mkdtemp(path.join(os.tmpdir(), 'vibebox-project-a-'));
+  const projectB = await mkdtemp(path.join(os.tmpdir(), 'vibebox-project-b-'));
+  process.env.VIBEBOX_HOME = path.join(shared, 'store');
+  process.env.VIBEBOX_LOCALE = 'en-US';
+  delete process.env.VIBEBOX_LANGUAGE;
+  await writeFile(path.join(projectA, 'package.json'), JSON.stringify({ name: 'project-a' }, null, 2), 'utf8');
+  await writeFile(path.join(projectB, 'package.json'), JSON.stringify({ name: 'project-b' }, null, 2), 'utf8');
+
+  await initVibeBox(projectA);
+  const [projectASuccess] = await extractMemoryCandidates(projectA, {
+    source: { kind: 'test', technicalOutcome: 'success', userAcceptance: 'accepted' },
+    text: 'For this project, wrapper-based table scrolling worked successfully and should be reused there.'
+  });
+  assert.equal(projectASuccess.status, 'active');
+
+  await initVibeBox(projectB);
+  await afterTask(projectB, {
+    userRequest: 'Fix table scrolling in this project.',
+    aiActionSummary: 'Used wrapper-based table scrolling.',
+    commandResults: ['Validation passed.'],
+    technicalOutcome: 'success',
+    userAcceptance: 'rejected',
+    userFeedback: 'Wrong direction. Do not use wrapper-based table scrolling here.'
+  });
+
+  const memoryIndex = await loadJson(path.join(shared, 'store', 'index', 'global-memory-index.json'));
+  assert.equal(memoryIndex.memories.some((memory) => memory.id === projectASuccess.id), true);
+  assert.ok(memoryIndex.memories.some((memory) => (
+    memory.memoryRole === 'user_success_criteria'
+    && /do not use wrapper-based table scrolling/i.test(memory.summary)
+  )));
+  assert.equal(memoryIndex.memories.some((memory) => (
+    memory.projectId === 'project-b'
+    && memory.memoryRole === 'user_success_criteria'
+    && /use wrapper-based table scrolling here/i.test(memory.summary)
+    && !/do not use wrapper-based table scrolling/i.test(memory.summary)
+  )), false);
+});
+
+test('technical and tool failures become AI failure memory while recovery becomes AI successful approach without userRequest', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const result = await afterTask(root, {
+    aiActionSummary: 'Recovered by using npm.cmd test instead of npm test.',
+    errors: ['Command failed: npm test exited with code 1 because the npm shim was unavailable.'],
+    commandResults: ['Validation passed. npm.cmd test passed.'],
+    technicalOutcome: 'success',
+    userAcceptance: 'unknown'
+  });
+
+  assert.match(result.message, /user success criteria extraction was skipped, but AI failure memory extraction was allowed/);
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.equal(memoryIndex.memories.some((memory) => memory.memoryRole === 'user_success_criteria'), false);
+  assert.ok(memoryIndex.memories.some((memory) => memory.memoryRole === 'ai_failure_memory' && ['technical_failure', 'tool_failure'].includes(memory.failureType)));
+  assert.ok(memoryIndex.memories.some((memory) => memory.memoryRole === 'ai_successful_approach' && /npm\.cmd test/i.test(memory.summary)));
+
+  const brief = await generatePreTaskBrief(root, {
+    task: 'Run npm test validation for this package.'
+  });
+  assert.match(brief, /AI Failure Avoidance:\n- .*npm test/s);
+  assert.match(brief, /AI Successful Approaches:\n- .*npm\.cmd test/s);
 });
 
 test('auto-curation discards duplicates and quarantines ambiguous conflicting candidates', async () => {
@@ -652,6 +880,7 @@ test('report and blackbox summarize reviewed memory and recent task outcomes wit
   await initVibeBox(root);
 
   const candidates = await extractMemoryCandidates(root, {
+    manualReview: true,
     text: [
       'Do not modify package.json unless explicitly requested.',
       'Wrapper-based table scrolling worked successfully for wide dashboard tables and should be reused there.',
@@ -1018,7 +1247,7 @@ test('conflict resolver classifies duplicate, refinement, exception, direct conf
     domains: ['dashboard'],
     appliesTo: ['dashboard projects'],
     confidence: 'high'
-  }).status, 'supersedes');
+  }).status, 'direct_conflict');
 
   assert.equal(classifyCandidateConflict(active, {
     type: 'user_preference',
@@ -1031,6 +1260,114 @@ test('conflict resolver classifies duplicate, refinement, exception, direct conf
     appliesTo: ['dashboard projects'],
     confidence: 'low'
   }).status, 'needs_user_review');
+});
+
+test('replacement is bounded by model, domain, project, and durable memory scope', () => {
+  const base = {
+    id: 'mem_base',
+    type: 'user_preference',
+    scope: 'domain',
+    topic: 'visual direction',
+    title: 'Visual direction',
+    rule: 'For brand landing pages, avoid generic SaaS layouts.',
+    summary: 'For brand landing pages, avoid generic SaaS layouts.',
+    tags: ['brand', 'landing', 'visual'],
+    domains: ['landing_page'],
+    appliesTo: ['landing_page work'],
+    modelClass: 'domain_model',
+    modelSubClass: 'domain_preference',
+    confidence: 'high',
+    status: 'active'
+  };
+
+  const sameCategory = classifyCandidateConflict([base], {
+    ...base,
+    id: 'candidate_same',
+    rule: 'Replace the visual direction rule: for brand landing pages, avoid generic SaaS layouts and card-heavy dashboards.',
+    summary: 'For brand landing pages, avoid generic SaaS layouts and card-heavy dashboards.',
+    tags: ['brand', 'landing', 'visual', 'dashboard'],
+    confidence: 'high'
+  });
+  assert.equal(sameCategory.status, 'supersedes');
+  assert.deepEqual(sameCategory.supersedes, ['mem_base']);
+
+  const crossModel = classifyCandidateConflict([base], {
+    ...base,
+    id: 'candidate_project',
+    type: 'project_decision',
+    scope: 'project',
+    modelClass: 'project_model',
+    modelSubClass: 'project_decision',
+    projectId: 'boksajang',
+    rule: 'Replace the visual direction rule: this project uses a dark premium 3D hero.',
+    summary: 'This project uses a dark premium 3D hero.'
+  });
+  assert.notEqual(crossModel.status, 'supersedes');
+  assert.deepEqual(crossModel.supersedes, []);
+
+  const crossDomain = classifyCandidateConflict([base], {
+    ...base,
+    id: 'candidate_native',
+    domains: ['native_internal_app'],
+    appliesTo: ['native_internal_app work'],
+    rule: 'Replace the visual direction rule: native internal apps should be clean and data-dense.',
+    summary: 'Native internal apps should be clean and data-dense.'
+  });
+  assert.notEqual(crossDomain.status, 'supersedes');
+  assert.deepEqual(crossDomain.supersedes, []);
+
+  const crossProject = classifyCandidateConflict([{ ...base, scope: 'project', projectId: 'boksajang' }], {
+    ...base,
+    scope: 'project',
+    projectId: 'trip-native',
+    rule: 'Replace the visual direction rule for this project.',
+    summary: 'This project uses a clean native workflow visual direction.'
+  });
+  assert.notEqual(crossProject.status, 'supersedes');
+  assert.deepEqual(crossProject.supersedes, []);
+
+  const taskContext = classifyCandidateConflict([base], {
+    ...base,
+    id: 'candidate_task',
+    type: 'task_context',
+    scope: 'task',
+    modelClass: 'task_context',
+    modelSubClass: 'current_task_scope',
+    rule: 'Replace the visual direction rule for this task only.',
+    summary: 'For this task only, use the attached visual reference.'
+  });
+  assert.notEqual(taskContext.status, 'supersedes');
+  assert.deepEqual(taskContext.supersedes, []);
+
+  const discardedDetail = classifyCandidateConflict([base], {
+    ...base,
+    id: 'candidate_discarded',
+    type: 'discarded_detail',
+    modelClass: 'discarded_detail',
+    modelSubClass: 'discarded_detail',
+    rule: 'Replace with the exact hero copy.',
+    summary: 'Exact hero copy.'
+  });
+  assert.notEqual(discardedDetail.status, 'supersedes');
+  assert.deepEqual(discardedDetail.supersedes, []);
+
+  const successFailure = classifyCandidateConflict([{
+    ...base,
+    id: 'mem_success',
+    type: 'success_pattern',
+    modelSubClass: 'domain_success_criterion',
+    rule: 'Wrapper scrolling should be reused.',
+    summary: 'Wrapper scrolling should be reused.'
+  }], {
+    ...base,
+    id: 'candidate_failure',
+    type: 'failure_memory',
+    modelSubClass: 'domain_failure_prevention',
+    rule: 'Replace the scrolling rule: wrapper scrolling failed.',
+    summary: 'Wrapper scrolling failed.'
+  });
+  assert.notEqual(successFailure.status, 'supersedes');
+  assert.deepEqual(successFailure.supersedes, []);
 });
 
 test('active replacement discards older memory from active retrieval, wiki, and active relations', async () => {
@@ -1089,11 +1426,12 @@ test('active replacement clears stale concept wiki references for discarded memo
   await assert.rejects(() => readFile(storePath(root, 'wiki', 'Redis.md'), 'utf8'), /ENOENT/);
 });
 
-test('active replacement clears stale global success and failure namespace files', async () => {
+test('cross-type replacement does not remove active success or failure namespace files', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
 
   const [oldSuccess] = await extractMemoryCandidates(root, {
+    source: { kind: 'test', userAcceptance: 'accepted', finalOutcome: 'accepted_success' },
     text: 'Wrapper-based table scrolling worked successfully for wide dashboard tables and should be reused there.'
   });
   assert.equal(oldSuccess.status, 'active');
@@ -1103,10 +1441,10 @@ test('active replacement clears stale global success and failure namespace files
   const [replacement] = await extractMemoryCandidates(root, {
     text: 'Replace the table layout scrolling rule: do not use wrapper-based table scrolling because the user rejected that direction.'
   });
-  assert.equal(replacement.status, 'active');
+  assert.equal(replacement.status, 'quarantined');
 
   const after = await loadJson(storePath(root, 'global', 'success-patterns.json'));
-  assert.equal(after.memories.some((memory) => memory.id === oldSuccess.id), false);
+  assert.equal(after.memories.some((memory) => memory.id === oldSuccess.id), true);
 });
 
 test('refinement merges competing memory while scoped exceptions remain conditional', async () => {
@@ -1153,6 +1491,7 @@ test('failure memory injects prevention rules and links to success patterns and 
   const { projectId } = await initVibeBox(root);
 
   const candidates = await extractMemoryCandidates(root, {
+    manualReview: true,
     text: [
       'Global body overflow changes caused layout regressions before; prevent this by using component-level wrapper scrolling.',
       'Wrapper-based table scrolling worked successfully for wide dashboard tables and should be reused there.'
@@ -1263,8 +1602,43 @@ test('locale controls human-facing headings and localized wiki filenames while J
   const briefEn = await generatePreTaskBrief(root, {
     task: 'Verify the package.'
   });
-  assert.match(briefEn, /VibeBox Pre-Task Brief/);
-  assert.match(briefEn, /Relevant Validation Patterns/);
+  assert.doesNotMatch(briefEn, /VibeBox Pre-Task Brief/);
+  assert.doesNotMatch(briefEn, /Relevant Validation Patterns/);
+  assert.match(briefEn, /\uAC80\uC99D\uD560 \uB54C\uB294 \uC644\uB8CC\uB97C/);
+});
+
+test('memoryLanguage normalizes active memory independently from input language and locale hint', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+  const configPath = storePath(root, 'config.json');
+  const config = await loadJson(configPath);
+  await writeFile(configPath, JSON.stringify({
+    ...config,
+    locale: 'en-US',
+    memoryLanguage: 'ko',
+    outputLanguage: 'ko',
+    wikiLanguage: 'ko',
+    reportLanguage: 'ko',
+    contextLanguage: 'ko'
+  }, null, 2), 'utf8');
+  process.env.VIBEBOX_LOCALE = 'en-US';
+
+  const result = await afterTask(root, {
+    userRequest: 'Before coding, create a concise plan.',
+    aiActionSummary: 'Used wrapper-based implementation, validation passed, and this reusable approach should be reused.',
+    commandResults: ['Validation passed.'],
+    technicalOutcome: 'success',
+    userAcceptance: 'unknown'
+  });
+
+  assert.ok(result.candidates.some((candidate) => candidate.status === 'active'));
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  const text = memoryIndex.memories.map(memoryText).join('\n');
+  assert.match(text, /\uAD6C\uD604 \uC804\uC5D0|\uAC80\uC99D\uC744 \uD1B5\uACFC/);
+  assert.doesNotMatch(text, /Before coding|User request|English file/i);
+  assert.ok(memoryIndex.memories.some((memory) => memory.displayLanguage === 'ko'));
+  assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'summary'), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], '\uC694\uC57D'), false);
 });
 
 test('user request model extraction separates user, domain, project, task, and discarded detail', async () => {
@@ -1285,6 +1659,7 @@ test('user request model extraction separates user, domain, project, task, and d
   assert.equal(candidates.some((candidate) => candidate.scope === 'global' && /npm\/build tooling|fake plugins|logo\.webp|SEO\/language logic/i.test(candidate.summary)), false);
   assert.ok(candidates.some((candidate) => candidate.status === 'pending' && candidate.scope === 'task'));
   assert.equal(candidates.some((candidate) => candidate.summary === EXAMPLE_A), false);
+  assertNoParserLabels(candidates);
 
   const autoRoot = await makeWorkspace();
   await initVibeBox(autoRoot);
@@ -1292,6 +1667,7 @@ test('user request model extraction separates user, domain, project, task, and d
   const autoIndex = await loadJson(storePath(autoRoot, 'index', 'global-memory-index.json'));
   assert.ok(autoCandidates.some((candidate) => candidate.status === 'discarded' && candidate.modelClass === 'task_context' && /npm\/build tooling|fake plugins/i.test(candidate.summary)));
   assert.equal(autoIndex.memories.some((memory) => memory.scope === 'global' && /npm\/build tooling|fake plugins|logo\.webp|SEO\/language logic/i.test(memory.summary)), false);
+  assertNoParserLabels(autoIndex.memories);
 
   const indexBeforeSummaryOnly = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
   const fromSummaryOnly = await extractMemoryCandidates(root, {
@@ -1527,12 +1903,152 @@ test('aftertask with missing userRequest records the event but skips active extr
 
   assert.ok(result.event.projectId);
   assert.equal(result.candidates.length, 0);
-  assert.match(result.message, /userRequest was empty/);
+  assert.match(result.message, /userRequest is missing; active user model extraction was skipped/);
+  assert.match(result.message, /Pass the original user request with --request/);
 
   const memoryIndex = await loadJson(path.join(process.env.VIBEBOX_HOME, 'index', 'global-memory-index.json'));
   assert.equal(memoryIndex.memories.length, 0);
   const events = await readJsonl(path.join(process.env.VIBEBOX_HOME, 'logs', 'events.jsonl'));
   assert.equal(events.at(-1).projectId, result.event.projectId);
+});
+
+test('CLI aftertask stores --request and from-file User request sections for active extraction', async () => {
+  const root = await makeWorkspace();
+  const bin = path.resolve('bin/vibebox.mjs');
+  function run(args) {
+    return spawnSync(process.execPath, [bin, ...args], {
+      cwd: root,
+      env: { ...process.env },
+      encoding: 'utf8'
+    });
+  }
+
+  const direct = run([
+    'aftertask',
+    '--request',
+    'Plan before coding and report changed files after validation.',
+    '--summary',
+    'Implemented the requested workflow and ran checks.',
+    '--files',
+    'src/app.mjs',
+    '--command-results',
+    'npm.cmd test passed',
+    '--technical-outcome',
+    'success',
+    '--user-acceptance',
+    'accepted'
+  ]);
+  assert.equal(direct.status, 0);
+  assert.match(direct.stdout, /Auto-curated/);
+
+  const filePath = path.join(root, 'task-result.txt');
+  await writeFile(filePath, [
+    'User request: Preserve SEO metadata and report changed files after validation.',
+    'Summary: Updated the homepage implementation and verified language switching.',
+    'Changed files: index.html, assets/css/style.css',
+    'Command results: npm.cmd test passed'
+  ].join('\n'), 'utf8');
+  const fromFile = run(['aftertask', '--from-file', filePath, '--technical-outcome', 'success', '--user-acceptance', 'accepted']);
+  assert.equal(fromFile.status, 0);
+  assert.match(fromFile.stdout, /Auto-curated|Created \d+ pending/);
+
+  const koreanFilePath = path.join(root, 'task-result-ko.txt');
+  await writeFile(koreanFilePath, [
+    '\uC0AC\uC6A9\uC790 \uC694\uCCAD: Keep localized wiki filenames in Korean and report validation.',
+    '\uC694\uC57D: Preserved Korean labels in the task record.',
+    '\uBCC0\uACBD \uD30C\uC77C: docs/OBSIDIAN.md, skills/vibebox/SKILL.md',
+    '\uBA85\uB839 \uACB0\uACFC: npm.cmd test passed'
+  ].join('\n'), 'utf8');
+  const koreanFromFile = run(['aftertask', '--from-file', koreanFilePath, '--technical-outcome', 'success', '--user-acceptance', 'accepted']);
+  assert.equal(koreanFromFile.status, 0);
+  assert.match(koreanFromFile.stdout, /Auto-curated|Created \d+ pending/);
+
+  const events = await readJsonl(storePath(root, 'logs', 'events.jsonl'));
+  assert.equal(events.at(-3).userRequest, 'Plan before coding and report changed files after validation.');
+  assert.equal(events.at(-2).userRequest, 'Preserve SEO metadata and report changed files after validation.');
+  assert.match(events.at(-2).aiActionSummary, /Updated the homepage implementation/);
+  assert.deepEqual(events.at(-2).changedFiles, ['index.html', 'assets/css/style.css']);
+  assert.equal(events.at(-1).userRequest, 'Keep localized wiki filenames in Korean and report validation.');
+  assert.match(events.at(-1).aiActionSummary, /Preserved Korean labels/);
+  assert.deepEqual(events.at(-1).changedFiles, ['docs/OBSIDIAN.md', 'skills/vibebox/SKILL.md']);
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.equal(memoryIndex.memories.length > 0, true);
+});
+
+test('active memory normalizes source labels out of summaries and guidance fields', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const result = await afterTask(root, {
+    userRequest: 'Korean file: Before coding, create a concise plan. English file: Final report should include changed files and validation result. Test: Do not modify package.json unless explicitly requested. Source: When validating changes, report command results.',
+    aiActionSummary: 'AI action summary: Implemented the requested workflow.',
+    technicalOutcome: 'success',
+    userAcceptance: 'accepted'
+  });
+
+  assert.ok(result.candidates.some((candidate) => candidate.summary === 'Before coding, create a concise plan.'));
+  assert.ok(result.candidates.some((candidate) => candidate.summary === 'Final report should include changed files and validation result.'));
+  assert.ok(result.candidates.some((candidate) => candidate.summary === 'Do not modify package.json unless explicitly requested.'));
+  assert.ok(result.candidates.some((candidate) => candidate.summary === 'When validating changes, report command results.'));
+  assertNoParserLabels(result.candidates);
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assertNoParserLabels(memoryIndex.memories);
+  assert.ok(memoryIndex.memories.some((memory) => /Before coding, create a concise plan/i.test(memory.summary)));
+});
+
+test('manual approval refuses candidates that still contain parser labels', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const [candidate] = await extractMemoryCandidates(root, {
+    manualReview: true,
+    text: 'Do not modify package.json unless explicitly requested.'
+  });
+  const pendingPath = storePath(root, 'pending', 'memory-candidates.jsonl');
+  const pending = await readJsonl(pendingPath);
+  const poisoned = pending.map((record) => record.id === candidate.id
+    ? {
+      ...record,
+      summary: `Test: ${record.summary}`,
+      rule: `Test: ${record.rule}`,
+      details: `Test: ${record.details}`
+    }
+    : record);
+  await writeFile(pendingPath, `${poisoned.map((record) => JSON.stringify(record)).join('\n')}\n`, 'utf8');
+
+  await assert.rejects(
+    () => approveMemory(root, candidate.id),
+    /parser or source labels/
+  );
+  const updated = await readJsonl(pendingPath);
+  assert.equal(updated.find((record) => record.id === candidate.id).status, 'quarantined');
+});
+
+test('long aftertask userRequest is preserved and normalized into model candidates', async () => {
+  const root = await makeWorkspace();
+  const longRequest = [
+    EXAMPLE_A,
+    'Also keep the final report concise but include validation results and remaining risks.',
+    'This extra sentence makes the request long enough to verify that VibeBox does not silently truncate it.'
+  ].join('\n\n');
+
+  const result = await afterTask(root, {
+    userRequest: longRequest,
+    aiActionSummary: 'Implemented the requested landing-page direction and verified the checklist.',
+    changedFiles: ['index.html', 'assets/css/style.css', 'assets/js/main.js'],
+    commandResults: ['npm.cmd test passed'],
+    technicalOutcome: 'success',
+    userAcceptance: 'accepted'
+  });
+
+  assert.equal(result.event.userRequest, longRequest);
+  assert.equal(result.candidates.some((candidate) => candidate.summary === longRequest), false);
+  assert.ok(result.candidates.some((candidate) => candidate.modelClass === 'user_model'));
+  assert.ok(result.candidates.some((candidate) => candidate.modelClass === 'domain_model'));
+  assert.ok(result.candidates.some((candidate) => candidate.modelClass === 'project_model'));
+  assert.ok(result.candidates.some((candidate) => candidate.modelClass === 'task_context'));
 });
 
 test('doctor warns about internal pseudo project registry entries and orphan project wiki pages', async () => {
@@ -1849,6 +2365,9 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   const combined = (await Promise.all(docs.map((relativePath) => readFile(path.resolve(relativePath), 'utf8')))).join('\n');
   assert.match(combined, /vibebox <command>/);
   assert.match(combined, /node bin\/vibebox\.mjs <command>/);
+  assert.match(combined, /original user request or faithful summary/i);
+  assert.match(combined, /without a user request, VibeBox records the event but skips active user model extraction/i);
+  assert.match(combined, /Do not call aftertask with only an AI action summary/i);
   assert.doesNotMatch(combined, /Codex-only|Claude-only|Codex 전용|Claude 전용/i);
   assert.doesNotMatch(combined, /marketplace distribution is available|official Claude install is available|cloud install is available/i);
 });

@@ -47,7 +47,7 @@ Human-facing output follows explicit CLI options, environment variables, config,
 ## `vibebox capture`
 
 - Purpose: Append a raw blackbox event from CLI options to the global log with the current `projectId`.
-- Typical usage: Record a request, summary, command result, changed files, feedback, technical outcome, user acceptance, and final outcome.
+- Typical usage: Record the original user request or faithful request summary, AI action summary, command result, changed files, feedback, technical outcome, user acceptance, and final outcome.
 - Example: `vibebox capture --request "Fix table scrolling" --summary "Kept package.json unchanged" --changed-files "src/table.mjs" --technical-outcome success --user-acceptance accepted`
 - Notes: Supports `--event-type`, `--request`, `--summary`, `--command`, `--command-result`, `--changed-files`, `--feedback`, `--outcome`, `--technical-outcome`, `--user-acceptance`, and `--final-outcome`. Technical success and user acceptance are separate; user rejection wins over a passing command.
 
@@ -103,9 +103,9 @@ Human-facing output follows explicit CLI options, environment variables, config,
 ## `vibebox aftertask`
 
 - Purpose: Capture task completion details, extract memory candidates, and run Auto Curator.
-- Typical usage: Run after meaningful coding or design work.
+- Typical usage: Run after meaningful coding or design work. Always pass the original user request, or a faithful semantic summary of it, with `--request`.
 - Example: `vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling" --files "src/table.mjs" --commands "npm.cmd test" --technical-outcome success --user-acceptance accepted`
-- Notes: Supports `--request`, `--summary`, `--files`, `--commands`, `--command-results`, `--errors`, `--feedback`, `--outcome`, `--technical-outcome`, `--user-acceptance`, `--final-outcome`, `--notes`, `--from-file`, and `--manual-review`. User-rejected outcomes become failure/correction/prevention guidance instead of `success_pattern`.
+- Notes: Supports `--request`, `--summary`, `--files`, `--commands`, `--command-results`, `--errors`, `--feedback`, `--outcome`, `--technical-outcome`, `--user-acceptance`, `--final-outcome`, `--notes`, `--from-file`, and `--manual-review`. `--from-file` may include `User request:` and `Summary:` sections. Without a user request, VibeBox records the event but skips active user model extraction for success criteria; clear command/tool/environment failures can still become AI failure memory. User-accepted outcomes can become confirmed AI successful approaches, validated reusable outcomes with no rejection can become inferred successful approaches, and user-rejected outcomes become AI failure/correction/prevention guidance plus updated success criteria instead of `success_pattern`.
 
 ## `vibebox report`
 

@@ -45,10 +45,12 @@ vibebox pretask --task "<task description>"
 After meaningful work, run:
 
 ```bash
-vibebox aftertask --request "..." --summary "..." --technical-outcome success --user-acceptance accepted
+vibebox aftertask --request "<original user request or faithful summary>" --summary "..." --technical-outcome success --user-acceptance accepted
 ```
 
-Manual review is for debugging or override, not the normal promotion path:
+The `--request` value is required for active user model extraction. Do not send only an action summary; use `--request` directly or include `User request:` in a `--from-file` payload for long records.
+
+The user's request is success criteria, user corrections update those criteria, and user dissatisfaction is an AI failure signal. Confirmed and inferred AI successful approaches can become active through Auto Curator without memory approval; inferred success must not be described as user-confirmed. Capture command, permission, environment, and tool failures as AI failure memory. Manual review is for debugging or override, not the normal promotion path:
 
 ```bash
 vibebox review

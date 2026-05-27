@@ -35,6 +35,8 @@ Do not wait for the user to say "use VibeBox" every time. Consider VibeBox autom
 Use VibeBox to reduce repeated explanation and repeated mistakes:
 
 - Retrieve active memory before meaningful repository work.
+- Treat the user's current instruction as the current success criteria.
+- Treat user corrections as more precise success criteria.
 - Treat avoid rules and failure memory as high-priority warnings.
 - Treat failure memory as prevention guidance, not just history.
 - Apply validation, process, design, correction, and agent failure/success patterns when relevant.
@@ -88,6 +90,8 @@ During work:
 - Do not make broad changes only because memory suggests a preference.
 - Respect project-specific memory before global memory.
 - Consider `avoid_rule`, `failure_memory`, and `agent_failure_pattern` as high-priority warnings.
+- Treat user dissatisfaction as an AI failure signal, not user failure.
+- Treat permission, path, command, browser, API, image generation, and plugin/tool failures as AI failure signals worth capturing.
 - Let `validation_pattern`, `process_pattern`, and `design_philosophy` shape how you verify, sequence, and design the work.
 - Preserve existing behavior unless the user asks for a change.
 - If the task touches an area with known failure memory, explicitly account for it.
@@ -97,7 +101,7 @@ During work:
 
 After meaningful coding or design work:
 
-1. Summarize the user request.
+1. Pass the original user request, or a faithful semantic summary of it, with `--request`.
 2. Summarize what changed or was decided.
 3. List changed files.
 4. List commands run and results.
@@ -130,6 +134,10 @@ Active memory is the only memory that should guide normal pre-task context.
 - Scoped exceptions can coexist with broader rules only when their condition is clear.
 - Use `vibebox review`, `vibebox approve <candidate-id>`, `vibebox approve --safe`, and `vibebox reject <candidate-id>` only for debugging, audits, and manual override.
 - If the user rejects an outcome, do not let it become `success_pattern` even when commands passed.
+- If the user corrects the direction, treat the correction as the latest success criteria and let VibeBox replace/refine older criteria in the same scope.
+- If a command, tool, permission, or environment failure occurred, capture it as AI failure memory; if a workaround succeeded, capture the recovery as an AI successful approach.
+- If validation passes and the approach is reusable with no rejection signal, VibeBox may record inferred success automatically, but do not describe it as confirmed by the user.
+- Do not run aftertask with only `--summary` or only `--from-file`; without `--request`, active user model extraction is skipped. For long records, either pass `--request "..."` separately or include a `User request:` section in the file.
 
 ## Conflict Handling Policy
 

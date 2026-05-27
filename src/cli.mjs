@@ -84,6 +84,51 @@ function parseList(value) {
     .filter(Boolean);
 }
 
+function parseAfterTaskFile(text = '') {
+  const fields = {};
+  let current = '';
+  const aliases = new Map([
+    ['user request', 'userRequest'],
+    ['original user request', 'userRequest'],
+    ['request', 'userRequest'],
+    ['\uC0AC\uC6A9\uC790 \uC694\uCCAD', 'userRequest'],
+    ['\uC6D0 \uC0AC\uC6A9\uC790 \uC694\uCCAD', 'userRequest'],
+    ['\uC694\uCCAD', 'userRequest'],
+    ['summary', 'summary'],
+    ['ai action summary', 'summary'],
+    ['action summary', 'summary'],
+    ['\uC694\uC57D', 'summary'],
+    ['changed files', 'files'],
+    ['files', 'files'],
+    ['\uBCC0\uACBD \uD30C\uC77C', 'files'],
+    ['\uD30C\uC77C', 'files'],
+    ['commands', 'commands'],
+    ['\uBA85\uB839', 'commands'],
+    ['command results', 'commandResults'],
+    ['\uBA85\uB839 \uACB0\uACFC', 'commandResults'],
+    ['errors', 'errors'],
+    ['\uC624\uB958', 'errors'],
+    ['user feedback', 'feedback'],
+    ['feedback', 'feedback'],
+    ['\uC0AC\uC6A9\uC790 \uD53C\uB4DC\uBC31', 'feedback'],
+    ['\uD53C\uB4DC\uBC31', 'feedback'],
+    ['notes', 'notes']
+  ]);
+  for (const line of String(text || '').split(/\r?\n/u)) {
+    const match = line.match(/^([^:\uFF1A]+)[:\uFF1A]\s*(.*)$/u);
+    const key = match ? aliases.get(match[1].trim().toLowerCase()) : '';
+    if (key) {
+      current = key;
+      fields[current] = [fields[current], match[2]].filter(Boolean).join('\n');
+      continue;
+    }
+    if (current && line.trim()) {
+      fields[current] = [fields[current], line].filter(Boolean).join('\n');
+    }
+  }
+  return Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, value.trim()]));
+}
+
 function help() {
   return `VibeBox
 
@@ -109,7 +154,7 @@ Usage:
 
 Global store:
   Defaults to ~/.vibebox and can be overridden with VIBEBOX_HOME or --store <path>.
-  Human-facing output can be localized with VIBEBOX_LOCALE, VIBEBOX_LANGUAGE, --locale, or --language.
+  Active memory uses the configured memoryLanguage. VIBEBOX_LANGUAGE/--language can seed a new store; VIBEBOX_LOCALE/--locale is an environment hint and does not rewrite an existing store.
   Semantic operations convert-lang and rebuild require VIBEBOX_AGENT_RUNTIME from an adapter.
 `;
 }
@@ -217,20 +262,21 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
       if (!fileText && !process.stdin.isTTY) {
         fileText = await readStdin();
       }
+      const fileFields = parseAfterTaskFile(fileText);
       const result = await afterTask(root, {
-        userRequest: flags.request || flags.userRequest || '',
-        aiActionSummary: flags.summary || flags.aiActionSummary || fileText,
-        changedFiles: parseList(flags.files || flags['changed-files'] || flags.changedFiles),
-        commands: parseList(flags.commands || flags.command),
-        commandResults: parseList(flags['command-results'] || flags['command-result'] || flags.commandResult),
-        errors: parseList(flags.errors || flags.error),
-        userFeedback: flags.feedback || flags.userFeedback || '',
+        userRequest: flags.request || flags.userRequest || fileFields.userRequest || '',
+        aiActionSummary: flags.summary || flags.aiActionSummary || fileFields.summary || fileText,
+        changedFiles: parseList(flags.files || flags['changed-files'] || flags.changedFiles || fileFields.files),
+        commands: parseList(flags.commands || flags.command || fileFields.commands),
+        commandResults: parseList(flags['command-results'] || flags['command-result'] || flags.commandResult || fileFields.commandResults),
+        errors: parseList(flags.errors || flags.error || fileFields.errors),
+        userFeedback: flags.feedback || flags.userFeedback || fileFields.feedback || '',
         technicalOutcome: flags['technical-outcome'] || flags.technicalOutcome,
         userAcceptance: flags['user-acceptance'] || flags.userAcceptance,
         finalOutcome: flags['final-outcome'] || flags.finalOutcome,
         outcome: flags.outcome || 'unknown',
         manualReview: flags['manual-review'] || flags.review || false,
-        notes: flags.notes || fileText
+        notes: flags.notes || fileFields.notes || ''
       });
       return result.message;
     }

@@ -98,7 +98,7 @@ For longer notes:
 vibebox aftertask --from-file task-result.txt
 ```
 
-`aftertask` writes a blackbox event, extracts candidates, and lets the Auto Curator decide whether each candidate becomes active, replaces older active memory, is discarded, or is quarantined. Users do not need to review memory after every task. Technical success and user acceptance are separate; a passing command with rejected user feedback becomes failure/correction/prevention guidance, not `success_pattern`.
+`aftertask` writes a blackbox event, extracts candidates, and lets the Auto Curator decide whether each candidate becomes active, replaces older active memory, is discarded, or is quarantined. Users do not need to review memory after every task. The user's request can create active success criteria before a result exists. Technical success and user acceptance are separate; user acceptance is the user's reaction to the work result, not memory approval. Passing validation with no rejection can become an inferred AI successful approach. Rejected user feedback means the AI missed the user's criteria, so it becomes AI failure/correction/prevention guidance and updated success criteria, not user failure.
 
 ## Capture And Extract
 
@@ -132,6 +132,10 @@ vibebox approve --safe
 
 Conflict, exception, supersede, duplicate, low-confidence, and review-needed candidates are discarded, quarantined, or left in legacy/manual pending state when automatic handling is not appropriate. When a candidate replaces or refines older active memory for the same subject and scope, the older memory is removed from active retrieval, Context Packs, Pre-Task Briefs, active wiki sections, active relations, and namespace files.
 
+## Memory Language
+
+Active memory, managed wiki text, Context Packs, reports, and blackbox user-facing text use the configured `memoryLanguage`. `VIBEBOX_LANGUAGE` or `--language` can seed a new store; `VIBEBOX_LOCALE` is only an environment hint and does not change an existing store. To intentionally change memory language and localized wiki filenames, run `convert-lang` from an adapter runtime.
+
 ## Context Pack
 
 ```bash
@@ -139,6 +143,12 @@ vibebox context --task "Update dashboard dependency handling"
 ```
 
 `context` prints a compact memory pack. `pretask` is usually better before coding because it is more instruction-oriented.
+
+`pretask` and `context` include three core guidance lanes when relevant:
+
+- User Success Criteria: what the user wants, including style, validation, reporting, preservation, and project-specific criteria.
+- AI Failure Avoidance: preference mismatches, instruction misses, command failures, environment failures, permission failures, tool failures, and prevention rules.
+- AI Successful Approaches: reusable implementation, validation, command, recovery, or workaround methods.
 
 The Context Pack can include user patterns such as `validation_pattern`, `process_pattern`, `design_philosophy`, `correction_pattern`, and `agent_failure_pattern` when those patterns match the current task situation.
 

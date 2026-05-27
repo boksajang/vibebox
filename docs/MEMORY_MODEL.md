@@ -4,7 +4,7 @@ VibeBox separates active memory from inactive diagnostic and manual-debug states
 
 - A blackbox event is captured.
 - User requests and user feedback are interpreted first; AI action summaries are auxiliary evidence.
-- Memory candidates are extracted into User Model, Domain Model, Project Model, Task Context, or Discarded Detail.
+- Memory candidates are extracted into User Model, Domain Model, Project Model, Task Context, AI Failure Memory, AI Successful Approach, or Discarded Detail.
 - The Auto Curator decides active, replace, discard, or quarantine.
 - Context and pretask output use active memory first.
 - Legacy/manual pending candidates may appear only in debug review flows.
@@ -48,6 +48,8 @@ Every candidate and active memory can include:
 - `modelClass`: `user_model`, `domain_model`, `project_model`, `task_context`, or `discarded_detail`
 - `modelSubClass`: a narrower user/domain/project/task model such as `validation_preference_model`, `domain_avoidance`, `project_preservation_rule`, or `current_allowed_files`
 - `docKey`: stable internal wiki identity used for localized Obsidian filenames and links
+- `memoryRole`: `user_success_criteria`, `ai_failure_memory`, `ai_successful_approach`, `task_context`, or `discarded_detail`
+- `successCriterion`: normalized user-facing criteria when the record represents what the user wants
 
 User Model includes preference, visual preference, response preference, process preference, validation preference, reporting preference, design philosophy, reference handling, scope control, and rejection criteria.
 
@@ -56,6 +58,10 @@ Domain Model includes domain preference, domain avoidance, domain validation, do
 Project Model includes project identity, project decisions, constraints, preservation rules, asset rules, structure rules, localization rules, and validation rules.
 
 Task Context and Discarded Detail do not become normal active guidance. Current allowed files, current copy, task-only reference material, one-off labels, raw instruction text, low-value action summaries, and test fixture details should be discarded or kept out of active retrieval.
+
+User instructions and corrections can become active success criteria before any result exists. User dissatisfaction does not mean the user failed; it means the AI result missed the user's criteria and should become AI failure memory, correction guidance, or a more precise active success criteria.
+
+AI Failure Memory includes `preference_mismatch`, `instruction_misread`, `overgeneralization_failure`, `example_overfit_failure`, `technical_failure`, `environment_failure`, `permission_failure`, and `tool_failure`. AI Successful Approach records reusable implementation, validation, command, recovery, or workaround methods that helped satisfy the user's criteria.
 
 ## Scopes
 
@@ -157,9 +163,9 @@ Memory records keep stable English field names. Pattern-oriented records may inc
 - `replacedBy`
 - `activeCondition`
 
-Failure memory can also include `failedApproach`, `failureReason`, `userCorrection`, `recurrenceRisk`, `relatedFiles`, and a `preventionRule`. Success patterns can include `successfulApproach`, `whyItWorked`, and `reuseWhen`.
+Failure memory can also include `failedApproach`, `failureReason`, `failureCategory`, `affectedContext`, `recurrenceRisk`, `relatedFiles`, and a `preventionRule`. Successful approach memory can include `successfulApproach`, `recoveryApproach`, `whyItWorked`, `reuseWhen`, `successEvidence`, and `acceptanceBasis`.
 
-Technical success and user acceptance are different signals. Passing tests, clean command output, or completed edits can support technical outcome fields, but a user-rejected result must not become `success_pattern`.
+Technical success and user acceptance are different signals. User acceptance describes the user's reaction to the work result; it is not memory approval. Passing tests, clean command output, or completed edits can support inferred success, but a user-rejected result must not become `success_pattern`.
 
 Outcome fields:
 
@@ -167,11 +173,13 @@ Outcome fields:
 - `userAcceptance`
 - `finalOutcome`
 - `userFeedbackSignal`
+- `successEvidence`
+- `acceptanceBasis`
 - `rejectionReason`
 - `correctionDirection`
 - `preventionRule`
 
-`technicalOutcome=success` with `userAcceptance=rejected` becomes `technical_success_user_rejected`, not a success pattern.
+`successEvidence=confirmed` means the user accepted, confirmed, or asked to keep the result. `successEvidence=inferred` means validation passed, no rejection signal exists, and the approach is reusable even without explicit user feedback. Inferred success can become active automatically, but it must not claim user confirmation. `technicalOutcome=success` with `userAcceptance=rejected` becomes `technical_success_user_rejected`, not a success pattern.
 
 ## Relation Index
 
@@ -189,7 +197,7 @@ Existing project-local `.vibebox/` folders are legacy stores. VibeBox warns abou
 
 ## Language And Wiki Identity
 
-Active memory and wiki managed text follow the configured memory language when semantic work is performed by an agent runtime. Raw logs can preserve original source text. Internal JSON field names, enum values, relation types, and command names stay English.
+Active memory and wiki managed text follow the configured `memoryLanguage`. Input language and `VIBEBOX_LOCALE` do not rewrite an existing store. Raw logs can preserve original source text. Internal JSON field names, enum values, relation types, and command names stay English.
 
 The wiki separates `docKey` from localized filename/title/aliases. Changing system locale does not automatically rename files. `convert-lang` must be explicitly run and requires an agent runtime marker. `rebuild` recreates indexes, relation-index, namespace files, wiki files, and stale localized file cleanup from active memory.
 
