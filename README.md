@@ -113,7 +113,7 @@ Override:
 VIBEBOX_HOME
 ```
 
-Projects are separated by `projectId` inside the global store. VibeBox does not create `.vibebox` inside your work repositories.
+Projects are separated by `projectId` inside the global store. The current AI working directory is treated as a project workspace even when it is a plain static site, PHP folder, JSON-only app folder, or documentation folder. Git remotes and package metadata improve the identity, but they are not required. VibeBox does not create `.vibebox` inside your work repositories.
 
 ## Obsidian-Compatible Active Graph
 

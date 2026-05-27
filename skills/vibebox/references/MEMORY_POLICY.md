@@ -173,7 +173,7 @@ The user's current explicit request wins over past memory. If active memory warn
 
 VibeBox runtime state lives in one global user store at `~/.vibebox` by default, or under `VIBEBOX_HOME` when configured. Global preferences and rules live under `global/`; project memory lives under `projects/{projectId}/`; wiki, index, logs, manual-debug pending, backup/restore material, and registry data live under the global store.
 
-The project id is derived from the current working directory using git remote `origin`, `package.json` name, git root folder name, then current folder name.
+The project id is derived from the current AI working directory. Git remote `origin` and `package.json` name are preferred identity hints when present; otherwise VibeBox uses the current folder name. Plain folders, static sites, PHP folders, JSON-only app folders, and document folders are valid project workspaces unless the path is user home, the global store, a drive root, `.codex`, `.agents`, plugin cache, `node_modules`, or another tool/cache/internal folder.
 
 VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects. Old project-local stores are legacy; `doctor` warns about them, and migration remains explicit and non-destructive.
 

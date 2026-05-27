@@ -38,7 +38,7 @@ node bin/vibebox.mjs <command>
 
 `vibebox init` creates or updates one user-level global store. By default that store is `~/.vibebox` on macOS/Linux and `C:\Users\{USER}\.vibebox` on Windows. Set `VIBEBOX_HOME` or pass `--store <path>` to use a different store.
 
-The current working project is identified from the current directory, using git remote origin first, then `package.json` name, then the git root folder name, then the current folder name. Project memory is stored under `projects/{projectId}/` inside the global store. VibeBox does not create `.vibebox/`, pointer files, or hidden metadata inside work repositories.
+The current AI working directory is treated as a project workspace unless it is an excluded internal path such as the user home directory, the VibeBox global store, a drive root, `.codex`, `.agents`, plugin cache, `node_modules`, or the system temp root. Git remote origin and `package.json` name improve project identity when present; otherwise VibeBox uses the current folder name. Project memory is stored under `projects/{projectId}/` inside the global store. VibeBox does not create `.vibebox/`, pointer files, or hidden metadata inside work repositories.
 
 The global store contains:
 
@@ -66,7 +66,7 @@ Fallback:
 node bin/vibebox.mjs init
 ```
 
-Initialization creates missing global-store files and preserves existing ones. It registers or refreshes the current project identity only when the current working directory has real project evidence such as a git repository, a project manifest, or a README plus source app structure. User home, the VibeBox global store, plugin caches, `node_modules`, and plain folders are not registered as projects.
+Initialization creates missing global-store files and preserves existing ones. It registers or refreshes the current project identity for the current working directory unless that directory is an excluded internal path. Plain folders, static HTML/PHP folders, JSON-only app folders, and documentation folders can all be project workspaces when an AI coding agent is working there.
 
 ## Pre-Task Usage
 

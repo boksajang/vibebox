@@ -22,7 +22,7 @@ For details, load these references only when needed:
 
 ## Auto-Intervention Principle
 
-Before starting repository-based work, judge whether the task could be affected by prior decisions, failures, preferences, constraints, project conventions, or blackbox history. If that possibility exists and VibeBox is available, the global store exists or can be initialized, and the current working directory identifies the project, run VibeBox pre-task retrieval before planning or editing.
+Before starting AI coding work in a workspace folder, judge whether the task could be affected by prior decisions, failures, preferences, constraints, project conventions, or blackbox history. If that possibility exists and VibeBox is available, the global store exists or can be initialized, and the current working directory is not an excluded internal path, run VibeBox pre-task retrieval before planning or editing.
 
 Use VibeBox memory as constraints, warnings, and context that narrow the working assumptions. Do not treat memory as a replacement for the user's current explicit request. The current request wins over past memory.
 
@@ -53,7 +53,7 @@ Use VibeBox when the task context suggests memory could reduce wrong assumptions
 - Could it affect existing design, structure, dependencies, documentation, packaging, tests, or release flow?
 - Could previous failures, user preferences, project decisions, or constraints affect the right approach?
 - Is the result likely to matter for a future coding session?
-- Is VibeBox installed, and can the current working directory be identified as a project?
+- Is VibeBox installed, and is the current working directory a usable project workspace rather than an excluded internal path?
 - Would the user reasonably expect the agent to avoid asking for repeated project context?
 
 Do not use VibeBox when:
@@ -69,7 +69,7 @@ Do not use VibeBox when:
 Before meaningful repository work:
 
 1. Judge whether prior memory could affect the task.
-2. Check whether the VibeBox CLI is available, whether the global store has been initialized, and whether the current working directory identifies the project.
+2. Check whether the VibeBox CLI is available, whether the global store has been initialized, and whether the current working directory is a usable workspace rather than user home, global store, cache, or tool-internal path.
 3. Prefer `vibebox pretask --task "<task description>"`.
 4. If the global command is unavailable inside the VibeBox repository, try `node bin/vibebox.mjs pretask --task "<task description>"`.
 5. Read the Pre-Task Brief.
@@ -187,7 +187,7 @@ If neither works:
 
 VibeBox writes human-readable Markdown in the global store wiki, `~/.vibebox/wiki/` by default, or `$VIBEBOX_HOME/wiki` when configured. Use it for inspection and review, not as a raw transcript store. The wiki is an active pattern graph linking projects, failures, prevention rules, success patterns, user patterns, design philosophy, validation patterns, process patterns, and decisions. VibeBox managed sections are bounded by `<!-- VIBEBOX:BEGIN -->` and `<!-- VIBEBOX:END -->`; user-written notes outside managed blocks should be preserved.
 
-VibeBox uses one global user store. Global preferences and rules live under `global/`; project memory lives under `projects/{projectId}/`; wiki, index, logs, pending, and registry data live under the global store. Project identity comes from the current working directory using git remote `origin`, `package.json` name, git root folder name, then current folder name.
+VibeBox uses one global user store. Global preferences and rules live under `global/`; project memory lives under `projects/{projectId}/`; wiki, index, logs, pending, and registry data live under the global store. Project identity comes from the current AI working directory: git remote `origin` and `package.json` name are preferred when present, otherwise the current folder name is used. Static sites, PHP folders, JSON-only folders, document folders, and plain folders are valid project workspaces unless they are user home, global store, cache, or tool-internal paths.
 
 VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects. Old project-local `.vibebox/` folders are legacy; `vibebox doctor` warns about them and no destructive migration is automatic.
 

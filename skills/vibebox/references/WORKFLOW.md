@@ -6,7 +6,7 @@ VibeBox is agent-neutral. Any AI coding agent that can read files and run shell 
 
 1. Receive the user task.
 2. Judge whether it is meaningful repository work.
-3. Check whether VibeBox is available, the global store exists or can be initialized, and the current working directory identifies the project.
+3. Check whether VibeBox is available, the global store exists or can be initialized, and the current working directory is a usable project workspace rather than user home, global store, cache, or tool-internal path.
 4. If memory could affect the task, run `pretask` before planning or editing.
 5. Use the Pre-Task Brief to reduce wrong assumptions, apply current user patterns, and avoid repeated failures.
 6. Perform the task within the current user request.
@@ -163,7 +163,7 @@ The current explicit user request has priority over past memory. If past memory 
 
 For the current repository, project memory should guide work before global memory. If project and global memory conflict, treat it as a potential conflict and avoid silently resolving it.
 
-Project identity is derived from the current working directory using git remote `origin`, `package.json` name, git root folder name, then current folder name. Project memory lives under `projects/{projectId}/` in the global store; global preferences and rules live under `global/`.
+Project identity is derived from the current AI working directory. Git remote `origin` and `package.json` name are preferred when present; otherwise VibeBox uses the current folder name. Static HTML/PHP folders, JSON-only folders, document folders, and plain folders are valid project workspaces unless they are excluded internal paths. Project memory lives under `projects/{projectId}/` in the global store; global preferences and rules live under `global/`.
 
 ## Adaptive Language Rule
 

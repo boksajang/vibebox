@@ -918,28 +918,9 @@ async function detectProjectIdentity(root) {
   return identity;
 }
 
-async function hasProjectManifest(root) {
-  for (const manifest of ['package.json', 'pyproject.toml', 'Cargo.toml', 'composer.json']) {
-    if (await exists(path.join(root, manifest))) return true;
-  }
-  return false;
-}
-
-async function hasReadmeAndSourceApp(root) {
-  const hasReadme = (await exists(path.join(root, 'README.md'))) || (await exists(path.join(root, 'readme.md')));
-  if (!hasReadme || !(await exists(path.join(root, 'src')))) return false;
-  for (const appEntry of ['app', 'app.js', 'app.jsx', 'app.ts', 'app.tsx', 'main.js', 'index.js']) {
-    if (await exists(path.join(root, 'src', appEntry))) return true;
-  }
-  return false;
-}
-
 async function isRecognizedProjectRoot(root) {
   const resolved = path.resolve(root);
-  if (isIgnoredProjectRoot(resolved)) return false;
-  const gitRoot = await findGitRoot(resolved);
-  if (gitRoot) return true;
-  return (await hasProjectManifest(resolved)) || (await hasReadmeAndSourceApp(resolved));
+  return !isIgnoredProjectRoot(resolved);
 }
 
 function isPathInside(child, parent) {
@@ -951,14 +932,20 @@ function isIgnoredProjectRoot(root) {
   const resolved = path.resolve(root);
   const home = path.resolve(os.homedir());
   const storeRoot = path.resolve(getVibeBoxHome());
+  const tempRoot = path.resolve(os.tmpdir());
   const normalized = resolved.toLowerCase();
+  const segments = path.normalize(resolved).split(/[\\/]+/u).filter(Boolean).map((segment) => segment.toLowerCase());
+  const isDriveRoot = path.parse(resolved).root === resolved;
   return resolved === home
+    || resolved === tempRoot
+    || isDriveRoot
     || isPathInside(resolved, storeRoot)
-    || normalized.includes(`${path.sep}.codex${path.sep}`)
-    || normalized.includes(`${path.sep}.agents${path.sep}`)
-    || normalized.includes(`${path.sep}plugin cache${path.sep}`)
+    || segments.includes('.codex')
+    || segments.includes('.agents')
+    || segments.includes('node_modules')
+    || segments.includes('plugin cache')
     || normalized.includes(`${path.sep}plugins${path.sep}cache${path.sep}`)
-    || normalized.includes(`${path.sep}node_modules${path.sep}`);
+    || normalized.endsWith(`${path.sep}plugins${path.sep}cache`);
 }
 
 function virtualProjectIdentity(root) {
@@ -3718,9 +3705,10 @@ function renderBriefSection(title, memories, options = {}) {
 
 export async function afterTask(root = process.cwd(), input = {}) {
   await initVibeBox(root);
+  const userRequestText = input.userRequest || input.request || '';
   const event = await captureEvent(root, {
     eventType: 'task_summary',
-    userRequest: input.userRequest || input.request || '',
+    userRequest: userRequestText,
     aiActionSummary: input.aiActionSummary || input.summary || '',
     command: input.command || '',
     commandResult: input.commandResult || '',
@@ -3735,6 +3723,18 @@ export async function afterTask(root = process.cwd(), input = {}) {
     finalOutcome: input.finalOutcome || input.final_outcome,
     notes: input.notes || ''
   });
+
+  if (!userRequestText.trim()) {
+    return {
+      event,
+      candidates: [],
+      message: [
+        `Captured blackbox event ${event.id}.`,
+        'Warning: userRequest was empty, so active memory extraction was skipped.',
+        'Use `vibebox review` only for manual debug or override workflows.'
+      ].join('\n')
+    };
+  }
 
   const wasRejected = event.userAcceptance === 'rejected' || event.finalOutcome === 'technical_success_user_rejected';
   const wasAccepted = event.userAcceptance === 'accepted' || event.finalOutcome === 'accepted_success';

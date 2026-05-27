@@ -1377,40 +1377,64 @@ test('doctor avoids global-store false positives and warns about user-home regis
   assert.ok(polluted.warnings.some((warning) => warning.includes('non-project root')));
 });
 
-test('init does not register non-project, home-like, or global-store roots as projects', async () => {
+test('init registers plain working folders as projects while keeping home and global-store roots virtual', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vibebox-non-project-'));
   process.env.VIBEBOX_HOME = path.join(root, '.vibebox');
   process.env.VIBEBOX_LOCALE = 'en-US';
   const result = await initVibeBox(root);
-  assert.equal(result.projectId, null);
+  const expectedProjectId = path.basename(root).toLowerCase();
+  assert.equal(result.projectId, expectedProjectId);
 
   const registry = await loadJson(path.join(process.env.VIBEBOX_HOME, 'registry', 'projects.json'));
-  assert.deepEqual(registry.projects, []);
+  assert.equal(registry.projects.some((project) => project.projectId === expectedProjectId && project.rootPath === root), true);
+  await readFile(path.join(process.env.VIBEBOX_HOME, 'wiki', 'projects', `${expectedProjectId}.md`), 'utf8');
   await assert.rejects(() => readFile(path.join(process.env.VIBEBOX_HOME, 'wiki', 'projects', 'global-store.md'), 'utf8'), /ENOENT/);
   await assert.rejects(() => readFile(path.join(process.env.VIBEBOX_HOME, 'projects', 'global-store', 'project.json'), 'utf8'), /ENOENT/);
 
   const plainDoctor = await runDoctor(root);
   assert.equal(plainDoctor.ok, true);
-  assert.equal(plainDoctor.currentProjectId, 'none');
+  assert.equal(plainDoctor.currentProjectId, expectedProjectId);
 
   const storeRootResult = await initVibeBox(process.env.VIBEBOX_HOME);
   assert.equal(storeRootResult.projectId, null);
   const registryAfterStoreRoot = await loadJson(path.join(process.env.VIBEBOX_HOME, 'registry', 'projects.json'));
-  assert.deepEqual(registryAfterStoreRoot.projects, []);
+  assert.equal(registryAfterStoreRoot.projects.some((project) => project.projectId === 'global-store'), false);
 
   const doctor = await runDoctor(process.env.VIBEBOX_HOME);
   assert.equal(doctor.ok, true);
   assert.equal(doctor.warnings.some((warning) => warning.includes('global-store')), false);
+
+  const homeLikeResult = await initVibeBox(os.homedir());
+  assert.equal(homeLikeResult.projectId, null);
 });
 
-test('init registers real manifest and git projects but not plain folders', async () => {
+test('init registers static, PHP, JSON-only, package, and git working folders as projects', async () => {
   const store = await mkdtemp(path.join(os.tmpdir(), 'vibebox-project-detection-store-'));
   process.env.VIBEBOX_HOME = store;
   process.env.VIBEBOX_LOCALE = 'en-US';
 
   const plain = await mkdtemp(path.join(os.tmpdir(), 'vibebox-plain-folder-'));
   const plainResult = await initVibeBox(plain);
-  assert.equal(plainResult.projectId, null);
+  assert.equal(plainResult.projectId, path.basename(plain).toLowerCase());
+  await readFile(path.join(store, 'wiki', 'projects', `${plainResult.projectId}.md`), 'utf8');
+
+  const staticProject = await mkdtemp(path.join(os.tmpdir(), 'vibebox-static-site-'));
+  await writeFile(path.join(staticProject, 'index.html'), '<!doctype html><title>Static</title>\n', 'utf8');
+  const staticResult = await initVibeBox(staticProject);
+  assert.equal(staticResult.projectId, path.basename(staticProject).toLowerCase());
+  await readFile(path.join(store, 'wiki', 'projects', `${staticResult.projectId}.md`), 'utf8');
+
+  const phpProject = await mkdtemp(path.join(os.tmpdir(), 'vibebox-php-site-'));
+  await writeFile(path.join(phpProject, 'index.php'), '<?php echo "ok";\n', 'utf8');
+  const phpResult = await initVibeBox(phpProject);
+  assert.equal(phpResult.projectId, path.basename(phpProject).toLowerCase());
+  await readFile(path.join(store, 'wiki', 'projects', `${phpResult.projectId}.md`), 'utf8');
+
+  const jsonProject = await mkdtemp(path.join(os.tmpdir(), 'vibebox-json-app-'));
+  await writeFile(path.join(jsonProject, 'app.json'), JSON.stringify({ name: 'json app' }, null, 2), 'utf8');
+  const jsonResult = await initVibeBox(jsonProject);
+  assert.equal(jsonResult.projectId, path.basename(jsonProject).toLowerCase());
+  await readFile(path.join(store, 'wiki', 'projects', `${jsonResult.projectId}.md`), 'utf8');
 
   const packageProject = await mkdtemp(path.join(os.tmpdir(), 'vibebox-package-project-'));
   await writeFile(path.join(packageProject, 'package.json'), JSON.stringify({ name: 'package-project' }, null, 2), 'utf8');
@@ -1427,7 +1451,88 @@ test('init registers real manifest and git projects but not plain folders', asyn
 
   const registry = await loadJson(path.join(store, 'registry', 'projects.json'));
   assert.equal(registry.projects.some((project) => project.projectId === 'global-store'), false);
-  assert.equal(registry.projects.some((project) => project.rootPath === plain), false);
+  assert.equal(registry.projects.some((project) => project.rootPath === plain), true);
+});
+
+test('excluded internal, cache, node_modules, and global-store child paths stay virtual', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vibebox-excluded-paths-'));
+  const store = path.join(root, 'store');
+  process.env.VIBEBOX_HOME = store;
+  process.env.VIBEBOX_LOCALE = 'en-US';
+  await initVibeBox(root);
+
+  const excludedRoots = [
+    store,
+    path.join(store, 'wiki'),
+    path.join(root, '.codex', 'plugins'),
+    path.join(root, '.agents', 'plugins'),
+    path.join(root, 'node_modules', 'pkg'),
+    path.join(root, 'plugins', 'cache', 'vibebox')
+  ];
+  for (const excludedRoot of excludedRoots) {
+    await mkdir(excludedRoot, { recursive: true });
+    const result = await initVibeBox(excludedRoot);
+    assert.equal(result.projectId, null, excludedRoot);
+  }
+
+  const registry = await loadJson(path.join(store, 'registry', 'projects.json'));
+  assert.equal(registry.projects.some((project) => project.projectId === 'global-store'), false);
+  assert.equal(registry.projects.some((project) => project.rootPath && project.rootPath.includes(`${path.sep}.codex${path.sep}`)), false);
+  assert.equal(registry.projects.some((project) => project.rootPath && project.rootPath.includes(`${path.sep}.agents${path.sep}`)), false);
+  assert.equal(registry.projects.some((project) => project.rootPath && project.rootPath.includes(`${path.sep}node_modules${path.sep}`)), false);
+});
+
+test('aftertask records non-null project ids for plain, static, PHP, and JSON-only workspaces', async () => {
+  const store = await mkdtemp(path.join(os.tmpdir(), 'vibebox-aftertask-store-'));
+  process.env.VIBEBOX_HOME = store;
+  process.env.VIBEBOX_LOCALE = 'en-US';
+  const projects = [
+    { prefix: 'vibebox-aftertask-plain-', file: null },
+    { prefix: 'vibebox-aftertask-static-', file: ['index.html', '<!doctype html><title>Static</title>\n'] },
+    { prefix: 'vibebox-aftertask-php-', file: ['index.php', '<?php echo "ok";\n'] },
+    { prefix: 'vibebox-aftertask-json-', file: ['app.json', '{"name":"json-only"}\n'] }
+  ];
+
+  for (const project of projects) {
+    const root = await mkdtemp(path.join(os.tmpdir(), project.prefix));
+    if (project.file) {
+      await writeFile(path.join(root, project.file[0]), project.file[1], 'utf8');
+    }
+    const result = await afterTask(root, {
+      userRequest: 'We confirmed this project uses static files and minimal tooling after rejecting unnecessary framework setup.',
+      aiActionSummary: 'Recorded the project workspace decision.',
+      technicalOutcome: 'success',
+      userAcceptance: 'accepted'
+    });
+    assert.ok(result.event.projectId, root);
+    assert.equal(result.event.projectId, path.basename(root).toLowerCase());
+    assert.ok(result.candidates.length > 0, root);
+    assert.equal(result.candidates.some((candidate) => candidate.sourceProjectId === result.event.projectId), true);
+  }
+
+  const events = await readJsonl(path.join(store, 'logs', 'events.jsonl'));
+  assert.equal(events.every((event) => event.projectId), true);
+});
+
+test('aftertask with missing userRequest records the event but skips active extraction with a warning', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vibebox-empty-request-'));
+  process.env.VIBEBOX_HOME = path.join(root, '.vibebox-store');
+  process.env.VIBEBOX_LOCALE = 'en-US';
+  const result = await afterTask(root, {
+    aiActionSummary: 'Implemented the requested homepage update.',
+    technicalOutcome: 'success',
+    userAcceptance: 'accepted',
+    changedFiles: []
+  });
+
+  assert.ok(result.event.projectId);
+  assert.equal(result.candidates.length, 0);
+  assert.match(result.message, /userRequest was empty/);
+
+  const memoryIndex = await loadJson(path.join(process.env.VIBEBOX_HOME, 'index', 'global-memory-index.json'));
+  assert.equal(memoryIndex.memories.length, 0);
+  const events = await readJsonl(path.join(process.env.VIBEBOX_HOME, 'logs', 'events.jsonl'));
+  assert.equal(events.at(-1).projectId, result.event.projectId);
 });
 
 test('doctor warns about internal pseudo project registry entries and orphan project wiki pages', async () => {

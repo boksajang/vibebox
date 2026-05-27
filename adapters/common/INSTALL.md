@@ -44,7 +44,7 @@ node bin/vibebox.mjs init
 
 1. Start from the current working directory.
 2. Check whether VibeBox is available through `vibebox`, `vibebox.cmd`, or the local Node fallback.
-3. Let VibeBox derive project identity from git remote `origin`, `package.json` name, git root folder name, then current folder name.
+3. Let VibeBox treat the current AI working directory as the project workspace. Git remote `origin` and `package.json` name are identity hints when present; otherwise the current folder name is used.
 4. Run pre-task retrieval before meaningful repository work when memory could matter.
 5. Prefer `vibebox <command>`.
 6. Fall back to `node bin/vibebox.mjs <command>` inside the VibeBox repository.
