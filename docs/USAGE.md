@@ -50,8 +50,9 @@ The global store contains:
 - `logs/events.jsonl` for raw blackbox events with `projectId`
 - `pending/memory-candidates.jsonl` for legacy/manual debug candidates with `projectId` or `scope`
 - `registry/projects.json` for known project identities
+- `registry/wiki-docs.json` for stable `docKey` to localized wiki filename/title/alias mapping
 
-`config.json` includes `locale`, `outputLanguage`, `wikiLanguage`, `reportLanguage`, and `contextLanguage`. Human-facing output follows explicit CLI options, `VIBEBOX_LOCALE`, `VIBEBOX_LANGUAGE`, config, and user input language policy. It is not limited to Korean or English. Stored memory text is preserved, JSON field names, command names, and enum values remain English, and VibeBox does not use external translation APIs.
+`config.json` includes `locale`, `outputLanguage`, `wikiLanguage`, `reportLanguage`, and `contextLanguage`. Human-facing active memory and wiki managed content follow the configured memory language when semantic work is performed by an agent runtime. Raw logs can preserve source text. JSON field names, command names, and enum values remain English, and VibeBox does not use external translation APIs.
 
 ## Project Initialization
 
@@ -88,7 +89,7 @@ vibebox pretask "Fix dashboard table scrolling"
 Run after meaningful work:
 
 ```bash
-vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling and kept package.json unchanged." --files "src/table.mjs" --commands "npm.cmd test" --outcome success
+vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling and kept package.json unchanged." --files "src/table.mjs" --commands "npm.cmd test" --technical-outcome success --user-acceptance accepted
 ```
 
 For longer notes:
@@ -97,7 +98,7 @@ For longer notes:
 vibebox aftertask --from-file task-result.txt
 ```
 
-`aftertask` writes a blackbox event, extracts candidates, and lets the Auto Curator decide whether each candidate becomes active, replaces older active memory, is discarded, or is quarantined. Users do not need to review memory after every task.
+`aftertask` writes a blackbox event, extracts candidates, and lets the Auto Curator decide whether each candidate becomes active, replaces older active memory, is discarded, or is quarantined. Users do not need to review memory after every task. Technical success and user acceptance are separate; a passing command with rejected user feedback becomes failure/correction/prevention guidance, not `success_pattern`.
 
 ## Capture And Extract
 
@@ -160,6 +161,34 @@ vibebox doctor
 
 `doctor` checks the global store, current project identity, registry, JSON parsing, index consistency, wiki references, pending consistency, suspicious unredacted secrets in raw logs, and legacy project-local `.vibebox/` folders.
 
+## Backup And Restore
+
+Create a backup:
+
+```bash
+vibebox backup --output ./vibebox-backup
+```
+
+Restore by destructive replace:
+
+```bash
+vibebox restore --from ./vibebox-backup --confirm-replace
+```
+
+Restore never merges. If a store already exists, VibeBox prints a destructive replace warning and refuses to continue until explicitly confirmed.
+
+## Language Conversion And Rebuild
+
+Semantic operations require an AI agent runtime marker:
+
+```bash
+VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko en
+VIBEBOX_AGENT_RUNTIME=adapter vibebox language convert ko en
+VIBEBOX_AGENT_RUNTIME=adapter vibebox rebuild
+```
+
+Without `VIBEBOX_AGENT_RUNTIME` or an adapter-provided runtime marker, `convert-lang` and semantic `rebuild` exit before changing files. Raw logs are not rewritten by language conversion. JSON field names, enum values, relation types, and command names stay English.
+
 ## External Project Workflow
 
 After `npm link`, VibeBox can be used from another repository:
@@ -168,7 +197,7 @@ After `npm link`, VibeBox can be used from another repository:
 cd path/to/another-project
 vibebox init
 vibebox pretask --task "Check project memory before editing"
-vibebox aftertask --request "Check project memory before editing" --summary "Inspected project state." --outcome success
+vibebox aftertask --request "Check project memory before editing" --summary "Inspected project state." --technical-outcome success --user-acceptance accepted
 vibebox extract --text "Do not modify package.json unless explicitly requested."
 vibebox context --task "Change dependency handling"
 vibebox report
@@ -218,7 +247,7 @@ vibebox aftertask --request "Fix table scroll" --summary "Tried changing global 
 Successful table scroll pattern:
 
 ```bash
-vibebox aftertask --request "Fix wide table scroll" --summary "Wrapper-based table scrolling worked without global layout changes." --outcome success
+vibebox aftertask --request "Fix wide table scroll" --summary "Wrapper-based table scrolling worked without global layout changes." --technical-outcome success --user-acceptance accepted
 ```
 
 Project decision:

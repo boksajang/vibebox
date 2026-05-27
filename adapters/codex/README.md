@@ -73,7 +73,7 @@ vibebox pretask --task "<task description>"
 After meaningful work:
 
 ```bash
-vibebox aftertask --request "..." --summary "..." --outcome success
+vibebox aftertask --request "..." --summary "..." --technical-outcome success --user-acceptance accepted
 ```
 
 VibeBox extracts candidates and runs Auto Curator by default. Use review commands only for debugging, audits, or manual override:
@@ -91,3 +91,6 @@ vibebox reject <candidate-id>
 - The shared skill is the source of usage behavior; the adapter should not fork memory policy.
 - VibeBox uses one global user store at `~/.vibebox` by default, overrideable with `VIBEBOX_HOME`.
 - VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects.
+- `backup` and `restore` are ordinary CLI maintenance commands; restore is destructive replace and requires confirmation.
+- `convert-lang` and semantic `rebuild` require an agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`.
+- Obsidian visible filenames and links follow the configured memory language through stable `docKey` identity; internal JSON fields stay English.

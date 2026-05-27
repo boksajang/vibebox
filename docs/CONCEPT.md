@@ -1,8 +1,8 @@
 # VibeBox Concept
 
-VibeBox is a local-first auto-curated active user pattern graph and blackbox memory middleware for AI coding agents.
+VibeBox is a local-first active user model, active graph, and blackbox memory middleware for AI coding agents.
 
-It is not a chat transcript archive, a passive history store, or a remote memory service. VibeBox stores compact development memory in one user-level global store, then keeps only the latest active guidance in retrieval, Context Packs, Pre-Task Briefs, the active relation graph, and the Obsidian-compatible wiki.
+It is not a chat transcript archive, a passive history store, an action-summary recorder, or a remote memory service. VibeBox interprets user requests, user feedback, project context, command outcomes, and prior active memory into normalized reusable guidance. It stores compact development memory in one user-level global store, then keeps only the latest active guidance in retrieval, Context Packs, Pre-Task Briefs, the active relation graph, and the Obsidian-compatible wiki.
 
 ## The Problem
 
@@ -26,7 +26,7 @@ User task
 -> AI coding agent works
 -> vibebox aftertask
 -> Blackbox Event
--> candidates extracted
+-> userRequest/userFeedback-first meaning extraction
 -> Auto Curator decides active / replace / discard / quarantine
 -> active graph, wiki, and context updated for future tasks
 ```
@@ -45,9 +45,12 @@ The current VibeBox implementation is a Node.js CLI with:
 - situation-aware retrieval for implementation, debugging, architecture, documentation, verification, packaging, and handoff work
 - after-task blackbox event capture
 - Auto Curator promotion, replacement, discard, and quarantine decisions
+- User Model, Domain Model, Project Model, Task Context, and Discarded Detail classification
+- userRequest/userFeedback-first extraction with `aiActionSummary` as auxiliary evidence
 - manual `review`, `approve`, and `reject` commands for debug and override
 - user pattern memory for validation style, process habits, design philosophy, response preference, correction patterns, and agent failure/success patterns
-- adaptive human-facing language from CLI, environment, config, and user input
+- localized Obsidian doc registry with stable internal `docKey` and configured-language filenames
+- backup, restore, convert-lang, and rebuild commands
 - common agent skill documentation
 - Codex, Claude-compatible, and common adapter guides
 
@@ -67,6 +70,18 @@ Discarded, quarantined, rejected, and legacy pending memory is excluded from nor
 
 Technical success and user acceptance are separate signals. A command can pass while the user rejects the result; rejected user outcomes must not become `success_pattern`.
 
+## User Model Layers
+
+Active memory is classified by reusable scope:
+
+- User Model: preferences, visual taste, response style, process habits, validation habits, reporting expectations, design philosophy, reference handling, scope control, and rejection criteria.
+- Domain Model: domain-specific preferences, avoidances, validation, process, success criteria, and failure prevention.
+- Project Model: project identity, decisions, constraints, preservation rules, asset rules, structure rules, localization rules, and validation rules.
+- Task Context: current task scope, allowed files, current copy, reference material, validation checklist, and implementation constraints.
+- Discarded Detail: raw instruction text, one-off implementation detail, duplicate summaries, low-value action summaries, task-only paths or labels, and test-only fixture details.
+
+Project details do not become global memory by default. Only the user tendencies revealed by a project can be promoted beyond that project.
+
 ## Current Request Wins
 
 VibeBox memory is guidance, not a higher authority than the user. If active memory conflicts with the user's current explicit request, the agent should follow the current request and mention the conflict.
@@ -77,7 +92,13 @@ VibeBox Core is designed for local command workflows. It is not tied to Codex, C
 
 ## Adaptive Language
 
-Human-facing output follows explicit CLI options, environment variables, config language settings, and user input. It is not limited to Korean or English. Stored memory text is preserved in the language it was captured in, JSON field names and enum values stay English, and VibeBox does not call external translation APIs.
+Human-facing active memory and Obsidian managed content follow the configured memory language. The wiki uses stable internal `docKey` identity with localized visible filenames, headings, aliases, and links so English and Korean pages are not duplicated in one store. Raw logs can preserve source text. JSON field names, enum values, relation types, and command names stay English. VibeBox does not call external translation APIs; semantic conversion requires an AI agent runtime marker.
+
+## Maintenance Commands
+
+`backup` and `restore` work in normal CLI mode. Restore is destructive replace, not merge, and requires explicit confirmation when a store exists.
+
+`convert-lang` and semantic `rebuild` require an agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`. Without that marker they stop before modifying files.
 
 ## Global Runtime State
 

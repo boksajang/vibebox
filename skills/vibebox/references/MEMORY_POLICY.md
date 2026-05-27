@@ -26,6 +26,10 @@ VibeBox memory is auto-curated local context for AI coding work. It is not a rep
 - `agent_failure_pattern`
 - `agent_success_pattern`
 - `handoff_pattern`
+- `task_context`
+- `discarded_detail`
+
+Each record can also carry `modelClass`, `modelSubClass`, and `docKey`. `modelClass` separates `user_model`, `domain_model`, `project_model`, `task_context`, and `discarded_detail` so project facts do not leak into global guidance.
 
 ## Memory Scopes
 
@@ -83,6 +87,7 @@ VibeBox maintains the latest optimized active graph, not a pile of competing rul
 User patterns may describe question style, response preference, process habits, validation requirements, design philosophy, decision style, communication style, correction patterns, agent failure patterns, agent success patterns, and handoff style. A single vague statement should be discarded, quarantined, or marked low confidence; explicit or repeated behavior can become active through auto-curation or manual override.
 
 Failure memory must include prevention guidance when possible. Success patterns should describe when to reuse the successful approach.
+Pretask/context retrieval should consider relevant failure and success nodes together, not only one side.
 
 Technical success and user acceptance are separate. Passing tests, clean command output, or completed edits can support technical outcome fields, but a user-rejected result must not become `success_pattern`.
 
@@ -92,6 +97,7 @@ New memory candidates are never authority by default. The normal flow is:
 
 ```text
 event captured
+-> userRequest and userFeedback analyzed first
 -> candidates extracted
 -> Auto Curator decides active / replace / discard / quarantine
 -> active graph, wiki, and context updated
@@ -137,6 +143,7 @@ Memory classification should consider context, not just isolated words.
 
 Use these judgment axes:
 
+- Source priority: userRequest, userFeedback, prior active success/failure, project context, AI action summary, command result, changed files.
 - Permanence: one-off instruction, temporary allowance, repeatable rule, or long-term preference.
 - Scope: current task, current project, domain, or global.
 - Certainty: weak opinion, preference, confirmed decision, or strict rule.
@@ -147,6 +154,7 @@ Use these judgment axes:
 ## Why Keyword-Only Classification Is Not Enough
 
 The same word can mean different things depending on intent and context. For example, a sentence may mention a database as a failed experiment, an approved decision, a temporary exception, or a broad preference. VibeBox should preserve that distinction.
+Input length and fixed keyword examples are not authority. A short user correction can be important feedback when connected to the previous result, while a long instruction may mostly contain task-only details that should be discarded.
 
 ## Handling Uncertain Memory
 
@@ -163,7 +171,7 @@ The user's current explicit request wins over past memory. If active memory warn
 
 ## Runtime State Exclusion Policy
 
-VibeBox runtime state lives in one global user store at `~/.vibebox` by default, or under `VIBEBOX_HOME` when configured. Global preferences and rules live under `global/`; project memory lives under `projects/{projectId}/`; wiki, index, logs, manual-debug pending, and registry data live under the global store.
+VibeBox runtime state lives in one global user store at `~/.vibebox` by default, or under `VIBEBOX_HOME` when configured. Global preferences and rules live under `global/`; project memory lives under `projects/{projectId}/`; wiki, index, logs, manual-debug pending, backup/restore material, and registry data live under the global store.
 
 The project id is derived from the current working directory using git remote `origin`, `package.json` name, git root folder name, then current folder name.
 
@@ -171,4 +179,6 @@ VibeBox does not create project-local `.vibebox` folders, pointer files, or hidd
 
 ## Adaptive Language Policy
 
-Human-facing output follows explicit CLI options, environment variables, config, and user input language policy. It is not limited to `ko-KR` or `en-US`. Stored memory text is preserved in the captured language. JSON field names, enum values, and command names stay English. VibeBox does not use external translation APIs.
+Human-facing active memory and wiki managed content follow the configured memory language. Raw logs can preserve captured source text. Wiki identity uses stable `docKey` values with localized visible filenames, links, headings, and aliases. JSON field names, enum values, relation types, and command names stay English. VibeBox does not use external translation APIs.
+
+`convert-lang` and semantic `rebuild` require an AI agent runtime marker. `backup` and `restore` do not. Restore is destructive replace, not merge, and requires explicit confirmation.

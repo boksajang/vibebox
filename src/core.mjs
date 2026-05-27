@@ -2,10 +2,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import {
   access,
   appendFile,
+  cp,
   mkdir,
   readFile,
   readdir,
   rename,
+  rm,
   stat,
   writeFile
 } from 'node:fs/promises';
@@ -14,25 +16,29 @@ import path from 'node:path';
 
 export const VIBEBOX_VERSION = '0.1.0';
 
-const WIKI_PAGES = [
-  'Home.md',
-  'User Preferences.md',
-  'User Patterns.md',
-  'Design Philosophy.md',
-  'Validation Patterns.md',
-  'Process Patterns.md',
-  'Decision Patterns.md',
-  'Technology Preferences.md',
-  'Agent Failure Patterns.md',
-  'Agent Success Patterns.md',
-  'Prevention Rules.md',
-  'Global Avoid Rules.md',
-  'Failure Memory.md',
-  'Success Patterns.md',
-  'Tooling Preferences.md',
-  'Workflow Rules.md',
-  'Project Index.md'
+const WIKI_DOCS = [
+  { docKey: 'home', canonicalFileName: 'Home.md', titleKey: 'homeTitle', technicalName: true },
+  { docKey: 'user_preferences', canonicalFileName: 'User Preferences.md', titleKey: 'pageUserPreferences' },
+  { docKey: 'user_patterns', canonicalFileName: 'User Patterns.md', titleKey: 'pageUserPatterns' },
+  { docKey: 'design_philosophy', canonicalFileName: 'Design Philosophy.md', titleKey: 'pageDesignPhilosophy' },
+  { docKey: 'validation_patterns', canonicalFileName: 'Validation Patterns.md', titleKey: 'pageValidationPatterns' },
+  { docKey: 'process_patterns', canonicalFileName: 'Process Patterns.md', titleKey: 'pageProcessPatterns' },
+  { docKey: 'decision_patterns', canonicalFileName: 'Decision Patterns.md', titleKey: 'pageDecisionPatterns' },
+  { docKey: 'technology_preferences', canonicalFileName: 'Technology Preferences.md', titleKey: 'pageTechnologyPreferences' },
+  { docKey: 'agent_failure_patterns', canonicalFileName: 'Agent Failure Patterns.md', titleKey: 'pageAgentFailurePatterns' },
+  { docKey: 'agent_success_patterns', canonicalFileName: 'Agent Success Patterns.md', titleKey: 'pageAgentSuccessPatterns' },
+  { docKey: 'prevention_rules', canonicalFileName: 'Prevention Rules.md', titleKey: 'pagePreventionRules' },
+  { docKey: 'global_avoid_rules', canonicalFileName: 'Global Avoid Rules.md', titleKey: 'pageGlobalAvoidRules' },
+  { docKey: 'failure_memory', canonicalFileName: 'Failure Memory.md', titleKey: 'pageFailureMemory' },
+  { docKey: 'success_patterns', canonicalFileName: 'Success Patterns.md', titleKey: 'pageSuccessPatterns' },
+  { docKey: 'tooling_preferences', canonicalFileName: 'Tooling Preferences.md', titleKey: 'pageToolingPreferences' },
+  { docKey: 'workflow_rules', canonicalFileName: 'Workflow Rules.md', titleKey: 'pageWorkflowRules' },
+  { docKey: 'project_index', canonicalFileName: 'Project Index.md', titleKey: 'pageProjectIndex' }
 ];
+
+const WIKI_PAGES = WIKI_DOCS.map((doc) => doc.canonicalFileName);
+const DOC_BY_KEY = Object.fromEntries(WIKI_DOCS.map((doc) => [doc.docKey, doc]));
+const DOC_KEY_BY_CANONICAL_FILE = Object.fromEntries(WIKI_DOCS.map((doc) => [doc.canonicalFileName, doc.docKey]));
 
 const MEMORY_TYPES = new Set([
   'user_preference',
@@ -56,7 +62,9 @@ const MEMORY_TYPES = new Set([
   'correction_pattern',
   'agent_failure_pattern',
   'agent_success_pattern',
-  'handoff_pattern'
+  'handoff_pattern',
+  'task_context',
+  'discarded_detail'
 ]);
 
 const TYPE_TO_PAGE = {
@@ -87,6 +95,33 @@ Object.assign(TYPE_TO_PAGE, {
   handoff_pattern: 'Process Patterns.md'
 });
 
+const TYPE_TO_DOC_KEY = {
+  user_preference: 'user_preferences',
+  coding_style: 'user_preferences',
+  design_preference: 'user_preferences',
+  project_decision: 'project_index',
+  architecture_rule: 'project_index',
+  avoid_rule: 'global_avoid_rules',
+  failure_memory: 'failure_memory',
+  success_pattern: 'success_patterns',
+  tooling_preference: 'tooling_preferences',
+  technology_preference: 'technology_preferences',
+  workflow_rule: 'workflow_rules',
+  question_pattern: 'user_patterns',
+  response_preference: 'user_patterns',
+  process_pattern: 'process_patterns',
+  validation_pattern: 'validation_patterns',
+  design_philosophy: 'design_philosophy',
+  decision_pattern: 'decision_patterns',
+  communication_pattern: 'user_patterns',
+  correction_pattern: 'user_patterns',
+  agent_failure_pattern: 'agent_failure_patterns',
+  agent_success_pattern: 'agent_success_patterns',
+  handoff_pattern: 'process_patterns',
+  task_context: 'workflow_rules',
+  discarded_detail: 'workflow_rules'
+};
+
 const GLOBAL_MEMORY_FILES = {
   user_preference: 'user-preferences.json',
   avoid_rule: 'avoid-rules.json',
@@ -108,7 +143,9 @@ const GLOBAL_MEMORY_FILES = {
   correction_pattern: 'workflow-rules.json',
   agent_failure_pattern: 'failure-memory.json',
   agent_success_pattern: 'success-patterns.json',
-  handoff_pattern: 'workflow-rules.json'
+  handoff_pattern: 'workflow-rules.json',
+  task_context: 'workflow-rules.json',
+  discarded_detail: 'workflow-rules.json'
 };
 
 const PROJECT_MEMORY_FILES = {
@@ -133,7 +170,9 @@ const PROJECT_MEMORY_FILES = {
   correction_pattern: 'workflow-rules.json',
   agent_failure_pattern: 'failures.json',
   agent_success_pattern: 'successes.json',
-  handoff_pattern: 'workflow-rules.json'
+  handoff_pattern: 'workflow-rules.json',
+  task_context: 'task-history.json',
+  discarded_detail: 'task-history.json'
 };
 
 const GLOBAL_MEMORY_FILE_NAMES = [
@@ -213,6 +252,7 @@ const CONFIDENCE_PRIORITY = {
 };
 
 const AUTO_CURATED_STATUSES = new Set(['active', 'discarded', 'quarantined', 'rejected']);
+const ACTIVE_MODEL_CLASSES = new Set(['user_model', 'domain_model', 'project_model']);
 const TECHNICAL_OUTCOMES = new Set(['success', 'failure', 'partial', 'unknown']);
 const USER_ACCEPTANCE_VALUES = new Set(['accepted', 'rejected', 'mixed', 'unknown']);
 const FINAL_OUTCOMES = new Set([
@@ -522,7 +562,26 @@ const LOCALE_TEMPLATES = {
     currentProjectId: 'Current projectId',
     errors: 'Errors',
     warnings: 'Warnings',
-    noIssuesFound: 'No issues found.'
+    noIssuesFound: 'No issues found.',
+    modelClass: 'Model class',
+    modelSubClass: 'Model',
+    idLabel: 'ID',
+    scopeLabel: 'Scope',
+    confidenceLabel: 'Confidence',
+    topicLabel: 'Topic',
+    summaryLabel: 'Summary',
+    appliesToLabel: 'Applies to',
+    failureTypeLabel: 'Failure type',
+    preventionRuleLabel: 'Prevention rule',
+    reuseWhenLabel: 'Reuse when',
+    patternTypeLabel: 'Pattern type',
+    situationLabel: 'Situation',
+    preferredBehaviorLabel: 'Preferred behavior',
+    forbiddenActionLabel: 'Forbidden action',
+    severityLabel: 'Severity',
+    decisionLabel: 'Decision',
+    alternativesRejectedLabel: 'Alternatives rejected',
+    notSpecified: 'Not specified'
   },
   'ko-KR': {
     homeTitle: 'VibeBox 홈',
@@ -594,7 +653,26 @@ const LOCALE_TEMPLATES = {
     currentProjectId: '현재 projectId',
     errors: '오류',
     warnings: '경고',
-    noIssuesFound: '문제 없음.'
+    noIssuesFound: '문제 없음.',
+    modelClass: '모델 계층',
+    modelSubClass: '모델',
+    idLabel: 'ID',
+    scopeLabel: '범위',
+    confidenceLabel: '신뢰도',
+    topicLabel: '주제',
+    summaryLabel: '요약',
+    appliesToLabel: '적용 조건',
+    failureTypeLabel: '실패 유형',
+    preventionRuleLabel: '예방 규칙',
+    reuseWhenLabel: '재사용 조건',
+    patternTypeLabel: '패턴 유형',
+    situationLabel: '상황',
+    preferredBehaviorLabel: '선호 행동',
+    forbiddenActionLabel: '금지 행동',
+    severityLabel: '심각도',
+    decisionLabel: '결정',
+    alternativesRejectedLabel: '거절된 대안',
+    notSpecified: '지정되지 않음'
   }
 };
 
@@ -623,26 +701,35 @@ function t(locale, key) {
   return localeTemplates(locale)[key] || LOCALE_TEMPLATES['en-US'][key] || key;
 }
 
+function docDefinition(docKey) {
+  return DOC_BY_KEY[docKey] || DOC_BY_KEY.home;
+}
+
+function docKeyForPageName(pageName) {
+  return DOC_KEY_BY_CANONICAL_FILE[pageName] || null;
+}
+
+function docKeyForType(type) {
+  return TYPE_TO_DOC_KEY[type] || 'project_index';
+}
+
+function localizedDocTitle(docKey, locale = 'en-US') {
+  return t(locale, docDefinition(docKey).titleKey);
+}
+
+function localizedDocFileName(docKey, locale = 'en-US') {
+  const doc = docDefinition(docKey);
+  if (doc.technicalName) return doc.canonicalFileName;
+  return `${safeWikiPageName(localizedDocTitle(docKey, locale))}.md`;
+}
+
+function currentWikiPages(locale = 'en-US') {
+  return WIKI_DOCS.map((doc) => localizedDocFileName(doc.docKey, locale));
+}
+
 function localizedPageTitle(pageName, locale = 'en-US') {
-  const keyByPage = {
-    'User Preferences.md': 'pageUserPreferences',
-    'User Patterns.md': 'pageUserPatterns',
-    'Design Philosophy.md': 'pageDesignPhilosophy',
-    'Validation Patterns.md': 'pageValidationPatterns',
-    'Process Patterns.md': 'pageProcessPatterns',
-    'Decision Patterns.md': 'pageDecisionPatterns',
-    'Technology Preferences.md': 'pageTechnologyPreferences',
-    'Agent Failure Patterns.md': 'pageAgentFailurePatterns',
-    'Agent Success Patterns.md': 'pageAgentSuccessPatterns',
-    'Prevention Rules.md': 'pagePreventionRules',
-    'Global Avoid Rules.md': 'pageGlobalAvoidRules',
-    'Failure Memory.md': 'pageFailureMemory',
-    'Success Patterns.md': 'pageSuccessPatterns',
-    'Tooling Preferences.md': 'pageToolingPreferences',
-    'Workflow Rules.md': 'pageWorkflowRules',
-    'Project Index.md': 'pageProjectIndex'
-  };
-  return keyByPage[pageName] ? t(locale, keyByPage[pageName]) : pageTitle(pageName);
+  const docKey = docKeyForPageName(pageName);
+  return docKey ? localizedDocTitle(docKey, locale) : pageTitle(pageName);
 }
 
 function defaultRegistry() {
@@ -650,6 +737,26 @@ function defaultRegistry() {
     version: VIBEBOX_VERSION,
     updatedAt: nowIso(),
     projects: []
+  };
+}
+
+function defaultWikiDocRegistry(locale = 'en-US') {
+  const language = languageFromLocale(locale);
+  return {
+    version: VIBEBOX_VERSION,
+    language,
+    locale: normalizeLocale(locale),
+    updatedAt: nowIso(),
+    docs: WIKI_DOCS.map((doc) => ({
+      docKey: doc.docKey,
+      canonicalFileName: doc.canonicalFileName,
+      fileName: localizedDocFileName(doc.docKey, locale),
+      title: localizedDocTitle(doc.docKey, locale),
+      aliases: [...new Set([
+        pageTitle(doc.canonicalFileName),
+        localizedDocTitle(doc.docKey, locale)
+      ])]
+    }))
   };
 }
 
@@ -811,8 +918,48 @@ async function detectProjectIdentity(root) {
   return identity;
 }
 
+function isPathInside(child, parent) {
+  const relative = path.relative(path.resolve(parent), path.resolve(child));
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function isIgnoredProjectRoot(root) {
+  const resolved = path.resolve(root);
+  const home = path.resolve(os.homedir());
+  const storeRoot = path.resolve(getVibeBoxHome());
+  const normalized = resolved.toLowerCase();
+  return resolved === home
+    || isPathInside(resolved, storeRoot)
+    || normalized.includes(`${path.sep}.codex${path.sep}`)
+    || normalized.includes(`${path.sep}.agents${path.sep}`)
+    || normalized.includes(`${path.sep}plugin cache${path.sep}`)
+    || normalized.includes(`${path.sep}plugins${path.sep}cache${path.sep}`);
+}
+
+function virtualProjectIdentity(root) {
+  const timestamp = nowIso();
+  return {
+    projectId: 'global-store',
+    projectName: 'Global VibeBox Store',
+    rootPath: path.resolve(root),
+    gitRemote: '',
+    repositoryName: '',
+    packageName: '',
+    primaryDomain: 'global',
+    techStackHints: [],
+    aliases: [],
+    status: 'virtual',
+    firstSeenAt: timestamp,
+    lastSeenAt: timestamp,
+    virtual: true
+  };
+}
+
 async function resolveCurrentProjectIdentity(root = process.cwd()) {
   await ensureDir(vibeboxPath(root, 'registry'));
+  if (isIgnoredProjectRoot(root)) {
+    return virtualProjectIdentity(root);
+  }
   const registryPath = vibeboxPath(root, 'registry/projects.json');
   const registry = await loadJson(registryPath, defaultRegistry());
   registry.projects = Array.isArray(registry.projects) ? registry.projects : [];
@@ -952,6 +1099,17 @@ function initialWikiPage(pageName, locale = 'en-US') {
   return `${renderMemoryShell(pageName, locale)}\n\n${managedBlock(renderMemoryManaged([], locale))}\n`;
 }
 
+function initialWikiDocPage(docKey, locale = 'en-US') {
+  if (docKey === 'home') {
+    return `${renderHomeShell(locale)}\n\n${managedBlock(renderHomeManaged([], locale))}\n`;
+  }
+  if (docKey === 'project_index') {
+    return `${renderProjectIndexShell(locale)}\n\n${managedBlock(renderProjectIndexManaged([], locale))}\n`;
+  }
+
+  return `${renderMemoryShell(localizedDocFileName(docKey, locale), locale)}\n\n${managedBlock(renderMemoryManaged([], locale))}\n`;
+}
+
 function initialProjectWikiPage(project, locale = 'en-US') {
   return `${renderProjectShell(project, locale)}\n\n${managedBlock(renderProjectManaged(project, [], locale))}\n`;
 }
@@ -963,6 +1121,7 @@ export async function initVibeBox(root = process.cwd()) {
 
   await ensureDir(vibeboxPath(root, 'registry'));
   await writeIfMissing(vibeboxPath(root, 'registry/projects.json'), `${JSON.stringify(defaultRegistry(), null, 2)}\n`);
+  await writeIfMissing(vibeboxPath(root, 'registry/wiki-docs.json'), `${JSON.stringify(defaultWikiDocRegistry(config.locale), null, 2)}\n`);
   const project = await resolveCurrentProjectIdentity(root);
 
   for (const dir of ['', 'global', 'projects', `projects/${project.projectId}`, 'wiki', 'wiki/projects', 'index', 'logs', 'pending', 'registry']) {
@@ -991,8 +1150,9 @@ export async function initVibeBox(root = process.cwd()) {
   for (const fileName of PROJECT_MEMORY_FILE_NAMES) {
     files.push([`projects/${project.projectId}/${fileName}`, `${JSON.stringify(defaultMemoryFile(), null, 2)}\n`]);
   }
-  for (const page of WIKI_PAGES) {
-    files.push([`wiki/${page}`, initialWikiPage(page, config.locale)]);
+  for (const doc of WIKI_DOCS) {
+    const page = localizedDocFileName(doc.docKey, config.locale);
+    files.push([`wiki/${page}`, initialWikiDocPage(doc.docKey, config.locale)]);
   }
   files.push([`wiki/projects/${project.projectId}.md`, initialProjectWikiPage(project, config.locale)]);
 
@@ -1004,10 +1164,12 @@ export async function initVibeBox(root = process.cwd()) {
   }
 
   await ensureConfigFields(root);
+  const actualConfig = await loadJson(vibeboxPath(root, 'config.json'), config);
+  await saveJson(vibeboxPath(root, 'registry/wiki-docs.json'), defaultWikiDocRegistry(actualConfig.locale || config.locale));
   await saveJson(vibeboxPath(root, `projects/${project.projectId}/project.json`), project);
   await rebuildIndexes(root, { syncNamespaceFiles: false });
   const registry = await loadJson(vibeboxPath(root, 'registry/projects.json'), defaultRegistry());
-  await writeManagedWikiPage(root, 'Project Index.md', renderProjectIndexShell(config.locale), renderProjectIndexManaged(registry.projects || [], config.locale));
+  await writeManagedWikiDoc(root, 'project_index', renderProjectIndexShell(actualConfig.locale || config.locale), renderProjectIndexManaged(registry.projects || [], actualConfig.locale || config.locale), actualConfig.locale || config.locale);
 
   return {
     root: path.resolve(root),
@@ -1235,9 +1397,13 @@ function textHasAny(text, phrases) {
 function extractDomains(statement) {
   const domains = new Set();
   if (textHasAny(statement, ['dashboard', 'reporting'])) domains.add('dashboard');
-  if (textHasAny(statement, ['app', 'prototype', 'prototypes'])) domains.add('app');
+  if (textHasAny(statement, ['app', 'prototype', 'prototypes', 'native', 'mobile'])) domains.add('app');
+  if (textHasAny(statement, ['landing page', 'homepage', 'marketing page', 'brand landing', 'catalog landing'])) domains.add('landing_page');
+  if (textHasAny(statement, ['brand', 'premium', 'catalog'])) domains.add('brand_design');
+  if (textHasAny(statement, ['native app', 'mobile app', 'receipt', 'expense', 'approval', 'business trip'])) domains.add('native_internal_app');
   if (textHasAny(statement, ['backend', 'api'])) domains.add('backend');
   if (textHasAny(statement, ['frontend', 'ui', 'ux', 'layout'])) domains.add('frontend');
+  if (textHasAny(statement, ['visual', '3d', 'hero', 'cinematic', 'design'])) domains.add('visual_design');
   if (textHasAny(statement, ['database', 'mssql', 'supabase', 'postgresql'])) domains.add('database');
   if (textHasAny(statement, ['tool', 'command', 'cli'])) domains.add('tooling');
   if (textHasAny(statement, ['test', 'check', 'verify', 'verification', 'validating', '검증'])) domains.add('verification');
@@ -1251,6 +1417,30 @@ function extractTags(statement) {
   const tags = new Set();
   const known = [
     'dashboard',
+    'landing page',
+    'brand',
+    'catalog',
+    'premium',
+    'marketing',
+    'native',
+    'mobile',
+    'internal',
+    'business trip',
+    'expense',
+    'receipt',
+    'approval',
+    'offline',
+    '3d',
+    'hero',
+    'cinematic',
+    'dark',
+    'readable',
+    'practical',
+    'touch targets',
+    'data clarity',
+    'reference',
+    'principles',
+    'copy',
     'database',
     'mssql',
     'supabase',
@@ -1306,13 +1496,34 @@ function extractTags(statement) {
 }
 
 function determineScope(statement, domains) {
+  if (isTaskOnlyImplementationBoundary(statement) || isCurrentTaskChecklist(statement)) {
+    return 'task';
+  }
   if (textHasAny(statement, ['for this task only', 'this task only', 'temporarily', 'temporary', 'this once'])) {
     return textHasAny(statement, ['temporarily', 'temporary']) ? 'temporary' : 'task';
+  }
+  if (textHasAny(statement, ['subagent workflow', 'reference material', 'reference image', 'extract design principles', 'do not copy', 'final report should include', 'report changed files', 'do not assume the same design direction', 'different project type', 'project type'])) {
+    return 'global';
   }
   if (textHasAny(statement, ['this project', 'we decided this project', 'in this repo', 'current project'])) {
     return 'project';
   }
-  if (domains.length > 0 && textHasAny(statement, ['for dashboard', 'dashboard projects', 'for app', 'app projects', 'backend services', 'frontend'])) {
+  if (textHasAny(statement, ['i want to build', 'current tool', 'existing logo', 'preserve current', 'keep the page', 'one-page landing', 'internal company use'])) {
+    return 'project';
+  }
+  if (domains.length > 0 && textHasAny(statement, [
+    'for dashboard',
+    'dashboard projects',
+    'for app',
+    'app projects',
+    'backend services',
+    'frontend',
+    'landing page',
+    'brand landing',
+    'native app',
+    'internal workflow',
+    'internal company'
+  ])) {
     return 'domain';
   }
   if (textHasAny(statement, ['always', 'do not', 'never', 'unless explicitly requested', 'i usually', 'i prefer'])) {
@@ -1321,11 +1532,34 @@ function determineScope(statement, domains) {
   return domains.length > 0 ? 'domain' : 'task';
 }
 
+function isTaskOnlyImplementationBoundary(statement) {
+  const text = String(statement || '');
+  if (textHasAny(text, ['use html/css/vanilla js only', 'npm/build tooling', 'unrelated files'])) return true;
+  if (textHasAny(text, ['fake plugins', 'fake testimonials']) && textHasAny(text, ['do not add', 'unnecessary'])) return true;
+  return textHasAny(text, ['do not add frameworks']) && textHasAny(text, ['backend code', 'build tooling']);
+}
+
+function isCurrentTaskChecklist(statement) {
+  const text = String(statement || '');
+  if (!textHasAny(text, ['before reporting completion', 'final report should include'])) return false;
+  return textHasAny(text, [
+    'logo.webp',
+    'seo/head',
+    'language switching',
+    'hero was redesigned',
+    'saas feeling',
+    'concept image',
+    'mobile layout',
+    'overall atmosphere',
+    'current tool'
+  ]);
+}
+
 function normalizeCandidateScope(type, scope, statement) {
   if (!PATTERN_TYPES.has(type)) return scope;
   if (scope === 'temporary' || scope === 'project') return scope;
   if (scope === 'task' && textHasAny(statement, ['for this task only', 'this task only', 'this once'])) return scope;
-  if (textHasAny(statement, ['for dashboard', 'dashboard projects', 'backend services', 'frontend'])) return scope;
+  if (textHasAny(statement, ['for dashboard', 'dashboard projects', 'backend services', 'frontend', 'landing page', 'brand landing', 'native app', 'internal workflow'])) return scope;
   return scope === 'domain' ? 'domain' : 'global';
 }
 
@@ -1354,6 +1588,12 @@ function determineConfidence(statement, type, scope) {
   if (type === 'failure_memory' && textHasAny(statement, ['caused', 'failed', 'regression', 'rejected'])) {
     return 'medium';
   }
+  if (['workflow_rule', 'process_pattern', 'response_preference'].includes(type) && textHasAny(statement, ['subagent workflow', 'before coding', 'create a concise plan', 'final report should include', 'report changed files'])) {
+    return 'medium';
+  }
+  if (type === 'architecture_rule' && textHasAny(statement, ['simple', 'maintainable', 'preserve existing architecture'])) {
+    return 'medium';
+  }
   if (textHasAny(statement, ['prefer', 'usually', 'should', 'because'])) {
     return 'medium';
   }
@@ -1369,21 +1609,29 @@ function inferType(statement) {
   const hasDecision = textHasAny(statement, ['we decided', 'decided this project', 'this project uses', 'uses echarts', 'after rejecting']);
   const hasPreference = textHasAny(statement, ['prefer', 'usually prefer', 'i prefer']);
   const hasDurableUseInstruction = textHasAny(statement, ['for dashboard projects, use', 'dashboard projects use', 'for app projects, use', 'app projects use', 'this project uses']);
-  const hasWorkflow = textHasAny(statement, ['review first', 'approval', 'workflow']);
-  const hasArchitecture = textHasAny(statement, ['architecture', 'component-level', 'preserve existing behavior']);
+  const hasWorkflow = textHasAny(statement, ['review first', 'approval', 'workflow', 'subagent workflow', 'before coding', 'before implementation', 'inspect the existing project structure', 'create a concise plan']);
+  const hasArchitecture = textHasAny(statement, ['architecture', 'component-level', 'preserve existing behavior', 'simple maintainable architecture']);
 
   if (textHasAny(statement, ['agent repeatedly fails', 'ai repeatedly fails', 'agent failed', 'ai failed', 'agent failure', 'repeatedly fails by', '에이전트가 반복적으로 실패'])) return 'agent_failure_pattern';
   if (textHasAny(statement, ['agent succeeded', 'ai succeeded', 'agent success', 'succeeded by', 'successfully handled by', '에이전트가 성공'])) return 'agent_success_pattern';
-  if (textHasAny(statement, ['when validating', 'validation pattern', 'verification pattern', 'verify changes', 'before claiming completion', 'run checks before', '검증할 때', '검증 방식', '완료를 말하기 전에'])) return 'validation_pattern';
-  if (textHasAny(statement, ['work process', 'process pattern', 'inspect the repository first', 'small scoped edits', '작업 진행', '처리 방식'])) return 'process_pattern';
-  if (textHasAny(statement, ['design philosophy', '설계 철학', 'preserve existing architecture', 'anti-patch'])) return 'design_philosophy';
+  if (isTaskOnlyImplementationBoundary(statement) || isCurrentTaskChecklist(statement)) return 'task_context';
+  if (textHasAny(statement, ['reference material', 'reference image', 'extract design principles', 'do not copy', 'not copied literally'])) return 'user_preference';
+  if (textHasAny(statement, ['final report should include', 'report changed files', 'remaining risks', 'remaining limitations'])) return 'response_preference';
+  if (textHasAny(statement, ['when validating', 'validation pattern', 'verification pattern', 'verify changes', 'before claiming completion', 'run checks before', 'before reporting completion', 'validation result', 'build or type checks', 'manual flow', '검증할 때', '검증 방식', '완료를 말하기 전에'])) return 'validation_pattern';
+  if (textHasAny(statement, ['work process', 'process pattern', 'inspect the repository first', 'inspect the existing project structure', 'small scoped edits', 'create a concise plan', 'plan before coding', '작업 진행', '처리 방식'])) return 'process_pattern';
+  if (textHasAny(statement, ['design philosophy', '설계 철학', 'preserve existing architecture', 'anti-patch', 'full visual direction reset', 'whole direction reset'])) return 'design_philosophy';
   if (textHasAny(statement, ['question pattern', 'question style', 'when asking', '질문 방식'])) return 'question_pattern';
-  if (textHasAny(statement, ['response preference', 'answer style', 'reply style', '답변 방식', '답변 선호'])) return 'response_preference';
+  if (textHasAny(statement, ['response preference', 'answer style', 'reply style', 'final report should include', 'report changed files', 'remaining risks', '답변 방식', '답변 선호'])) return 'response_preference';
   if (textHasAny(statement, ['communication pattern', 'conversation style', 'feedback style', '대화 방식'])) return 'communication_pattern';
   if (textHasAny(statement, ['correction pattern', 'user correction', 'when corrected', '교정 방식'])) return 'correction_pattern';
   if (textHasAny(statement, ['decision pattern', 'decision style', 'judgment style', '판단 방식'])) return 'decision_pattern';
   if (textHasAny(statement, ['handoff pattern', 'handoff', 'handover', '인수인계'])) return 'handoff_pattern';
+  if (textHasAny(statement, ['allowed files', 'only edit', 'for this task', 'current section structure', 'current report checklist', 'receipt image attachment', 'trip request creation', 'approval status tracking'])) return 'task_context';
+  if (textHasAny(statement, ['raw instruction text', 'one-off', 'exact text', 'generated logo', 'fake testimonials', 'pricing', 'login', 'analytics', 'cms', 'unrelated files'])) return hasRejection ? 'avoid_rule' : 'discarded_detail';
   if (hasPreference && textHasAny(statement, ['technology', 'stack', 'library', 'framework'])) return 'technology_preference';
+  if (textHasAny(statement, ['visual direction', 'dark premium', 'cinematic', '3d hero', 'clean practical readable', 'business-like', 'card-heavy', 'dashboard-like'])) return 'design_preference';
+  if (textHasAny(statement, ['project type', 'different project type', 'do not assume the same design direction', 'not a marketing landing page', 'not a saas product homepage'])) return 'user_preference';
+  if (textHasAny(statement, ['i want to build', 'current tool', 'existing logo', 'preserve current', 'keep the page', 'one-page landing', 'internal company use'])) return 'project_decision';
   if (textHasAny(statement, ['except for', 'exception', 'only when', 'apart from']) && textHasAny(statement, ['use', 'prefer', 'instead of'])) return 'user_preference';
   if (hasRejection) return 'avoid_rule';
   if (hasFailure) return 'failure_memory';
@@ -1426,6 +1674,12 @@ function inferTopic(statement, tags, domains) {
   if (tags.includes('echarts') || tags.includes('visualization')) {
     return 'dashboard visualization';
   }
+  if (domains.includes('landing_page') || tags.includes('landing page')) return 'brand landing page design';
+  if (domains.includes('native_internal_app')) return 'native internal app workflow';
+  if (tags.includes('reference') || tags.includes('principles')) return 'reference handling';
+  if (tags.includes('approval') || tags.includes('expense') || tags.includes('receipt')) return 'approval and expense workflow';
+  if (tags.includes('3d') || tags.includes('hero') || tags.includes('cinematic')) return 'premium visual direction';
+  if (tags.includes('touch targets') || tags.includes('data clarity')) return 'mobile workflow readability';
   if (domains.includes('dashboard')) return 'dashboard development';
   if (domains.includes('database')) return 'database choice';
   return tags.slice(0, 3).join(' ') || 'general workflow';
@@ -1460,6 +1714,69 @@ function sourceOutcomeFields(source = {}, statement = '') {
   };
 }
 
+function inferModelClass(candidate) {
+  if (!candidate) return 'discarded_detail';
+  if (candidate.type === 'discarded_detail') return 'discarded_detail';
+  if (candidate.type === 'task_context' || ['task', 'temporary'].includes(candidate.scope)) return 'task_context';
+  if (candidate.scope === 'project' || candidate.projectId || candidate.type === 'project_decision') return 'project_model';
+  if (candidate.scope === 'domain') return 'domain_model';
+  if (['avoid_rule', 'failure_memory', 'success_pattern'].includes(candidate.type) && (candidate.domains || []).length > 0) return 'domain_model';
+  return 'user_model';
+}
+
+function inferModelSubClass(candidate) {
+  if (!candidate) return 'discarded_detail';
+  if (candidate.type === 'discarded_detail') return 'discarded_detail';
+  if (candidate.type === 'task_context' || ['task', 'temporary'].includes(candidate.scope)) {
+    if (textHasAny(candidate.summary, ['only edit', 'allowed files'])) return 'current_allowed_files';
+    if (isTaskOnlyImplementationBoundary(candidate.summary)) return 'current_implementation_constraint';
+    if (isCurrentTaskChecklist(candidate.summary)) return 'current_validation_checklist';
+    if (textHasAny(candidate.summary, ['verify', 'checklist', 'before reporting completion', 'validation'])) return 'current_validation_checklist';
+    if (textHasAny(candidate.summary, ['reference image', 'reference material'])) return 'current_reference_material';
+    return 'current_task_scope';
+  }
+  if (candidate.scope === 'project' || candidate.projectId) {
+    if (textHasAny(candidate.summary, ['preserve', 'do not replace', 'keep current'])) return 'project_preservation_rule';
+    if (textHasAny(candidate.summary, ['asset', 'logo', 'image'])) return 'project_asset_rule';
+    if (textHasAny(candidate.summary, ['language', 'toggle', 'localization', 'ko/en'])) return 'project_localization_rule';
+    if (candidate.type === 'project_decision') return 'project_decision';
+    return 'project_constraint';
+  }
+  if (candidate.scope === 'domain' || inferModelClass(candidate) === 'domain_model') {
+    if (candidate.type === 'avoid_rule' || textHasAny(candidate.summary, ['avoid', 'do not', 'not a'])) return 'domain_avoidance';
+    if (candidate.type === 'validation_pattern') return 'domain_validation';
+    if (candidate.type === 'process_pattern') return 'domain_process';
+    if (candidate.type === 'failure_memory') return 'domain_failure_prevention';
+    if (candidate.type === 'success_pattern') return 'domain_success_criterion';
+    return 'domain_preference';
+  }
+  const byType = {
+    design_preference: 'visual_preference_model',
+    response_preference: 'response_preference_model',
+    process_pattern: 'process_preference_model',
+    validation_pattern: 'validation_preference_model',
+    communication_pattern: 'reporting_preference_model',
+    design_philosophy: 'design_philosophy_model',
+    avoid_rule: 'rejection_criteria_model',
+    failure_memory: 'rejection_criteria_model',
+    correction_pattern: 'rejection_criteria_model',
+    user_preference: 'preference_model',
+    workflow_rule: 'process_preference_model',
+    decision_pattern: 'scope_control_preference_model'
+  };
+  if (textHasAny(candidate.summary, ['reference image', 'reference material', 'do not copy'])) return 'reference_handling_model';
+  if (textHasAny(candidate.summary, ['project type', 'same design direction', 'implementation boundaries', 'only edit'])) return 'scope_control_preference_model';
+  if (textHasAny(candidate.summary, ['final report', 'report changed files', 'remaining risks'])) return 'reporting_preference_model';
+  return byType[candidate.type] || 'preference_model';
+}
+
+function normalizeCandidateModel(candidate) {
+  candidate.modelClass = candidate.modelClass || inferModelClass(candidate);
+  candidate.modelSubClass = candidate.modelSubClass || inferModelSubClass(candidate);
+  candidate.docKey = candidate.docKey || docKeyForType(candidate.type);
+  return candidate;
+}
+
 function buildCandidate(statement, source, activeMemories) {
   if (containsSensitive(statement)) {
     return null;
@@ -1467,6 +1784,9 @@ function buildCandidate(statement, source, activeMemories) {
 
   const type = inferType(statement);
   if (!type || !MEMORY_TYPES.has(type)) {
+    return null;
+  }
+  if (source?.role === 'aiActionSummary' && !['accepted', 'rejected', 'mixed'].includes(source.userAcceptance || '') && !source.allowActionSummary) {
     return null;
   }
 
@@ -1492,8 +1812,11 @@ function buildCandidate(statement, source, activeMemories) {
     domains,
     appliesTo,
     source: source || { kind: 'text' },
+    sourceTextKind: source?.role || source?.kind || 'text',
+    sourcePriority: source?.priority || 99,
     evidence: [{
       kind: source?.kind || 'text',
+      role: source?.role || 'text',
       summary
     }],
     technicalOutcome: outcomeFields.technicalOutcome,
@@ -1514,6 +1837,7 @@ function buildCandidate(statement, source, activeMemories) {
   };
 
   enrichTypedFields(candidate, statement);
+  normalizeCandidateModel(candidate);
   const conflict = classifyCandidateConflict(activeMemories, candidate);
   candidate.conflictStatus = conflict.status;
   candidate.related = [...new Set([...(candidate.related || []), ...(conflict.related || [])])];
@@ -1698,48 +2022,83 @@ function sourceFromEvent(event) {
   };
 }
 
+function extractionSegmentsFromEvent(event, baseSource = {}) {
+  return [
+    { role: 'userRequest', priority: 1, text: event.userRequest || '' },
+    { role: 'userFeedback', priority: 2, text: event.userFeedback || '' },
+    { role: 'commandResult', priority: 6, text: [...(event.commandResults || []), event.commandResult, ...(event.errors || [])].filter(Boolean).join('\n') },
+    { role: 'notes', priority: 7, text: event.notes || '' },
+    { role: 'aiActionSummary', priority: 8, text: event.aiActionSummary || '' }
+  ].filter((segment) => segment.text).map((segment) => ({
+    ...segment,
+    source: {
+      ...baseSource,
+      role: segment.role,
+      priority: segment.priority
+    }
+  }));
+}
+
+function extractionSegmentsFromInput(input = {}, baseSource = {}) {
+  const segments = [];
+  if (input.userRequest || input.request) {
+    segments.push({ role: 'userRequest', priority: 1, text: input.userRequest || input.request });
+  }
+  if (input.userFeedback || input.feedback) {
+    segments.push({ role: 'userFeedback', priority: 2, text: input.userFeedback || input.feedback });
+  }
+  if (input.text) {
+    segments.push({ role: baseSource.role || 'text', priority: baseSource.priority || 3, text: input.text });
+  }
+  const commandText = [
+    ...(input.commandResults || []),
+    input.commandResult,
+    ...(input.errors || [])
+  ].filter(Boolean).join('\n');
+  if (commandText) {
+    segments.push({ role: 'commandResult', priority: 6, text: commandText });
+  }
+  if (input.notes) {
+    segments.push({ role: 'notes', priority: 7, text: input.notes });
+  }
+  if (input.aiActionSummary || input.summary) {
+    segments.push({ role: 'aiActionSummary', priority: 8, text: input.aiActionSummary || input.summary });
+  }
+  return segments.map((segment) => ({
+    ...segment,
+    source: {
+      ...baseSource,
+      role: segment.role,
+      priority: segment.priority
+    }
+  }));
+}
+
 export async function extractMemoryCandidates(root = process.cwd(), input = {}) {
+  if (isActionSummaryOnlyExtraction(input)) {
+    return [];
+  }
   await initVibeBox(root);
   const project = await resolveCurrentProjectIdentity(root);
   const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
-  let text = input.text || '';
+  let segments = extractionSegmentsFromInput(input, input.source || { kind: 'manual_extract' });
   let source = input.source || { kind: 'manual_extract' };
 
-  if (!text && input.eventId) {
+  if (segments.length === 0 && input.eventId) {
     const events = await readJsonl(vibeboxPath(root, 'logs/events.jsonl'));
     const event = events.find((item) => item.id === input.eventId && item.projectId === project.projectId);
     if (event) {
-      text = [
-        event.userRequest,
-        event.aiActionSummary,
-        ...(event.commands || []),
-        event.commandResult,
-        ...(event.commandResults || []),
-        ...(event.errors || []),
-        event.userFeedback,
-        event.notes,
-        event.outcome ? `Outcome: ${event.outcome}` : ''
-      ].filter(Boolean).join('\n');
       source = sourceFromEvent(event);
+      segments = extractionSegmentsFromEvent(event, source);
     }
   }
 
-  if (!text && input.fromLastEvent) {
+  if (segments.length === 0 && input.fromLastEvent) {
     const events = await readJsonl(vibeboxPath(root, 'logs/events.jsonl'));
     const event = events.filter((item) => item.projectId === project.projectId).at(-1);
     if (event) {
-      text = [
-        event.userRequest,
-        event.aiActionSummary,
-        ...(event.commands || []),
-        event.commandResult,
-        ...(event.commandResults || []),
-        ...(event.errors || []),
-        event.userFeedback,
-        event.notes,
-        event.outcome ? `Outcome: ${event.outcome}` : ''
-      ].filter(Boolean).join('\n');
       source = sourceFromEvent(event);
+      segments = extractionSegmentsFromEvent(event, source);
     }
   }
 
@@ -1748,12 +2107,14 @@ export async function extractMemoryCandidates(root = process.cwd(), input = {}) 
   const existingIds = new Set(existingPending.map((candidate) => candidate.id));
   const newCandidates = [];
 
-  for (const statement of splitStatements(redactSensitive(text))) {
-    const candidate = buildCandidate(statement, source, memories);
+  for (const segment of segments.sort((left, right) => left.priority - right.priority)) {
+    for (const statement of splitStatements(redactSensitive(segment.text))) {
+      const candidate = buildCandidate(statement, segment.source || source, memories);
     if (candidate && !existingIds.has(candidate.id)) {
       if (['project', 'task', 'temporary'].includes(candidate.scope)) {
         candidate.projectId = project.projectId;
         candidate.id = hashId('mem', `${candidate.id}|${project.projectId}`);
+        normalizeCandidateModel(candidate);
       }
       if (existingIds.has(candidate.id)) {
         if (!isManualReviewMode(input, config)) {
@@ -1781,6 +2142,7 @@ export async function extractMemoryCandidates(root = process.cwd(), input = {}) 
       newCandidates.push(candidate);
       existingIds.add(candidate.id);
     }
+    }
   }
 
   if (newCandidates.length > 0) {
@@ -1795,6 +2157,23 @@ export async function extractMemoryCandidates(root = process.cwd(), input = {}) 
     return newCandidates;
   }
   return autoCurateCandidates(root, newCandidates);
+}
+
+function isActionSummaryOnlyExtraction(input = {}) {
+  const hasActionSummary = Boolean(input.aiActionSummary || input.summary);
+  if (!hasActionSummary || input.allowActionSummary || input.eventId || input.fromLastEvent) return false;
+  if (['accepted', 'rejected', 'mixed'].includes(input.userAcceptance || '')) return false;
+  return !(
+    input.userRequest
+    || input.request
+    || input.userFeedback
+    || input.feedback
+    || input.text
+    || input.commandResult
+    || (Array.isArray(input.commandResults) && input.commandResults.length > 0)
+    || (Array.isArray(input.errors) && input.errors.length > 0)
+    || input.notes
+  );
 }
 
 function setOverlap(left = [], right = []) {
@@ -1905,6 +2284,17 @@ function inferAutoCurationDecision(candidate) {
   if (containsSensitive(candidate)) {
     return { action: 'quarantine', status: 'quarantined', reason: 'Sensitive value suspected.' };
   }
+  if (candidate.type === 'discarded_detail') {
+    candidate.modelClass = 'discarded_detail';
+    candidate.modelSubClass = 'discarded_detail';
+    return { action: 'discard', status: 'discarded', reason: 'Task-only or low-value detail is not durable active memory.' };
+  }
+  if (candidate.type === 'task_context') {
+    return { action: 'discard', status: 'discarded', reason: 'Task context is useful for the current task but is not stored as active memory.' };
+  }
+  if (['task', 'temporary'].includes(candidate.scope)) {
+    return { action: 'discard', status: 'discarded', reason: 'Task-scoped candidate is current task context, not active memory.' };
+  }
   if (isRejectedSuccessCandidate(candidate)) {
     return { action: 'discard', status: 'discarded', reason: 'User rejected the technically successful result; do not promote as success.' };
   }
@@ -1988,6 +2378,9 @@ function toPendingIndexEntry(candidate) {
     topic: candidate.topic,
     title: candidate.title,
     summary: candidate.summary,
+    modelClass: candidate.modelClass,
+    modelSubClass: candidate.modelSubClass,
+    docKey: candidate.docKey,
     projectId: candidate.projectId || null,
     sourceProjectRoot: candidate.sourceProjectRoot || null,
     confidence: candidate.confidence,
@@ -2039,6 +2432,9 @@ function toMemoryIndexEntry(memory) {
     rule: memory.rule,
     summary: memory.summary,
     details: memory.details,
+    modelClass: memory.modelClass || inferModelClass(memory),
+    modelSubClass: memory.modelSubClass || inferModelSubClass(memory),
+    docKey: memory.docKey || docKeyForType(memory.type),
     tags: memory.tags || [],
     domains: memory.domains || [],
     appliesTo: memory.appliesTo || [],
@@ -2199,6 +2595,7 @@ export async function approveMemory(root = process.cwd(), candidateId, options =
     curationReason: options.curationReason || candidate.curationReason || 'Manual approval.',
     updatedAt: timestamp
   };
+  normalizeCandidateModel(memory);
   const replaceIds = replacementIdsForMemory(memory, memoryIndex.memories);
   memory.replaces = [...new Set([...(memory.replaces || []), ...replaceIds])];
   memory.related = (memory.related || []).filter((id) => !replaceIds.includes(id));
@@ -2583,6 +2980,10 @@ function pageTitle(pageName) {
   return pageName.replace(/\.md$/u, '');
 }
 
+function wikiLinkTargetFromFileName(fileName) {
+  return pageTitle(fileName);
+}
+
 function wikiLink(label) {
   const clean = String(label || '')
     .replace(/[[\]]/gu, '')
@@ -2591,21 +2992,28 @@ function wikiLink(label) {
   return clean ? `[[${clean}]]` : '';
 }
 
+function wikiLinkForDocKey(docKey, locale = 'en-US', alias = '') {
+  const target = wikiLinkTargetFromFileName(localizedDocFileName(docKey, locale));
+  const cleanAlias = String(alias || '').replace(/[[\]]/gu, '').trim();
+  return cleanAlias && cleanAlias !== target ? `[[${target}|${cleanAlias}]]` : `[[${target}]]`;
+}
+
 async function rebuildWiki(root) {
   const memoryIndex = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
   const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
-  const locale = resolveLocale({}, config);
+  const locale = normalizeLocale(config.locale || config.wikiLanguage || config.outputLanguage || 'en-US');
   const active = memoryIndex.memories.filter((memory) => memory.status === 'active');
   const registry = await loadJson(vibeboxPath(root, 'registry/projects.json'), defaultRegistry());
 
-  await writeManagedWikiPage(root, 'Home.md', renderHomeShell(locale), renderHomeManaged(active, locale));
-  await writeManagedWikiPage(root, 'Project Index.md', renderProjectIndexShell(locale), renderProjectIndexManaged(registry.projects || [], locale));
-  for (const page of WIKI_PAGES.filter((item) => !['Home.md', 'Project Index.md'].includes(item))) {
+  await saveJson(vibeboxPath(root, 'registry/wiki-docs.json'), defaultWikiDocRegistry(locale));
+  await writeManagedWikiDoc(root, 'home', renderHomeShell(locale), renderHomeManaged(active, locale), locale);
+  await writeManagedWikiDoc(root, 'project_index', renderProjectIndexShell(locale), renderProjectIndexManaged(registry.projects || [], locale), locale);
+  for (const doc of WIKI_DOCS.filter((item) => !['home', 'project_index'].includes(item.docKey))) {
     const pageMemories = active.filter((memory) => (
-      TYPE_TO_PAGE[memory.type] === page
-      && (['Failure Memory.md', 'Success Patterns.md'].includes(page) || memoryScopeUsesGlobalNamespace(memory))
+      docKeyForType(memory.type) === doc.docKey
+      && (['failure_memory', 'success_patterns'].includes(doc.docKey) || memoryScopeUsesGlobalNamespace(memory))
     ));
-    await writeManagedWikiPage(root, page, renderMemoryShell(page, locale), renderMemoryManaged(pageMemories, locale));
+    await writeManagedWikiDoc(root, doc.docKey, renderMemoryShell(localizedDocFileName(doc.docKey, locale), locale), renderMemoryManaged(pageMemories, locale), locale);
   }
   for (const project of registry.projects || []) {
     const projectMemories = active.filter((memory) => memory.projectId === project.projectId);
@@ -2616,6 +3024,10 @@ async function rebuildWiki(root) {
 
 function managedBlock(content) {
   return `${MANAGED_BEGIN}\n${content.trim()}\n${MANAGED_END}`;
+}
+
+async function writeManagedWikiDoc(root, docKey, shell, managedContent, locale = 'en-US') {
+  await writeManagedWikiPage(root, localizedDocFileName(docKey, locale), shell, managedContent);
 }
 
 async function writeManagedWikiPage(root, pageName, shell, managedContent) {
@@ -2660,22 +3072,22 @@ function renderHomeManaged(memories, locale = 'en-US') {
   }, {});
   return `## Wiki
 
-- [[User Preferences]] (${counts.user_preference || 0})
-- [[User Patterns]] (${PATTERN_TYPES.size > 0 ? memories.filter((memory) => PATTERN_TYPES.has(memory.type)).length : 0})
-- [[Design Philosophy]] (${counts.design_philosophy || 0})
-- [[Validation Patterns]] (${counts.validation_pattern || 0})
-- [[Process Patterns]] (${counts.process_pattern || 0})
-- [[Prevention Rules]]
-- [[Global Avoid Rules]] (${counts.avoid_rule || 0})
-- [[Failure Memory]] (${counts.failure_memory || 0})
-- [[Success Patterns]] (${counts.success_pattern || 0})
-- [[Tooling Preferences]] (${counts.tooling_preference || 0})
-- [[Workflow Rules]] (${counts.workflow_rule || 0})
-- [[Project Index]]
+- ${wikiLinkForDocKey('user_preferences', locale)} (${counts.user_preference || 0})
+- ${wikiLinkForDocKey('user_patterns', locale)} (${PATTERN_TYPES.size > 0 ? memories.filter((memory) => PATTERN_TYPES.has(memory.type)).length : 0})
+- ${wikiLinkForDocKey('design_philosophy', locale)} (${counts.design_philosophy || 0})
+- ${wikiLinkForDocKey('validation_patterns', locale)} (${counts.validation_pattern || 0})
+- ${wikiLinkForDocKey('process_patterns', locale)} (${counts.process_pattern || 0})
+- ${wikiLinkForDocKey('prevention_rules', locale)}
+- ${wikiLinkForDocKey('global_avoid_rules', locale)} (${counts.avoid_rule || 0})
+- ${wikiLinkForDocKey('failure_memory', locale)} (${counts.failure_memory || 0})
+- ${wikiLinkForDocKey('success_patterns', locale)} (${counts.success_pattern || 0})
+- ${wikiLinkForDocKey('tooling_preferences', locale)} (${counts.tooling_preference || 0})
+- ${wikiLinkForDocKey('workflow_rules', locale)} (${counts.workflow_rule || 0})
+- ${wikiLinkForDocKey('project_index', locale)}
 
 ## Recent Active Memory
 
-${memories.slice(-10).map((memory) => `- ${wikiLink(pageTitle(TYPE_TO_PAGE[memory.type] || 'Project Index.md'))} ${memory.title}: ${memory.summary}`).join('\n') || '- No approved memory yet.'}
+${memories.slice(-10).map((memory) => `- ${wikiLinkForDocKey(docKeyForType(memory.type), locale)} ${memory.title}: ${memory.summary}`).join('\n') || '- No approved memory yet.'}
 
 ## Storage
 
@@ -2688,7 +3100,7 @@ ${memories.slice(-10).map((memory) => `- ${wikiLink(pageTitle(TYPE_TO_PAGE[memor
 function renderProjectIndexShell(locale = 'en-US') {
   return `${wikiFrontmatter(t(locale, 'pageProjectIndex'))}# ${t(locale, 'pageProjectIndex')}
 
-Back to [[Home]].`;
+Back to ${wikiLinkForDocKey('home', locale)}.`;
 }
 
 function renderProjectIndexManaged(projects, locale = 'en-US') {
@@ -2703,7 +3115,7 @@ function renderProjectIndexManaged(projects, locale = 'en-US') {
 function renderProjectShell(project, locale = 'en-US') {
   return `${wikiFrontmatter(project.projectName || project.projectId)}# ${project.projectName || project.projectId}
 
-Back to [[${t(locale, 'pageProjectIndex')}]].`;
+Back to ${wikiLinkForDocKey('project_index', locale)}.`;
 }
 
 function renderProjectManaged(project, memories, locale = 'en-US') {
@@ -2721,7 +3133,7 @@ function renderProjectManaged(project, memories, locale = 'en-US') {
   if (memories.length === 0) {
     lines.push(`- ${t(locale, 'none')}`);
   } else {
-    lines.push(...memories.map((memory) => `- \`${memory.id}\` ${wikiLink(localizedPageTitle(TYPE_TO_PAGE[memory.type] || 'Project Index.md', locale))} ${memory.title}: ${memory.summary}`));
+    lines.push(...memories.map((memory) => `- \`${memory.id}\` ${wikiLinkForDocKey(memory.docKey || docKeyForType(memory.type), locale)} ${memory.title}: ${memory.summary}`));
   }
   return lines.join('\n');
 }
@@ -2730,7 +3142,7 @@ function renderMemoryShell(pageName, locale = 'en-US') {
   const title = localizedPageTitle(pageName, locale);
   return `${wikiFrontmatter(title)}# ${title}
 
-Back to [[Home]].`;
+Back to ${wikiLinkForDocKey('home', locale)}.`;
 }
 
 function renderMemoryManaged(memories, locale = 'en-US') {
@@ -2739,39 +3151,41 @@ function renderMemoryManaged(memories, locale = 'en-US') {
 
 function renderMemoryMarkdown(memory, locale = 'en-US') {
   const concepts = conceptsForMemory(memory);
-  const links = concepts.map(wikiLink).filter(Boolean).join(' ');
+  const links = concepts.map((concept) => conceptWikiLink(concept, locale)).filter(Boolean).join(' ');
 
   const lines = [
     `## ${memory.title}`,
     '',
-    `- ID: \`${memory.id}\``,
-    `- Scope: \`${memory.scope}\``,
-    `- Confidence: \`${memory.confidence}\``,
-    `- Topic: ${wikiLink(memory.topic) || memory.topic}`,
-    `- Summary: ${memory.summary}`,
-    `- Applies to: ${(memory.appliesTo || []).map((item) => wikiLink(item) || item).join(', ') || 'Not specified'}`
+    `- ${t(locale, 'idLabel')}: \`${memory.id}\``,
+    `- ${t(locale, 'modelClass')}: \`${memory.modelClass || inferModelClass(memory)}\``,
+    `- ${t(locale, 'modelSubClass')}: \`${memory.modelSubClass || inferModelSubClass(memory)}\``,
+    `- ${t(locale, 'scopeLabel')}: \`${memory.scope}\``,
+    `- ${t(locale, 'confidenceLabel')}: \`${memory.confidence}\``,
+    `- ${t(locale, 'topicLabel')}: ${conceptWikiLink(memory.topic, locale) || memory.topic}`,
+    `- ${t(locale, 'summaryLabel')}: ${memory.summary}`,
+    `- ${t(locale, 'appliesToLabel')}: ${(memory.appliesTo || []).map((item) => conceptWikiLink(item, locale) || item).join(', ') || t(locale, 'notSpecified')}`
   ];
 
   if (memory.type === 'failure_memory' || memory.type === 'agent_failure_pattern') {
-    lines.push(`- Failure type: \`${memory.failureType || 'unclear_requirement'}\``);
-    lines.push(`- Prevention rule: ${memory.preventionRule || 'Review before repeating.'}`);
+    lines.push(`- ${t(locale, 'failureTypeLabel')}: \`${memory.failureType || 'unclear_requirement'}\``);
+    lines.push(`- ${t(locale, 'preventionRuleLabel')}: ${memory.preventionRule || 'Review before repeating.'}`);
   }
   if (memory.type === 'success_pattern' || memory.type === 'agent_success_pattern') {
-    lines.push(`- Reuse when: ${(memory.reuseWhen || memory.appliesTo || []).join(', ') || 'Similar work appears.'}`);
+    lines.push(`- ${t(locale, 'reuseWhenLabel')}: ${(memory.reuseWhen || memory.appliesTo || []).join(', ') || 'Similar work appears.'}`);
   }
   if (memory.patternType) {
-    lines.push(`- Pattern type: \`${memory.patternType}\``);
-    lines.push(`- Situation: \`${memory.situation || 'general'}\``);
-    if (memory.preferredBehavior) lines.push(`- Preferred behavior: ${memory.preferredBehavior}`);
+    lines.push(`- ${t(locale, 'patternTypeLabel')}: \`${memory.patternType}\``);
+    lines.push(`- ${t(locale, 'situationLabel')}: \`${memory.situation || 'general'}\``);
+    if (memory.preferredBehavior) lines.push(`- ${t(locale, 'preferredBehaviorLabel')}: ${memory.preferredBehavior}`);
   }
   if (memory.type === 'avoid_rule') {
-    lines.push(`- Forbidden action: ${memory.forbiddenAction || memory.rule}`);
-    lines.push(`- Severity: \`${memory.severity || 'medium'}\``);
+    lines.push(`- ${t(locale, 'forbiddenActionLabel')}: ${memory.forbiddenAction || memory.rule}`);
+    lines.push(`- ${t(locale, 'severityLabel')}: \`${memory.severity || 'medium'}\``);
   }
   if (memory.type === 'project_decision') {
-    lines.push(`- Decision: ${memory.decision || memory.rule}`);
+    lines.push(`- ${t(locale, 'decisionLabel')}: ${memory.decision || memory.rule}`);
     if ((memory.alternativesRejected || []).length > 0) {
-      lines.push(`- Alternatives rejected: ${memory.alternativesRejected.join(', ')}`);
+      lines.push(`- ${t(locale, 'alternativesRejectedLabel')}: ${memory.alternativesRejected.join(', ')}`);
     }
   }
   if (links) {
@@ -2782,7 +3196,13 @@ function renderMemoryMarkdown(memory, locale = 'en-US') {
 
 async function writeConceptWikiPages(root, memories, locale = 'en-US') {
   const concepts = new Map();
-  const reservedTitles = new Set(WIKI_PAGES.map(pageTitle));
+  const reservedTitles = new Set([
+    ...WIKI_PAGES.map(pageTitle),
+    ...WIKI_DOCS.flatMap((doc) => [
+      localizedDocTitle(doc.docKey, 'en-US'),
+      localizedDocTitle(doc.docKey, 'ko-KR')
+    ])
+  ]);
   for (const memory of memories) {
     for (const concept of conceptsForMemory(memory)) {
       if (reservedTitles.has(concept)) continue;
@@ -2793,32 +3213,62 @@ async function writeConceptWikiPages(root, memories, locale = 'en-US') {
 
   const activeConceptPages = new Set();
   for (const [concept, relatedMemories] of concepts) {
+    if (!shouldWriteConceptWikiPage(concept, locale)) continue;
     const pageName = `${safeWikiPageName(concept)}.md`;
     activeConceptPages.add(pageName);
     const shell = `${wikiFrontmatter(concept)}# ${concept}
 
-Back to [[Home]].`;
+Back to ${wikiLinkForDocKey('home', locale)}.`;
     const managed = [
       '## Related memories',
       '',
-      ...relatedMemories.map((memory) => `- \`${memory.id}\` ${wikiLink(localizedPageTitle(TYPE_TO_PAGE[memory.type], locale))}: ${memory.summary}`)
+      ...relatedMemories.map((memory) => `- \`${memory.id}\` ${wikiLinkForDocKey(memory.docKey || docKeyForType(memory.type), locale)}: ${memory.summary}`)
     ].join('\n');
     await writeManagedWikiPage(root, pageName, shell, managed);
   }
 
   const wikiRoot = vibeboxPath(root, 'wiki');
+  const managedDocFiles = new Set(currentWikiPages(locale));
   for (const wikiFile of await listMarkdownFiles(wikiRoot)) {
     const relative = path.relative(wikiRoot, wikiFile);
     if (relative.includes(path.sep) || relative.includes(path.posix.sep)) continue;
-    if (WIKI_PAGES.includes(relative) || activeConceptPages.has(relative)) continue;
+    if (WIKI_PAGES.includes(relative) || managedDocFiles.has(relative) || activeConceptPages.has(relative)) continue;
     const text = await readFile(wikiFile, 'utf8');
     if (!text.includes('vibebox: true') || !text.includes(MANAGED_BEGIN)) continue;
+    if (isManagedOnlyWikiText(text)) {
+      await rm(wikiFile, { force: true });
+      continue;
+    }
     const concept = pageTitle(relative);
     const shell = `${wikiFrontmatter(concept)}# ${concept}
 
-Back to [[Home]].`;
+Back to ${wikiLinkForDocKey('home', locale)}.`;
     await writeManagedWikiPage(root, relative, shell, ['## Related memories', '', `- ${t(locale, 'none')}`].join('\n'));
   }
+}
+
+function shouldWriteConceptWikiPage(concept, locale = 'en-US') {
+  if (conceptDocKey(concept)) return true;
+  return languageFromLocale(locale) === 'en';
+}
+
+function conceptWikiLink(concept, locale = 'en-US') {
+  const docKey = conceptDocKey(concept);
+  if (docKey) return wikiLinkForDocKey(docKey, locale);
+  return shouldWriteConceptWikiPage(concept, locale) ? wikiLink(concept) : '';
+}
+
+function conceptDocKey(concept) {
+  const normalized = normalizeText(concept);
+  for (const doc of WIKI_DOCS) {
+    const matches = [
+      pageTitle(doc.canonicalFileName),
+      localizedDocTitle(doc.docKey, 'en-US'),
+      localizedDocTitle(doc.docKey, 'ko-KR')
+    ].map(normalizeText);
+    if (matches.includes(normalized)) return doc.docKey;
+  }
+  return null;
 }
 
 function safeWikiPageName(name) {
@@ -2969,7 +3419,7 @@ function selectRelevantMemories(memories, task, config) {
   const preferredBroader = broader.filter((item) => situationPreferredTypes(situation).includes(item.memory.type));
   const combined = [...currentProject, ...preferredBroader, ...broader];
   const seen = new Set();
-  return combined
+  const selected = combined
     .filter((item) => {
       if (seen.has(item.memory.id)) return false;
       seen.add(item.memory.id);
@@ -2977,10 +3427,53 @@ function selectRelevantMemories(memories, task, config) {
     })
     .slice(0, maxItems)
     .map((item) => ({ ...item.memory, retrievalScore: item.score, retrievalMatchScore: item.matchScore, lastUsedAt: nowIso() }));
+  return includeSuccessFailurePairs(selected, scored.map((item) => item.memory), maxItems);
 }
 
 function memoryBelongsToCurrentProject(memory, projectId) {
   return Boolean(projectId && memory.projectId === projectId);
+}
+
+function includeSuccessFailurePairs(selected, candidates, maxItems) {
+  const selectedIds = new Set(selected.map((memory) => memory.id));
+  const additions = [];
+  for (const memory of selected) {
+    const wantsSuccess = ['failure_memory', 'agent_failure_pattern', 'avoid_rule'].includes(memory.type);
+    const wantsFailure = ['success_pattern', 'agent_success_pattern'].includes(memory.type);
+    if (!wantsSuccess && !wantsFailure) continue;
+    const counterpart = candidates.find((candidate) => (
+      !selectedIds.has(candidate.id)
+      && (
+        wantsSuccess
+          ? ['success_pattern', 'agent_success_pattern'].includes(candidate.type)
+          : ['failure_memory', 'agent_failure_pattern', 'avoid_rule'].includes(candidate.type)
+      )
+      && (
+        hasTargetOverlap(memory, candidate)
+        || setOverlap(memory.tags || [], candidate.tags || []) >= 1
+        || setOverlap(memory.domains || [], candidate.domains || []) >= 1
+      )
+    ));
+    if (counterpart) {
+      selectedIds.add(counterpart.id);
+      additions.push({ ...counterpart, lastUsedAt: nowIso() });
+    }
+  }
+  if (additions.length === 0) return selected;
+  const pairAware = [...selected];
+  for (const addition of additions) {
+    if (pairAware.length < maxItems) {
+      pairAware.push(addition);
+      continue;
+    }
+    const replaceIndex = pairAware.findLastIndex((memory) => (
+      !['failure_memory', 'agent_failure_pattern', 'avoid_rule', 'success_pattern', 'agent_success_pattern'].includes(memory.type)
+    ));
+    if (replaceIndex >= 0) {
+      pairAware[replaceIndex] = addition;
+    }
+  }
+  return pairAware;
 }
 
 export async function generateContextPack(root = process.cwd(), input = {}) {
@@ -3196,7 +3689,7 @@ export async function afterTask(root = process.cwd(), input = {}) {
   const wasAccepted = event.userAcceptance === 'accepted' || event.finalOutcome === 'accepted_success';
   const extractionText = [
     input.userRequest || input.request ? `User requested: ${input.userRequest || input.request}` : '',
-    input.aiActionSummary || input.summary ? `AI action summary: ${input.aiActionSummary || input.summary}` : '',
+    event.userFeedback ? `User feedback: ${event.userFeedback}` : '',
     ...(input.errors || []).map((error) => `The approach failed: ${error}. Prevent this by avoiding the failed approach unless the user explicitly asks for it.`),
     wasRejected
       ? [
@@ -3371,18 +3864,229 @@ function formatCounts(counts, locale = 'en-US') {
   return counts.length > 0 ? counts.map(([value, count]) => `- ${value} (${count})`) : [`- ${t(locale, 'none')}`];
 }
 
+function hasAgentRuntime() {
+  return Boolean(
+    process.env.VIBEBOX_AGENT_RUNTIME
+    || process.env.VIBEBOX_ADAPTER_RUNTIME
+    || process.env.VIBEBOX_AGENT
+  );
+}
+
+function requireAgentRuntime(commandName) {
+  if (!hasAgentRuntime()) {
+    throw new Error(`${commandName} requires an AI agent runtime. Set VIBEBOX_AGENT_RUNTIME from an adapter before running this semantic operation. No files were changed.`);
+  }
+}
+
+function timestampLabel() {
+  return nowIso().replace(/[:.]/gu, '-');
+}
+
+function resolveBackupPath(root, backupPathOrId = '') {
+  if (!backupPathOrId) {
+    return path.join(path.resolve(root), 'vibebox-backups', `vibebox-backup-${timestampLabel()}`);
+  }
+  if (path.isAbsolute(backupPathOrId)) return backupPathOrId;
+  return path.join(path.resolve(root), 'vibebox-backups', backupPathOrId);
+}
+
+export async function backupVibeBox(root = process.cwd(), options = {}) {
+  await ensureStoreForRead(root);
+  const source = vibeboxPath(root);
+  const target = resolveBackupPath(root, options.output || options.path || options.label || '');
+  if (isPathInside(target, source)) {
+    throw new Error('Backup target must not be inside the VibeBox store being backed up.');
+  }
+  if (await exists(target)) {
+    throw new Error(`Backup target already exists: ${target}`);
+  }
+  const includeLogs = options.includeLogs !== false && options['include-logs'] !== false;
+  await ensureDir(path.dirname(target));
+  await cp(source, target, {
+    recursive: true,
+    filter: (sourcePath) => includeLogs || !isPathInside(sourcePath, path.join(source, 'logs'))
+  });
+  const manifest = {
+    version: VIBEBOX_VERSION,
+    createdAt: nowIso(),
+    source,
+    includeLogs,
+    kind: 'vibebox-store-backup'
+  };
+  await saveJson(path.join(target, 'backup-manifest.json'), manifest);
+  return { backupPath: target, manifest };
+}
+
+export async function restoreVibeBox(root = process.cwd(), options = {}) {
+  const source = resolveBackupPath(root, options.from || options.path || options.backup || '');
+  if (!source || !(await exists(source))) {
+    throw new Error(`Backup not found: ${source}`);
+  }
+  const target = vibeboxPath(root);
+  if (isPathInside(source, target) || isPathInside(target, source)) {
+    throw new Error('Restore source must be outside the active VibeBox store to avoid deleting the backup or recursively restoring the store into itself.');
+  }
+  const targetExists = await exists(target);
+  if (targetExists && !options.confirmReplace && !options.yes) {
+    throw new Error(`Restore is a destructive replace of ${target}. Re-run with --confirm-replace or --yes to delete the existing store before restoring.`);
+  }
+  if (targetExists) {
+    await rm(target, { recursive: true, force: true });
+  }
+  await ensureDir(path.dirname(target));
+  await cp(source, target, {
+    recursive: true,
+    filter: (sourcePath) => path.basename(sourcePath) !== 'backup-manifest.json'
+  });
+  return { restoredFrom: source, storeRoot: target };
+}
+
+const SEMANTIC_GLOSSARY = {
+  ko: [
+    [/plan before coding/giu, '코딩 전에 계획한다'],
+    [/validate after coding/giu, '코딩 후 검증한다'],
+    [/respect project type/giu, '프로젝트 유형을 기준으로 판단한다'],
+    [/do not blindly reuse previous project direction/giu, '이전 프로젝트 방향을 맹목적으로 재사용하지 않는다'],
+    [/changed files/giu, '변경 파일'],
+    [/validation result/giu, '검증 결과'],
+    [/remaining risks/giu, '남은 위험'],
+    [/device-test needs/giu, '기기 테스트 필요 사항']
+  ],
+  en: [
+    [/코딩 전에 계획한다/gu, 'plan before coding'],
+    [/코딩 후 검증한다/gu, 'validate after coding'],
+    [/프로젝트 유형을 기준으로 판단한다/gu, 'respect project type'],
+    [/이전 프로젝트 방향을 맹목적으로 재사용하지 않는다/gu, 'do not blindly reuse previous project direction'],
+    [/변경 파일/gu, 'changed files'],
+    [/검증 결과/gu, 'validation result'],
+    [/남은 위험/gu, 'remaining risks'],
+    [/기기 테스트 필요 사항/gu, 'device-test needs']
+  ]
+};
+
+function normalizeUserFacingTextForLanguage(text, targetLanguage) {
+  let result = String(text || '');
+  for (const [pattern, replacement] of SEMANTIC_GLOSSARY[targetLanguage] || []) {
+    result = result.replace(pattern, replacement);
+  }
+  return result;
+}
+
+function normalizeMemoryLanguage(memory, targetLanguage, locale) {
+  const normalized = { ...memory };
+  for (const field of ['title', 'rule', 'summary', 'details', 'preferredBehavior', 'preventionRule', 'successfulApproach', 'failedApproach', 'forbiddenAction', 'decision']) {
+    if (normalized[field]) {
+      normalized[field] = normalizeUserFacingTextForLanguage(normalized[field], targetLanguage);
+    }
+  }
+  normalized.docKey = normalized.docKey || docKeyForType(normalized.type);
+  if (targetLanguage === 'ko' && normalized.title && /^[A-Z][A-Za-z_ ]+:/u.test(normalized.title)) {
+    normalized.title = `${localizedDocTitle(normalized.docKey, locale)}: ${normalized.topic}`;
+  }
+  normalized.displayLanguage = targetLanguage;
+  normalized.updatedAt = nowIso();
+  return normalized;
+}
+
+async function cleanupStaleLocalizedWikiDocs(root, locale) {
+  const wikiRoot = vibeboxPath(root, 'wiki');
+  const activeFiles = new Set(currentWikiPages(locale));
+  const knownFiles = new Set(WIKI_DOCS.flatMap((doc) => [
+    doc.canonicalFileName,
+    localizedDocFileName(doc.docKey, 'en-US'),
+    localizedDocFileName(doc.docKey, 'ko-KR')
+  ]));
+  for (const wikiFile of await listMarkdownFiles(wikiRoot)) {
+    const relative = path.relative(wikiRoot, wikiFile);
+    if (relative.includes(path.sep) || relative.includes(path.posix.sep)) continue;
+    if (!knownFiles.has(relative) || activeFiles.has(relative)) continue;
+    const text = await readFile(wikiFile, 'utf8');
+    if (isManagedOnlyWikiText(text)) {
+      await rm(wikiFile, { force: true });
+    }
+  }
+}
+
+function isManagedOnlyWikiText(text) {
+  if (!text.includes('vibebox: true') || !text.includes(MANAGED_BEGIN)) return false;
+  const withoutFrontmatter = text.replace(/^---[\s\S]*?---\s*/u, '');
+  const withoutManaged = withoutFrontmatter.replace(new RegExp(`${escapeRegExp(MANAGED_BEGIN)}[\\s\\S]*?${escapeRegExp(MANAGED_END)}`, 'u'), '');
+  return withoutManaged.split(/\r?\n/u).every((line) => line.trim() === '' || line.trim().startsWith('#') || line.trim().startsWith('Back to'));
+}
+
+export async function convertLanguage(root = process.cwd(), options = {}) {
+  requireAgentRuntime('convert-lang');
+  await initVibeBox(root);
+  const targetLanguage = languageFromLocale(options.to || options.language || options.target || 'en');
+  const targetLocale = targetLanguage === 'ko' ? 'ko-KR' : targetLanguage === 'en' ? 'en-US' : normalizeLocale(options.to || options.language || options.target);
+  const configPath = vibeboxPath(root, 'config.json');
+  const config = await loadJson(configPath, defaultConfig());
+  const updatedConfig = {
+    ...config,
+    locale: targetLocale,
+    outputLanguage: targetLanguage,
+    wikiLanguage: targetLanguage,
+    reportLanguage: targetLanguage,
+    contextLanguage: targetLanguage,
+    updatedAt: nowIso()
+  };
+  await saveJson(configPath, updatedConfig);
+
+  const memoryIndexPath = vibeboxPath(root, 'index/global-memory-index.json');
+  const memoryIndex = await loadJson(memoryIndexPath, defaultMemoryIndex());
+  memoryIndex.memories = (memoryIndex.memories || []).map((memory) => normalizeMemoryLanguage(memory, targetLanguage, targetLocale));
+  memoryIndex.updatedAt = nowIso();
+  await saveJson(memoryIndexPath, memoryIndex);
+  await saveJson(vibeboxPath(root, 'registry/wiki-docs.json'), defaultWikiDocRegistry(targetLocale));
+  await rebuildIndexes(root);
+  await rebuildWiki(root);
+  await cleanupStaleLocalizedWikiDocs(root, targetLocale);
+  return { language: targetLanguage, locale: targetLocale, storeRoot: vibeboxPath(root) };
+}
+
+export async function rebuildVibeBox(root = process.cwd(), options = {}) {
+  const semantic = options.semantic !== false && !options.indexOnly;
+  if (semantic) {
+    requireAgentRuntime('rebuild');
+    await initVibeBox(root);
+  } else {
+    await ensureDir(vibeboxPath(root, 'index'));
+  }
+  const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
+  const locale = normalizeLocale(config.locale || config.wikiLanguage || config.outputLanguage || 'en-US');
+  const memoryIndexPath = vibeboxPath(root, 'index/global-memory-index.json');
+  const memoryIndex = await loadJson(memoryIndexPath, defaultMemoryIndex());
+  memoryIndex.memories = (memoryIndex.memories || [])
+    .filter((memory) => memory.status === 'active')
+    .map((memory) => toMemoryIndexEntry(normalizeCandidateModel(memory)));
+  memoryIndex.updatedAt = nowIso();
+  await saveJson(memoryIndexPath, memoryIndex);
+  await rebuildIndexes(root, { syncNamespaceFiles: semantic });
+  if (!semantic) {
+    return { rebuilt: true, semantic, indexOnly: true, storeRoot: vibeboxPath(root) };
+  }
+  await saveJson(vibeboxPath(root, 'registry/wiki-docs.json'), defaultWikiDocRegistry(locale));
+  await rebuildWiki(root);
+  if (options.cleanup !== false) {
+    await cleanupStaleLocalizedWikiDocs(root, locale);
+  }
+  return { rebuilt: true, semantic, storeRoot: vibeboxPath(root) };
+}
+
 export async function runDoctor(root = process.cwd()) {
   const errors = [];
   const warnings = [];
   const base = vibeboxPath(root);
-  const legacyPath = path.join(path.resolve(root), '.vibebox');
+  const rootPath = path.resolve(root);
+  const projectRoot = (await findGitRoot(rootPath)) || rootPath;
+  const legacyPath = path.join(projectRoot, '.vibebox');
   let detectedProject = null;
   try {
-    detectedProject = await detectProjectIdentity(root);
+    detectedProject = isIgnoredProjectRoot(root) ? virtualProjectIdentity(root) : await detectProjectIdentity(root);
   } catch (error) {
     warnings.push(`Current project identity could not be fully detected: ${error.message}`);
   }
-  if (await exists(legacyPath)) {
+  if ((await exists(legacyPath)) && path.resolve(legacyPath) !== path.resolve(base) && !isIgnoredProjectRoot(root)) {
     warnings.push('old project-local .vibebox detected; VibeBox now uses the global store. Migrate manually or wait for a future migration command.');
   }
 
@@ -3393,27 +4097,39 @@ export async function runDoctor(root = process.cwd()) {
     // Missing or invalid registry is reported in the required-file pass below.
   }
   const currentProject = detectedProject
+    && !detectedProject.virtual
     ? (registry.projects || []).find((project) => (
       (detectedProject.gitRemote && project.gitRemote === detectedProject.gitRemote)
       || (project.rootPath && path.resolve(project.rootPath) === detectedProject.rootPath)
       || project.projectId === detectedProject.projectId
     ))
     : null;
+  const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig()).catch(() => defaultConfig());
+  const locale = resolveLocale({}, config);
   const currentProjectId = currentProject?.projectId || detectedProject?.projectId || 'unknown';
   const requiredFiles = [
     'config.json',
     'registry/projects.json',
-    ...WIKI_PAGES.map((page) => `wiki/${page}`),
-    `wiki/projects/${currentProjectId}.md`,
+    'registry/wiki-docs.json',
+    ...currentWikiPages(locale).map((page) => `wiki/${page}`),
     'index/global-memory-index.json',
     'index/project-index.json',
     'index/keyword-index.json',
     'index/relation-index.json',
     'index/pending-index.json',
     'logs/events.jsonl',
-    'pending/memory-candidates.jsonl',
-    `projects/${currentProjectId}/project.json`
+    'pending/memory-candidates.jsonl'
   ];
+  if (!detectedProject?.virtual) {
+    requiredFiles.push(`wiki/projects/${currentProjectId}.md`);
+    requiredFiles.push(`projects/${currentProjectId}/project.json`);
+  }
+
+  for (const registered of registry.projects || []) {
+    if (registered.rootPath && isIgnoredProjectRoot(registered.rootPath)) {
+      warnings.push(`Registry contains non-project root ${registered.rootPath}; remove or rebuild the registry.`);
+    }
+  }
 
   for (const dir of [base, vibeboxPath(root, 'global'), vibeboxPath(root, 'projects'), vibeboxPath(root, 'wiki'), vibeboxPath(root, 'wiki/projects'), vibeboxPath(root, 'index'), vibeboxPath(root, 'logs'), vibeboxPath(root, 'pending'), vibeboxPath(root, 'registry')]) {
     try {
@@ -3471,7 +4187,7 @@ export async function runDoctor(root = process.cwd()) {
       if (memory.status === 'active') {
         const wikiPage = memory.projectId && !memoryScopeUsesGlobalNamespace(memory)
           ? `projects/${memory.projectId}.md`
-          : TYPE_TO_PAGE[memory.type];
+          : localizedDocFileName(memory.docKey || docKeyForType(memory.type), locale);
         if (!wikiPage || !(await exists(vibeboxPath(root, 'wiki', wikiPage)))) {
           warnings.push(`Active memory ${memory.id} has no known wiki page.`);
         } else {
@@ -3537,11 +4253,43 @@ export async function runDoctor(root = process.cwd()) {
     }
 
     const wikiFiles = await listMarkdownFiles(vibeboxPath(root, 'wiki'));
+    const wikiFileNames = new Set(wikiFiles.map((file) => path.basename(file, '.md')));
+    const activeDocFiles = new Set(currentWikiPages(locale));
+    for (const doc of WIKI_DOCS) {
+      const possibleFiles = [...new Set([
+        doc.canonicalFileName,
+        localizedDocFileName(doc.docKey, 'en-US'),
+        localizedDocFileName(doc.docKey, 'ko-KR')
+      ])];
+      const present = [];
+      for (const fileName of possibleFiles) {
+        if (await exists(path.join(vibeboxPath(root, 'wiki'), fileName))) {
+          present.push(fileName);
+        }
+      }
+      if (present.length > 1) {
+        warnings.push(`Duplicate localized wiki document for ${doc.docKey}: ${present.join(', ')}.`);
+      }
+      const expected = localizedDocFileName(doc.docKey, locale);
+      if (!activeDocFiles.has(expected)) {
+        warnings.push(`Wiki registry has unexpected document mapping for ${doc.docKey}.`);
+      }
+    }
     for (const wikiFile of wikiFiles) {
       const text = await readFile(wikiFile, 'utf8');
       for (const match of text.matchAll(/`(mem_[a-f0-9]+)`/giu)) {
         if (!ids.has(match[1])) {
           warnings.push(`Wiki file ${path.basename(wikiFile)} references missing memory ${match[1]}.`);
+        }
+      }
+      const managedText = text.includes(MANAGED_BEGIN)
+        ? text.slice(text.indexOf(MANAGED_BEGIN), text.indexOf(MANAGED_END) + MANAGED_END.length)
+        : text;
+      for (const match of managedText.matchAll(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/gu)) {
+        const target = match[1].trim();
+        if (!target || target.startsWith('projects/')) continue;
+        if (!wikiFileNames.has(target)) {
+          warnings.push(`Wiki link target is missing: ${target}.`);
         }
       }
     }

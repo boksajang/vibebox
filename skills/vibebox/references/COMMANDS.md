@@ -35,7 +35,7 @@ VIBEBOX_LANGUAGE=en-US vibebox report
 vibebox report --language ja-JP
 ```
 
-Human-facing output follows explicit CLI options, environment variables, config, and user input language policy. Stored memory text is preserved. JSON field names, command names, and enum values stay English.
+Human-facing output follows explicit CLI options, environment variables, config, and user input language policy. Active memory and wiki user-facing text are normalized to the configured memory language when an agent runtime performs semantic work. Raw logs preserve diagnostic source text. JSON field names, command names, and enum values stay English.
 
 ## `vibebox init`
 
@@ -126,4 +126,31 @@ Human-facing output follows explicit CLI options, environment variables, config,
 - Purpose: Check global-store health and current project identity.
 - Typical usage: Run after packaging changes, suspicious memory behavior, or manual edits.
 - Example: `vibebox doctor`
-- Notes: Checks global storage layout, current project identity, JSON parsing, index consistency, wiki links, suspicious raw secrets, and legacy project-local stores. Risky repair and migration remain manual.
+- Notes: Read-only. Checks global storage layout, current project identity, JSON parsing, index consistency, localized wiki links, suspicious raw secrets, duplicate localized docs, and legacy project-local stores. It does not register the user home or mutate the project registry.
+
+## `vibebox backup`
+
+- Purpose: Copy the global VibeBox store to a portable backup directory.
+- Typical usage: Run before manual maintenance, restore testing, or language conversion.
+- Example: `vibebox backup --output ./vibebox-backup`
+- Notes: Works in normal CLI mode. The backup includes config, active graph, indexes, wiki, registry, namespace memory files, pending/debug records, and logs unless `--exclude-logs` is used.
+
+## `vibebox restore`
+
+- Purpose: Restore a backup as a destructive replacement of the current global store.
+- Typical usage: Recover from a bad manual edit or test backup integrity.
+- Example: `vibebox restore --from ./vibebox-backup --confirm-replace`
+- Notes: Restore is replace, not merge. If the store exists, VibeBox refuses to continue until `--confirm-replace` or `--yes` is supplied.
+
+## `vibebox convert-lang`
+
+- Purpose: Convert active memory and the Obsidian active wiki to another configured memory language.
+- Typical usage: `vibebox convert-lang ko en`
+- Alias: `vibebox language convert ko en`
+- Notes: Requires an AI agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`. Without it, the command exits before changing files. Raw logs are not modified. JSON field names, enum values, and command names stay English.
+
+## `vibebox rebuild`
+
+- Purpose: Rebuild active indexes, relation graph, namespace files, localized wiki files, and doc registry from active memory.
+- Typical usage: `vibebox rebuild`
+- Notes: Semantic rebuild requires an AI agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`. Use `vibebox rebuild --index-only` for the non-semantic index repair path.

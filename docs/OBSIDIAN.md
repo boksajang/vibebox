@@ -6,28 +6,30 @@ The wiki is meant for humans. JSON indexes under `~/.vibebox/index/` are meant f
 
 Open `~/.vibebox/wiki/` in Obsidian to inspect the active cross-project pattern graph. VibeBox does not create wiki files inside work repositories.
 
-## Default Pages
+## Default Pages And Localized Filenames
 
 ```text
 Home.md
-User Preferences.md
-User Patterns.md
-Design Philosophy.md
-Validation Patterns.md
-Process Patterns.md
-Decision Patterns.md
-Technology Preferences.md
-Agent Failure Patterns.md
-Agent Success Patterns.md
-Prevention Rules.md
-Global Avoid Rules.md
-Failure Memory.md
-Success Patterns.md
-Tooling Preferences.md
-Workflow Rules.md
-Project Index.md
+User Preferences.md / 사용자 성향.md
+User Patterns.md / 사용자 패턴.md
+Design Philosophy.md / 설계 철학.md
+Validation Patterns.md / 검증 패턴.md
+Process Patterns.md / 처리 방식.md
+Decision Patterns.md / 판단 방식.md
+Technology Preferences.md / 기술 선호.md
+Agent Failure Patterns.md / AI 실패 패턴.md
+Agent Success Patterns.md / AI 성공 패턴.md
+Prevention Rules.md / 예방 규칙.md
+Global Avoid Rules.md / 전역 금지 규칙.md
+Failure Memory.md / 실패 메모리.md
+Success Patterns.md / 성공 패턴.md
+Tooling Preferences.md / 도구 선호.md
+Workflow Rules.md / 워크플로 규칙.md
+Project Index.md / 프로젝트 인덱스.md
 projects/{projectId}.md
 ```
+
+The current visible filename is chosen from the configured memory language and stored in `registry/wiki-docs.json`. Internal identity uses stable `docKey` values, so links can be rewritten when the user explicitly runs `convert-lang`.
 
 VibeBox may also create concept pages such as `Dependency Management.md` or `Dashboard Development.md` when active memory links naturally to those topics.
 
@@ -57,7 +59,7 @@ Pages use Obsidian-style links:
 [[Design Philosophy]]
 ```
 
-The files remain normal Markdown and do not require Obsidian to be readable.
+In a Korean store the managed links point to Korean filenames, for example `[[검증 패턴]]`, not to a missing English page. The files remain normal Markdown and do not require Obsidian to be readable.
 
 ## Managed Blocks
 
@@ -77,8 +79,14 @@ The wiki stores summaries, rules, decisions, failure causes, prevention guidance
 
 ## Index Consistency
 
-`vibebox doctor` checks whether active memories are connected to wiki pages and whether active index references point to existing memory records.
+`vibebox doctor` checks whether active memories are connected to current localized wiki pages, whether active index references point to existing memory records, whether managed links target real files, and whether duplicate localized documents exist.
 
-## Locale
+## Language Conversion
 
-Wiki filenames remain stable for tooling and Obsidian links. Human-facing page headings and managed section titles follow explicit CLI options, environment variables, config, and user input language policy. Memory text itself is preserved in the language it was captured in. JSON field names and enum values stay English, and VibeBox does not call external translation APIs.
+System locale changes do not automatically rename the wiki. Language conversion is explicit:
+
+```bash
+VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko en
+```
+
+`convert-lang` rewrites active memory user-facing text when the agent runtime is available, updates localized filenames, aliases, headings, and managed wiki links, and leaves raw logs unchanged. JSON field names and enum values stay English. VibeBox does not call external translation APIs.

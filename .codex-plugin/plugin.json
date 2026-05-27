@@ -16,7 +16,7 @@
   "interface": {
     "displayName": "VibeBox",
     "shortDescription": "Local blackbox memory for AI coding agents.",
-    "longDescription": "Use VibeBox's local CLI and shared skill instructions to retrieve reviewed memory before coding and capture blackbox events after work. This wrapper does not replace the Core CLI.",
+    "longDescription": "Use VibeBox's local CLI and shared skill instructions to retrieve active user-model guidance before coding and capture blackbox events after work. This wrapper does not replace the Core CLI.",
     "developerName": "Boksajang",
     "category": "Productivity",
     "capabilities": [

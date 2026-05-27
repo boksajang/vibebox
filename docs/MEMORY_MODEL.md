@@ -3,7 +3,8 @@
 VibeBox separates active memory from inactive diagnostic and manual-debug states.
 
 - A blackbox event is captured.
-- Memory candidates are extracted.
+- User requests and user feedback are interpreted first; AI action summaries are auxiliary evidence.
+- Memory candidates are extracted into User Model, Domain Model, Project Model, Task Context, or Discarded Detail.
 - The Auto Curator decides active, replace, discard, or quarantine.
 - Context and pretask output use active memory first.
 - Legacy/manual pending candidates may appear only in debug review flows.
@@ -35,8 +36,26 @@ Active memory can use these types:
 - `agent_failure_pattern`
 - `agent_success_pattern`
 - `handoff_pattern`
+- `task_context`
+- `discarded_detail`
 
 Pattern types are used only when they add retrieval value. For example, `validation_pattern` can guide test commands before completion claims, and `agent_failure_pattern` can become a repeated-risk prevention rule.
+
+## Model Classes
+
+Every candidate and active memory can include:
+
+- `modelClass`: `user_model`, `domain_model`, `project_model`, `task_context`, or `discarded_detail`
+- `modelSubClass`: a narrower user/domain/project/task model such as `validation_preference_model`, `domain_avoidance`, `project_preservation_rule`, or `current_allowed_files`
+- `docKey`: stable internal wiki identity used for localized Obsidian filenames and links
+
+User Model includes preference, visual preference, response preference, process preference, validation preference, reporting preference, design philosophy, reference handling, scope control, and rejection criteria.
+
+Domain Model includes domain preference, domain avoidance, domain validation, domain process, domain success criteria, and domain failure prevention.
+
+Project Model includes project identity, project decisions, constraints, preservation rules, asset rules, structure rules, localization rules, and validation rules.
+
+Task Context and Discarded Detail do not become normal active guidance. Current allowed files, current copy, task-only reference material, one-off labels, raw instruction text, low-value action summaries, and test fixture details should be discarded or kept out of active retrieval.
 
 ## Scopes
 
@@ -106,7 +125,7 @@ Secrets should not become active memory. VibeBox redacts common API keys, tokens
 
 ## Classification Notes
 
-Classification is deterministic and heuristic-based. It considers permanence, scope, certainty, intent, evidence, and relation to existing memory. It is intentionally conservative and does not use an LLM.
+Classification is deterministic in the core CLI and conservative. It considers permanence, scope, certainty, intent, evidence, relation to existing memory, source priority, technical outcome, and user acceptance. Agent runtimes can provide semantic normalization for operations such as language conversion and semantic rebuild; the core does not call external translation APIs.
 
 ## Conflict Handling Notes
 
@@ -142,6 +161,18 @@ Failure memory can also include `failedApproach`, `failureReason`, `userCorrecti
 
 Technical success and user acceptance are different signals. Passing tests, clean command output, or completed edits can support technical outcome fields, but a user-rejected result must not become `success_pattern`.
 
+Outcome fields:
+
+- `technicalOutcome`
+- `userAcceptance`
+- `finalOutcome`
+- `userFeedbackSignal`
+- `rejectionReason`
+- `correctionDirection`
+- `preventionRule`
+
+`technicalOutcome=success` with `userAcceptance=rejected` becomes `technical_success_user_rejected`, not a success pattern.
+
 ## Relation Index
 
 `index/relation-index.json` stores active graph edges with stable English relation types such as `project_has_failure`, `failure_prevented_by_rule`, `success_resolves_failure`, `user_prefers_validation`, `agent_failed_by_pattern`, `memory_replaces_memory`, `memory_refines_memory`, and `memory_exception_to_memory`.
@@ -150,12 +181,18 @@ Each relation has `id`, `type`, `from`, `to`, `projectId`, `strength`, `evidence
 
 ## Runtime State Policy
 
-Memory records, raw logs, manual-debug pending candidates, indexes, registry entries, and wiki pages live under the user-level global store, `~/.vibebox` by default. `VIBEBOX_HOME` can override that location.
+Memory records, raw logs, manual-debug pending candidates, indexes, registry entries, backups created by the user, and wiki pages live under the user-level global store, `~/.vibebox` by default. `VIBEBOX_HOME` can override that location.
 
 Project memory is stored under `projects/{projectId}/`. User-wide preferences, tooling preferences, avoid rules, workflow rules, coding style, and architecture patterns are stored under `global/`. The Obsidian-compatible wiki under `wiki/` connects all projects into one graph. The current project folder remains clean.
 
 Existing project-local `.vibebox/` folders are legacy stores. VibeBox warns about them in `doctor` and does not run destructive automatic migration.
 
-## Adaptive Language
+## Language And Wiki Identity
 
-Stored memory text is preserved as captured. Human-facing output follows explicit CLI options, environment variables, config, and user input language policy, and is not limited to `ko-KR` or `en-US`. JSON field names, enum values, and command names stay English. VibeBox does not use external translation APIs.
+Active memory and wiki managed text follow the configured memory language when semantic work is performed by an agent runtime. Raw logs can preserve original source text. Internal JSON field names, enum values, relation types, and command names stay English.
+
+The wiki separates `docKey` from localized filename/title/aliases. Changing system locale does not automatically rename files. `convert-lang` must be explicitly run and requires an agent runtime marker. `rebuild` recreates indexes, relation-index, namespace files, wiki files, and stale localized file cleanup from active memory.
+
+## Backup And Restore
+
+`backup` is a normal CLI command and copies the global store. `restore` is also normal CLI but is destructive replace, not merge; it requires explicit confirmation if a store exists.

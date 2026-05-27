@@ -4,9 +4,12 @@ import { spawnSync } from 'node:child_process';
 import {
   access,
   appendFile,
+  cp,
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
+  rm,
   writeFile
 } from 'node:fs/promises';
 import os from 'node:os';
@@ -15,8 +18,10 @@ import {
   afterTask,
   approveSafeMemories,
   approveMemory,
+  backupVibeBox,
   captureEvent,
   classifyCandidateConflict,
+  convertLanguage,
   extractMemoryCandidates,
   generateBlackboxReport,
   generateContextPack,
@@ -27,6 +32,8 @@ import {
   loadJson,
   readJsonl,
   rejectMemory,
+  rebuildVibeBox,
+  restoreVibeBox,
   reviewPending,
   runDoctor
 } from '../src/core.mjs';
@@ -53,6 +60,62 @@ async function assertNoLocalStore(root) {
 function byType(candidates, type) {
   return candidates.find((candidate) => candidate.type === type);
 }
+
+const EXAMPLE_A = `Use a subagent workflow for this redesign task.
+
+This is a full visual direction reset for the BOKSAJANG landing page, not a small visual tweak.
+The current page feels too much like a generic SaaS landing page, dashboard-like page, or card-based productivity template. That direction is wrong.
+
+BOKSAJANG should feel like a dark premium brand landing page with a strong dynamic 3D hero and one unified visual world across the entire page.
+
+Before implementation, inspect the attached hero concept image and extract design principles from it. Do not copy the exact text, generated logo, or icon from the image. Do not use the image as a static background. Use it as a visual reference for mood, cinematic 3D atmosphere, dark premium direction, cyan/blue/violet lighting, glass-like depth, hierarchy, spacing, and the balance between the left text block and the right 3D visual.
+
+Keep the page as a one-page landing site with Header, Hero, Vision, Catalog, GitHub CTA, and Footer.
+Use the existing logo file at /assets/img/logo.webp.
+Do not replace existing image assets unless clearly necessary.
+
+Use HTML/CSS/vanilla JS only.
+Do not add frameworks, backend code, npm/build tooling, fake plugins, fake testimonials, pricing, login, CMS, analytics, or unrelated files.
+
+For this task, only edit index.html, assets/css/style.css, and assets/js/main.js unless something is clearly broken.
+Preserve current SEO/head metadata, favicon links, Open Graph image, robots.txt, sitemap.xml, KO/EN language toggle, localStorage language preference, and browser language default behavior.
+
+Before reporting completion, verify that the concept image was inspected, the SaaS/dashboard/card-heavy feeling was removed, the hero feels dynamic and 3D-style, reduced motion is respected, mobile layout works, logo.webp is used correctly, SEO is preserved, and language switching still works.
+
+Final report should include files changed, extracted design principles, how the SaaS feeling was removed, how the hero was redesigned, how the overall atmosphere was unified, whether logo.webp was used, whether SEO/language logic was preserved, and remaining limitations.`;
+
+const EXAMPLE_B = `Use a subagent workflow for this native app development task.
+
+I want to build a native business trip approval and expense tracking app for internal company use.
+This is not a marketing landing page and not a SaaS product homepage.
+The app should focus on practical workflow, approval status, expense records, receipt attachment, and fast mobile use.
+
+Before implementation, inspect the existing project structure and identify the current platform assumptions.
+If this is a fresh project, propose a minimal native app structure first.
+Use a simple, maintainable architecture.
+Do not add a backend unless explicitly required.
+Do not add unnecessary design systems, analytics, pricing screens, marketing pages, or fake onboarding flows.
+
+The app should support:
+- trip request creation
+- approval status tracking
+- estimated expense entry
+- receipt image attachment
+- expense summary
+- offline-friendly draft behavior if feasible
+- clear error messages
+- simple mobile navigation
+
+The visual direction should be clean, practical, readable, and business-like.
+Do not use a flashy 3D hero, premium brand landing style, or dark cinematic marketing atmosphere unless I explicitly ask for that.
+For internal workflow screens, prioritize readability, touch targets, predictable navigation, and data clarity.
+
+Before coding, create a concise plan.
+During implementation, keep changes within the native app codebase.
+After implementation, verify build or type checks if available, inspect the main flow manually if possible, and report changed files, validation result, remaining risks, and what should be tested on a device.
+
+Do not assume the same design direction as the BOKSAJANG landing page.
+This is a different project type.`;
 
 test('init creates the VibeBox storage layout and preserves existing wiki files', async () => {
   const root = await makeWorkspace();
@@ -570,6 +633,11 @@ test('auto-curation discards duplicates and quarantines ambiguous conflicting ca
   assert.match(brief, /MSSQL/);
   assert.doesNotMatch(brief, /Supabase later/);
 
+  const wikiFiles = await readdir(storePath(root, 'wiki'));
+  assert.equal(wikiFiles.includes('Coding.md'), false);
+  assert.equal(wikiFiles.includes('Changed.md'), false);
+  assert.equal(wikiFiles.includes('Report.md'), false);
+
   const relationIndex = await loadJson(storePath(root, 'index', 'relation-index.json'));
   assert.equal(relationIndex.relations.some((relation) => relation.to === ambiguous.id || relation.from === ambiguous.id), false);
 });
@@ -1013,8 +1081,7 @@ test('active replacement clears stale concept wiki references for discarded memo
   });
   await approveMemory(root, replacementCandidate.id);
 
-  const redisWikiAfter = await readFile(storePath(root, 'wiki', 'Redis.md'), 'utf8');
-  assert.doesNotMatch(redisWikiAfter, new RegExp(oldMemory.id));
+  await assert.rejects(() => readFile(storePath(root, 'wiki', 'Redis.md'), 'utf8'), /ENOENT/);
 });
 
 test('active replacement clears stale global success and failure namespace files', async () => {
@@ -1154,7 +1221,7 @@ test('user pattern memory is auto-curated and applied by situation-aware context
   }
 });
 
-test('locale controls human-facing headings while JSON fields and Korean memory text are preserved', async () => {
+test('locale controls human-facing headings and localized wiki filenames while JSON fields stay English', async () => {
   const root = await makeWorkspace();
   process.env.VIBEBOX_LOCALE = 'ko-KR';
   await initVibeBox(root);
@@ -1172,12 +1239,19 @@ test('locale controls human-facing headings while JSON fields and Korean memory 
   assert.match(briefKo, /관련 검증 패턴/);
   assert.match(briefKo, /검증할 때는 완료를 말하기 전에/);
 
-  const wikiKo = await readFile(storePath(root, 'wiki', 'Validation Patterns.md'), 'utf8');
+  const wikiRegistry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+  const validationDoc = wikiRegistry.docs.find((doc) => doc.docKey === 'validation_patterns');
+  assert.equal(validationDoc.fileName, '검증 패턴.md');
+
+  const wikiKo = await readFile(storePath(root, 'wiki', validationDoc.fileName), 'utf8');
   assert.match(wikiKo, /# 검증 패턴/);
+  assert.doesNotMatch(wikiKo, /\[\[Validation Patterns\]\]/);
 
   const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
   assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'patternType'), true);
   assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'summary'), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'modelClass'), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'docKey'), true);
   assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], '관련검증패턴'), false);
 
   process.env.VIBEBOX_LOCALE = 'en-US';
@@ -1186,6 +1260,224 @@ test('locale controls human-facing headings while JSON fields and Korean memory 
   });
   assert.match(briefEn, /VibeBox Pre-Task Brief/);
   assert.match(briefEn, /Relevant Validation Patterns/);
+});
+
+test('user request model extraction separates user, domain, project, task, and discarded detail', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const candidates = await extractMemoryCandidates(root, {
+    text: EXAMPLE_A,
+    manualReview: true
+  });
+
+  assert.ok(candidates.some((candidate) => candidate.modelClass === 'user_model' && candidate.modelSubClass === 'reference_handling_model'));
+  assert.ok(candidates.some((candidate) => candidate.modelClass === 'domain_model' && /dark premium|3D hero|generic SaaS/i.test(candidate.summary)));
+  assert.ok(candidates.some((candidate) => candidate.modelClass === 'project_model' && /logo\.webp|SEO\/head|language toggle/i.test(candidate.summary)));
+  assert.ok(candidates.some((candidate) => candidate.modelClass === 'task_context' && /only edit index\.html/i.test(candidate.summary)));
+  assert.ok(candidates.some((candidate) => candidate.modelClass === 'task_context' && candidate.modelSubClass === 'current_implementation_constraint' && /npm\/build tooling|fake plugins/i.test(candidate.summary)));
+  assert.ok(candidates.some((candidate) => candidate.modelClass === 'task_context' && candidate.modelSubClass === 'current_validation_checklist' && /Final report should include|Before reporting completion/i.test(candidate.summary)));
+  assert.equal(candidates.some((candidate) => candidate.scope === 'global' && /npm\/build tooling|fake plugins|logo\.webp|SEO\/language logic/i.test(candidate.summary)), false);
+  assert.ok(candidates.some((candidate) => candidate.status === 'pending' && candidate.scope === 'task'));
+  assert.equal(candidates.some((candidate) => candidate.summary === EXAMPLE_A), false);
+
+  const autoRoot = await makeWorkspace();
+  await initVibeBox(autoRoot);
+  const autoCandidates = await extractMemoryCandidates(autoRoot, { text: EXAMPLE_A });
+  const autoIndex = await loadJson(storePath(autoRoot, 'index', 'global-memory-index.json'));
+  assert.ok(autoCandidates.some((candidate) => candidate.status === 'discarded' && candidate.modelClass === 'task_context' && /npm\/build tooling|fake plugins/i.test(candidate.summary)));
+  assert.equal(autoIndex.memories.some((memory) => memory.scope === 'global' && /npm\/build tooling|fake plugins|logo\.webp|SEO\/language logic/i.test(memory.summary)), false);
+
+  const indexBeforeSummaryOnly = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  const fromSummaryOnly = await extractMemoryCandidates(root, {
+    aiActionSummary: 'Do not modify package.json unless explicitly requested.'
+  });
+  assert.equal(fromSummaryOnly.length, 0);
+  const indexAfterSummaryOnly = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.deepEqual(indexAfterSummaryOnly.memories, indexBeforeSummaryOnly.memories);
+  const isolatedRoot = await mkdtemp(path.join(os.tmpdir(), 'vibebox-summary-only-'));
+  process.env.VIBEBOX_HOME = storePath(isolatedRoot);
+  const isolatedFromSummaryOnly = await extractMemoryCandidates(isolatedRoot, {
+    aiActionSummary: 'Do not modify package.json unless explicitly requested.'
+  });
+  assert.equal(isolatedFromSummaryOnly.length, 0);
+  await assert.rejects(() => access(storePath(isolatedRoot)), /ENOENT/);
+});
+
+test('cross-project generalization keeps landing-page visual details out of native app guidance', async () => {
+  const root = await makeWorkspace();
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'boksajang-web' }, null, 2), 'utf8');
+  const nativeRoot = await mkdtemp(path.join(os.tmpdir(), 'vibebox-native-app-'));
+  await writeFile(path.join(nativeRoot, 'package.json'), JSON.stringify({ name: 'trip-native' }, null, 2), 'utf8');
+  await initVibeBox(root);
+
+  await extractMemoryCandidates(root, { text: EXAMPLE_A });
+  const nativeCandidates = await extractMemoryCandidates(nativeRoot, { text: EXAMPLE_B });
+  assert.ok(nativeCandidates.some((candidate) => candidate.modelClass === 'user_model' && /subagent workflow|concise plan|changed files/i.test(candidate.summary)));
+  assert.ok(nativeCandidates.some((candidate) => candidate.modelClass === 'domain_model' && /clean, practical|flashy 3D hero|touch targets|data clarity/i.test(candidate.summary)));
+  assert.ok(nativeCandidates.some((candidate) => candidate.modelClass === 'project_model' && /business trip approval|expense tracking/i.test(candidate.summary)));
+
+  const brief = await generatePreTaskBrief(nativeRoot, {
+    task: 'Build native business trip approval and expense tracking screens with receipt attachment.'
+  });
+  const context = await generateContextPack(nativeRoot, {
+    task: 'Build native business trip approval and expense tracking screens with receipt attachment.'
+  });
+  const combinedGuidance = `${brief}\n${context}`;
+  assert.match(combinedGuidance, /subagent workflow|concise plan|changed files|validation result/i);
+  assert.doesNotMatch(combinedGuidance, /dark premium brand landing|cyan\/blue\/violet|BOKSAJANG should feel|logo\.webp|SEO\/head|one-page landing/i);
+});
+
+test('localized Obsidian doc registry uses Korean filenames and valid managed links', async () => {
+  const root = await makeWorkspace();
+  process.env.VIBEBOX_LOCALE = 'ko-KR';
+  await initVibeBox(root);
+
+  const candidates = await extractMemoryCandidates(root, {
+    text: 'Before coding, create a concise plan. Final report should include changed files and validation result.'
+  });
+  assert.ok(candidates.length > 0);
+
+  const registry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+  const processDoc = registry.docs.find((doc) => doc.docKey === 'process_patterns');
+  const home = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
+  assert.equal(processDoc.fileName, '처리 방식.md');
+  assert.match(home, /\[\[처리 방식\]\]/);
+  await readFile(storePath(root, 'wiki', processDoc.fileName), 'utf8');
+  await assert.rejects(() => readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8'), /ENOENT/);
+
+  const relationIndex = await loadJson(storePath(root, 'index', 'relation-index.json'));
+  assert.ok(Object.keys(relationIndex.nodes).every((key) => key.startsWith('mem_')));
+  const doctor = await runDoctor(root);
+  assert.equal(doctor.warnings.some((warning) => warning.includes('Wiki link target is missing')), false);
+});
+
+test('doctor avoids global-store false positives and warns about user-home registry pollution without mutating registry', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vibebox-test-global-store-'));
+  process.env.VIBEBOX_HOME = path.join(root, '.vibebox');
+  process.env.VIBEBOX_LOCALE = 'en-US';
+  await initVibeBox(root);
+
+  const before = await readFile(path.join(process.env.VIBEBOX_HOME, 'registry', 'projects.json'), 'utf8');
+  const report = await runDoctor(root);
+  const after = await readFile(path.join(process.env.VIBEBOX_HOME, 'registry', 'projects.json'), 'utf8');
+  assert.equal(before, after);
+  assert.equal(report.warnings.some((warning) => warning.includes('project-local .vibebox')), false);
+
+  const registryPath = path.join(process.env.VIBEBOX_HOME, 'registry', 'projects.json');
+  const registry = JSON.parse(before);
+  registry.projects.push({ projectId: 'home', rootPath: os.homedir(), projectName: 'home' });
+  await writeFile(registryPath, `${JSON.stringify(registry, null, 2)}\n`, 'utf8');
+  const polluted = await runDoctor(root);
+  assert.ok(polluted.warnings.some((warning) => warning.includes('non-project root')));
+});
+
+test('backup and restore round-trip the global store with destructive confirmation', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+  const [candidate] = await extractMemoryCandidates(root, {
+    text: 'Before coding, create a concise plan.'
+  });
+  assert.equal(candidate.status, 'active');
+
+  const backupPath = path.join(root, 'backup-copy');
+  await backupVibeBox(root, { output: backupPath });
+  const configPath = storePath(root, 'config.json');
+  const originalConfig = await readFile(configPath, 'utf8');
+  await writeFile(configPath, originalConfig.replace('"memoryMode": "auto"', '"memoryMode": "changed"'), 'utf8');
+
+  await assert.rejects(() => restoreVibeBox(root, { from: backupPath }), /destructive replace/);
+  assert.match(await readFile(configPath, 'utf8'), /"memoryMode": "changed"/);
+  await assert.rejects(
+    () => restoreVibeBox(root, { from: storePath(root), confirmReplace: true }),
+    /outside the active VibeBox store/
+  );
+  await mkdir(storePath(root, 'nested-backup'), { recursive: true });
+  await assert.rejects(
+    () => restoreVibeBox(root, { from: storePath(root, 'nested-backup'), confirmReplace: true }),
+    /outside the active VibeBox store/
+  );
+  assert.match(await readFile(configPath, 'utf8'), /"memoryMode": "changed"/);
+
+  await restoreVibeBox(root, { from: backupPath, confirmReplace: true });
+  assert.equal(await readFile(configPath, 'utf8'), originalConfig);
+  const doctor = await runDoctor(root);
+  assert.equal(doctor.ok, true);
+});
+
+test('convert-lang and rebuild are agent-required and preserve raw logs on successful conversion', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+  await captureEvent(root, {
+    userRequest: 'Keep this raw English request.',
+    aiActionSummary: 'Captured raw log.'
+  });
+  await extractMemoryCandidates(root, {
+    text: 'Before coding, create a concise plan. Final report should include changed files and validation result.'
+  });
+  const configBefore = await readFile(storePath(root, 'config.json'), 'utf8');
+  const rawBefore = await readFile(storePath(root, 'logs', 'events.jsonl'), 'utf8');
+
+  delete process.env.VIBEBOX_AGENT_RUNTIME;
+  await assert.rejects(() => convertLanguage(root, { from: 'en', to: 'ko' }), /requires an AI agent runtime/);
+  assert.equal(await readFile(storePath(root, 'config.json'), 'utf8'), configBefore);
+  await assert.rejects(() => rebuildVibeBox(root), /requires an AI agent runtime/);
+
+  process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
+  await convertLanguage(root, { from: 'en', to: 'ko' });
+  delete process.env.VIBEBOX_AGENT_RUNTIME;
+
+  assert.equal(await readFile(storePath(root, 'logs', 'events.jsonl'), 'utf8'), rawBefore);
+  const registry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+  const processDoc = registry.docs.find((doc) => doc.docKey === 'process_patterns');
+  await readFile(storePath(root, 'wiki', processDoc.fileName), 'utf8');
+  await assert.rejects(() => readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8'), /ENOENT/);
+
+  await rm(storePath(root, 'wiki', processDoc.fileName), { force: true });
+  process.env.VIBEBOX_LOCALE = 'en-US';
+  process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
+  await rebuildVibeBox(root);
+  delete process.env.VIBEBOX_AGENT_RUNTIME;
+  delete process.env.VIBEBOX_LOCALE;
+  const rebuiltRegistry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+  const rebuiltProcessDoc = rebuiltRegistry.docs.find((doc) => doc.docKey === 'process_patterns');
+  await readFile(storePath(root, 'wiki', rebuiltProcessDoc.fileName), 'utf8');
+  await assert.rejects(() => readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8'), /ENOENT/);
+  await readFile(storePath(root, 'wiki', '처리 방식.md'), 'utf8');
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'summary'), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'modelClass'), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], '모델계층'), false);
+});
+
+test('semantic rebuild repairs stale wiki and relation files only with agent runtime', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+  await extractMemoryCandidates(root, {
+    text: 'Before coding, create a concise plan.'
+  });
+
+  await rm(storePath(root, 'index', 'relation-index.json'), { force: true });
+  await rm(storePath(root, 'wiki', 'Process Patterns.md'), { force: true });
+
+  delete process.env.VIBEBOX_AGENT_RUNTIME;
+  await assert.rejects(() => rebuildVibeBox(root), /requires an AI agent runtime/);
+  await assert.rejects(() => readFile(storePath(root, 'index', 'relation-index.json'), 'utf8'), /ENOENT/);
+  await assert.rejects(() => readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8'), /ENOENT/);
+
+  const indexOnlyResult = await rebuildVibeBox(root, { indexOnly: true });
+  assert.equal(indexOnlyResult.indexOnly, true);
+  await readFile(storePath(root, 'index', 'relation-index.json'), 'utf8');
+  await assert.rejects(() => readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8'), /ENOENT/);
+
+  process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
+  await rebuildVibeBox(root);
+  delete process.env.VIBEBOX_AGENT_RUNTIME;
+
+  await readFile(storePath(root, 'index', 'relation-index.json'), 'utf8');
+  await readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8');
+  const doctor = await runDoctor(root);
+  assert.equal(doctor.ok, true);
 });
 
 test('adaptive language policy preserves Japanese, Chinese, Arabic, and mixed memory text', async () => {
@@ -1342,7 +1634,12 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
     'aftertask',
     'report',
     'blackbox',
-    'doctor'
+    'doctor',
+    'backup',
+    'restore',
+    'convert-lang',
+    'language convert',
+    'rebuild'
   ]) {
     assert.ok(commandReference.includes(`vibebox ${command}`), `COMMANDS.md should document vibebox ${command}`);
   }
@@ -1378,13 +1675,14 @@ test('CLI --language overrides environment locale for new store configuration', 
   assert.equal(config.outputLanguage, 'ja');
 });
 
-test('CLI exposes init, capture, extract, review, approve, context, pretask, aftertask, report, blackbox, and doctor commands', async () => {
+test('CLI exposes init, capture, extract, review, approve, context, pretask, aftertask, report, blackbox, doctor, backup, restore, convert-lang, and rebuild commands', async () => {
   const root = await makeWorkspace();
   const bin = path.resolve('bin/vibebox.mjs');
 
-  function run(args) {
+  function run(args, extraEnv = {}) {
     return spawnSync(process.execPath, [bin, ...args], {
       cwd: root,
+      env: { ...process.env, ...extraEnv },
       encoding: 'utf8'
     });
   }
@@ -1425,5 +1723,34 @@ test('CLI exposes init, capture, extract, review, approve, context, pretask, aft
   const doctor = run(['doctor']);
   assert.equal(doctor.status, 0);
   assert.match(doctor.stdout, /VibeBox Doctor/);
+
+  const backupDir = path.join(root, 'cli-backup');
+  const backup = run(['backup', '--output', backupDir]);
+  assert.equal(backup.status, 0);
+  assert.match(backup.stdout, /backup created/i);
+
+  const blockedConvert = run(['convert-lang', 'en', 'ko']);
+  assert.notEqual(blockedConvert.status, 0);
+  assert.match(blockedConvert.stderr, /requires an AI agent runtime/);
+
+  const convert = run(['convert-lang', 'en', 'ko'], { VIBEBOX_AGENT_RUNTIME: 'cli-test' });
+  assert.equal(convert.status, 0);
+  assert.match(convert.stdout, /converted to ko/);
+
+  const blockedRebuild = run(['rebuild']);
+  assert.notEqual(blockedRebuild.status, 0);
+  assert.match(blockedRebuild.stderr, /requires an AI agent runtime/);
+
+  const rebuild = run(['rebuild'], { VIBEBOX_AGENT_RUNTIME: 'cli-test' });
+  assert.equal(rebuild.status, 0);
+  assert.match(rebuild.stdout, /rebuild complete/);
+
+  const restoreBlocked = run(['restore', '--from', backupDir]);
+  assert.notEqual(restoreBlocked.status, 0);
+  assert.match(restoreBlocked.stderr, /destructive replace/);
+
+  const restore = run(['restore', '--from', backupDir, '--confirm-replace']);
+  assert.equal(restore.status, 0);
+  assert.match(restore.stdout, /destructive replace/);
   await assertNoLocalStore(root);
 });

@@ -12,6 +12,7 @@ VibeBox Core is a local CLI and memory engine. This skill tells an AI coding age
 
 Past memory is context, not authority. Pending memory must not be treated as active memory.
 VibeBox is not a passive archive or a review-first memory manager: active memory is the latest optimized guidance set chosen by the Auto Curator or a manual override. Replaced, corrected, discarded, quarantined, rejected, or legacy pending memory must not be treated as current guidance.
+VibeBox is not an AI action summary recorder. Treat the user's request and user feedback as the strongest memory signals; use AI summaries, changed files, and command output only as supporting evidence.
 
 For details, load these references only when needed:
 
@@ -37,6 +38,7 @@ Use VibeBox to reduce repeated explanation and repeated mistakes:
 - Treat avoid rules and failure memory as high-priority warnings.
 - Treat failure memory as prevention guidance, not just history.
 - Apply validation, process, design, correction, and agent failure/success patterns when relevant.
+- Apply both relevant failure memory and relevant success patterns; failure memory is prevention guidance and success memory is reusable approach guidance.
 - Prefer project-specific memory before global memory.
 - Capture meaningful task outcomes after work.
 - Let VibeBox auto-curate captured events into the active graph.
@@ -191,7 +193,9 @@ VibeBox does not create project-local `.vibebox` folders, pointer files, or hidd
 
 ## Locale Notes
 
-Human-facing headings follow explicit CLI options, `VIBEBOX_LOCALE`, `VIBEBOX_LANGUAGE`, config, and user input language policy when available. They are not limited to `ko-KR` or `en-US`. JSON field names, command names, and enum values stay English. Do not translate the user's stored memory text yourself; preserve the captured language unless the user asks otherwise. Do not call external translation APIs.
+Human-facing active memory and wiki managed content follow the configured memory language. Obsidian document identity uses stable `docKey` values and localized visible filenames, links, headings, and aliases. JSON field names, command names, relation types, and enum values stay English. Do not call external translation APIs.
+
+Only run `vibebox convert-lang` or semantic `vibebox rebuild` when an adapter has provided an agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`; otherwise these commands intentionally fail before changing files.
 
 ## Troubleshooting
 
@@ -199,3 +203,4 @@ Human-facing headings follow explicit CLI options, `VIBEBOX_LOCALE`, `VIBEBOX_LA
 - If the global store is missing and the user wants VibeBox, run `vibebox init` or `node bin/vibebox.mjs init`.
 - If pre-task output looks irrelevant, inspect active memory with `vibebox report`; use `vibebox review` only for legacy/manual debug state.
 - If memory/index health is unclear, run `vibebox doctor`.
+- Before risky maintenance, use `vibebox backup`; restore uses destructive replace and requires confirmation.

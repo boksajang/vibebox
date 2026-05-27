@@ -1,8 +1,8 @@
 # VibeBox
 
-A local auto-curated active user pattern graph for AI coding agents.
+A local-first active user model and coding blackbox for AI coding agents.
 
-AI coding agents often forget the decisions, failed attempts, review habits, and design preferences that made earlier work succeed. VibeBox captures blackbox events, extracts memory candidates, lets the Auto Curator decide what becomes active, replaced, discarded, or quarantined, then returns only the latest useful guidance before the next task. The active memory becomes an Obsidian-compatible graph and wiki that humans can inspect. Your repositories stay clean because VibeBox uses one user-level store instead of creating project-local metadata folders.
+AI coding agents often forget the decisions, failed attempts, review habits, design preferences, validation style, and success criteria that made earlier work succeed. VibeBox interprets user requests, user feedback, project context, and outcomes into a compact reusable user model. It does not store the user's words as a prompt log and it does not treat AI action summaries as the main memory signal. The Auto Curator decides what becomes active, replaced, discarded, or quarantined, then returns only the latest useful guidance before the next task.
 
 ## Why VibeBox Exists
 
@@ -33,7 +33,8 @@ VibeBox does not blindly pile up memories. It keeps the latest optimized active 
 ## What VibeBox Remembers
 
 - project decisions
-- user preferences
+- user preferences and rejection criteria
+- domain preferences and avoidances
 - failed approaches
 - failure prevention rules
 - success patterns
@@ -42,6 +43,8 @@ VibeBox does not blindly pile up memories. It keeps the latest optimized active 
 - design philosophy
 - response preferences
 - agent failure and success patterns
+
+Memory is separated into User Model, Domain Model, Project Model, Task Context, and Discarded Detail. Project facts stay project-local. Only reusable user tendencies, validation habits, reporting preferences, design philosophy, and failure-prevention rules can become broader active memory.
 
 ## What VibeBox Is Not
 
@@ -128,15 +131,21 @@ The wiki connects projects, failures, prevention rules, success patterns, user p
 vibebox init
 vibebox doctor
 vibebox pretask --task "..."
-vibebox aftertask --request "..." --summary "..." --outcome success
+vibebox aftertask --request "..." --summary "..." --technical-outcome success --user-acceptance accepted
 vibebox review
 vibebox approve <candidate-id>
 vibebox reject <candidate-id>
 vibebox report
 vibebox blackbox
+vibebox backup --output ./vibebox-backup
+vibebox restore --from ./vibebox-backup --confirm-replace
+VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko en
+VIBEBOX_AGENT_RUNTIME=adapter vibebox rebuild
 ```
 
 See the usage guide for the full command reference and fallback forms.
+
+`backup` and `restore` are normal CLI operations. `convert-lang` and semantic `rebuild` are agent-required because they can rewrite user-facing active memory and localized wiki identity. If no agent runtime marker is present, those commands exit before modifying files.
 
 ## Agent Support
 
@@ -158,7 +167,7 @@ See the usage guide for the full command reference and fallback forms.
 
 ## Privacy
 
-VibeBox is local-first. It does not sync memory to a cloud service by itself. Sensitive-looking values are redacted before active memory, wiki, and context output. Raw logs are diagnostic records, not active guidance.
+VibeBox is local-first. It does not sync memory to a cloud service by itself. Sensitive-looking values are redacted before active memory, wiki, and context output. Raw logs are diagnostic records, not active guidance. Obsidian wiki filenames, headings, aliases, and managed links follow the configured memory language through a stable internal `docKey` registry, while JSON field names and command names stay English.
 
 ## License / Author
 

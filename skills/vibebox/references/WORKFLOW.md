@@ -11,7 +11,7 @@ VibeBox is agent-neutral. Any AI coding agent that can read files and run shell 
 5. Use the Pre-Task Brief to reduce wrong assumptions, apply current user patterns, and avoid repeated failures.
 6. Perform the task within the current user request.
 7. After meaningful work, capture the result with `aftertask` unless the user opted out.
-8. Let VibeBox extract candidates and let the Auto Curator decide active, replace, discard, or quarantine.
+8. Let VibeBox extract userRequest/userFeedback-first candidates and let the Auto Curator decide active, replace, discard, or quarantine.
 9. Treat active memory as the latest optimized pattern graph, not as a permanent history list.
 
 This is an auto-intervention policy, not a hardcoded trigger list. The agent should consider repository context, change risk, prior memory value, and user preference before deciding whether VibeBox should intervene.
@@ -50,7 +50,7 @@ The brief should guide attention, not replace codebase analysis. Apply active me
 Capture meaningful work after it happens:
 
 ```bash
-vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling and kept package.json unchanged." --files "src/table.mjs" --commands "npm.cmd test" --outcome success
+vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling and kept package.json unchanged." --files "src/table.mjs" --commands "npm.cmd test" --technical-outcome success --user-acceptance accepted
 ```
 
 For longer summaries:
@@ -92,6 +92,7 @@ vibebox context --task "Update dashboard dependency handling"
 ```
 
 Use `pretask` when an agent is about to act, because it includes more direct instructions and risks.
+Pretask should consider both failure memory and success patterns when relevant: failure memory is prevention guidance, while success memory is reusable approach guidance.
 
 ## Report And Blackbox Usage
 
@@ -140,12 +141,14 @@ After `npm link`, run VibeBox from another project:
 ```bash
 vibebox init
 vibebox pretask --task "Check project memory before editing"
-vibebox aftertask --request "Check project memory before editing" --summary "Inspected project state." --outcome success
+vibebox aftertask --request "Check project memory before editing" --summary "Inspected project state." --technical-outcome success --user-acceptance accepted
 vibebox extract --text "Do not modify package.json unless explicitly requested."
 vibebox context --task "Change dependency handling"
 vibebox report
 vibebox blackbox --limit 5
 vibebox doctor
+vibebox backup --output ./vibebox-backup
+vibebox restore --from ./vibebox-backup --confirm-replace
 ```
 
 For manual debugging or override, add `vibebox review`, `vibebox approve <candidate-id>`, or `vibebox reject <candidate-id>`.
@@ -164,4 +167,13 @@ Project identity is derived from the current working directory using git remote 
 
 ## Adaptive Language Rule
 
-Human-facing VibeBox output follows explicit CLI options, environment variables, config, and user input language policy. It is not limited to Korean or English. Stored memory text is preserved, JSON field names and enum values stay English, and adapters must not call external translation APIs.
+Human-facing active memory and wiki managed content follow the configured memory language. The wiki uses stable internal `docKey` identity with localized filenames, headings, aliases, and links. Raw logs remain diagnostic source records. JSON field names, enum values, relation types, and command names stay English, and adapters must not call external translation APIs.
+
+Language conversion and semantic rebuild are explicit agent-runtime operations:
+
+```bash
+VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko en
+VIBEBOX_AGENT_RUNTIME=adapter vibebox rebuild
+```
+
+Without an agent runtime marker, those commands intentionally stop before modifying files.

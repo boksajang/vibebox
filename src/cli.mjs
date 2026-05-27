@@ -3,7 +3,9 @@ import {
   afterTask,
   approveSafeMemories,
   approveMemory,
+  backupVibeBox,
   captureEvent,
+  convertLanguage,
   extractMemoryCandidates,
   generateBlackboxReport,
   getVibeBoxHome,
@@ -13,6 +15,8 @@ import {
   generateReport,
   initVibeBox,
   rejectMemory,
+  rebuildVibeBox,
+  restoreVibeBox,
   reviewPending,
   runDoctor
 } from './core.mjs';
@@ -97,10 +101,16 @@ Usage:
   vibebox report
   vibebox blackbox [--limit 10] [--type success|failure|task_summary] [--since YYYY-MM-DD]
   vibebox doctor
+  vibebox backup [--output <path>] [--include-logs|--exclude-logs]
+  vibebox restore --from <path> --confirm-replace
+  vibebox convert-lang <from> <to>
+  vibebox language convert <from> <to>
+  vibebox rebuild [--index-only]
 
 Global store:
   Defaults to ~/.vibebox and can be overridden with VIBEBOX_HOME or --store <path>.
   Human-facing output can be localized with VIBEBOX_LOCALE, VIBEBOX_LANGUAGE, --locale, or --language.
+  Semantic operations convert-lang and rebuild require VIBEBOX_AGENT_RUNTIME from an adapter.
 `;
 }
 
@@ -239,6 +249,57 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
     case 'doctor': {
       const report = await runDoctor(root);
       return formatDoctorReport(report, { locale: flags.locale });
+    }
+
+    case 'backup': {
+      const result = await backupVibeBox(root, {
+        output: flags.output || flags.to || args[0],
+        includeLogs: flags['exclude-logs'] ? false : flags['include-logs'] !== false
+      });
+      return `VibeBox backup created at ${result.backupPath}`;
+    }
+
+    case 'restore': {
+      const result = await restoreVibeBox(root, {
+        from: flags.from || flags.path || args[0],
+        confirmReplace: Boolean(flags['confirm-replace'] || flags.yes),
+        yes: Boolean(flags.yes)
+      });
+      return [
+        `VibeBox store restored from ${result.restoredFrom}`,
+        `Store: ${result.storeRoot}`,
+        'Restore used destructive replace, not merge.'
+      ].join('\n');
+    }
+
+    case 'convert-lang': {
+      const from = args[0] || flags.from || '';
+      const to = args[1] || flags.to || flags.language || flags.target || '';
+      if (!to) throw new Error('convert-lang requires source and target language, for example: vibebox convert-lang ko en');
+      const result = await convertLanguage(root, { from, to });
+      return `VibeBox language converted to ${result.language} (${result.locale}). Raw logs were not changed.`;
+    }
+
+    case 'language': {
+      if (args[0] !== 'convert') {
+        throw new Error(`Unknown language command: ${args[0] || ''}\n\n${help()}`);
+      }
+      const to = args[2] || flags.to || flags.language || flags.target || '';
+      if (!to) throw new Error('language convert requires source and target language, for example: vibebox language convert ko en');
+      const result = await convertLanguage(root, {
+        from: args[1] || flags.from || '',
+        to
+      });
+      return `VibeBox language converted to ${result.language} (${result.locale}). Raw logs were not changed.`;
+    }
+
+    case 'rebuild': {
+      const result = await rebuildVibeBox(root, {
+        indexOnly: Boolean(flags['index-only']),
+        semantic: !flags['index-only'],
+        cleanup: flags.cleanup !== false
+      });
+      return `VibeBox rebuild complete. semantic=${result.semantic}`;
     }
 
     case undefined:
