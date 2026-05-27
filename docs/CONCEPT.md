@@ -102,6 +102,6 @@ Human-facing active memory and Obsidian managed content follow the configured me
 
 ## Global Runtime State
 
-VibeBox uses one global store at `~/.vibebox` by default, overrideable with `VIBEBOX_HOME`. It never creates project-local `.vibebox/`, pointer files, or hidden metadata in a work repository. The current project is identified from the working directory through git remote `origin`, `package.json` name, git root folder name, then current folder name, and stored in `registry/projects.json`.
+VibeBox uses one global store at `~/.vibebox` by default, overrideable with `VIBEBOX_HOME`. It never creates project-local `.vibebox/`, pointer files, or hidden metadata in a work repository. The current project is registered only when the working directory has real project evidence: a git repository, a project manifest such as `package.json`/`pyproject.toml`/`Cargo.toml`/`composer.json`, or a README plus source app structure. User home, the global store itself, plugin caches, `node_modules`, and plain folders stay outside `registry/projects.json`.
 
 Old project-local `.vibebox/` folders are legacy state. `doctor` warns about them, but VibeBox does not destructively migrate them automatically.

@@ -918,6 +918,30 @@ async function detectProjectIdentity(root) {
   return identity;
 }
 
+async function hasProjectManifest(root) {
+  for (const manifest of ['package.json', 'pyproject.toml', 'Cargo.toml', 'composer.json']) {
+    if (await exists(path.join(root, manifest))) return true;
+  }
+  return false;
+}
+
+async function hasReadmeAndSourceApp(root) {
+  const hasReadme = (await exists(path.join(root, 'README.md'))) || (await exists(path.join(root, 'readme.md')));
+  if (!hasReadme || !(await exists(path.join(root, 'src')))) return false;
+  for (const appEntry of ['app', 'app.js', 'app.jsx', 'app.ts', 'app.tsx', 'main.js', 'index.js']) {
+    if (await exists(path.join(root, 'src', appEntry))) return true;
+  }
+  return false;
+}
+
+async function isRecognizedProjectRoot(root) {
+  const resolved = path.resolve(root);
+  if (isIgnoredProjectRoot(resolved)) return false;
+  const gitRoot = await findGitRoot(resolved);
+  if (gitRoot) return true;
+  return (await hasProjectManifest(resolved)) || (await hasReadmeAndSourceApp(resolved));
+}
+
 function isPathInside(child, parent) {
   const relative = path.relative(path.resolve(parent), path.resolve(child));
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
@@ -933,14 +957,15 @@ function isIgnoredProjectRoot(root) {
     || normalized.includes(`${path.sep}.codex${path.sep}`)
     || normalized.includes(`${path.sep}.agents${path.sep}`)
     || normalized.includes(`${path.sep}plugin cache${path.sep}`)
-    || normalized.includes(`${path.sep}plugins${path.sep}cache${path.sep}`);
+    || normalized.includes(`${path.sep}plugins${path.sep}cache${path.sep}`)
+    || normalized.includes(`${path.sep}node_modules${path.sep}`);
 }
 
 function virtualProjectIdentity(root) {
   const timestamp = nowIso();
   return {
-    projectId: 'global-store',
-    projectName: 'Global VibeBox Store',
+    projectId: null,
+    projectName: 'No active project',
     rootPath: path.resolve(root),
     gitRemote: '',
     repositoryName: '',
@@ -955,9 +980,24 @@ function virtualProjectIdentity(root) {
   };
 }
 
+function isRealProjectIdentity(project) {
+  return Boolean(project && project.projectId && project.status !== 'virtual' && !project.virtual);
+}
+
+function isRegistryProject(project) {
+  return Boolean(
+    project
+    && project.projectId
+    && project.projectId !== 'global-store'
+    && project.status !== 'virtual'
+    && !project.virtual
+    && (!project.rootPath || !isIgnoredProjectRoot(project.rootPath))
+  );
+}
+
 async function resolveCurrentProjectIdentity(root = process.cwd()) {
   await ensureDir(vibeboxPath(root, 'registry'));
-  if (isIgnoredProjectRoot(root)) {
+  if (!(await isRecognizedProjectRoot(root))) {
     return virtualProjectIdentity(root);
   }
   const registryPath = vibeboxPath(root, 'registry/projects.json');
@@ -1123,8 +1163,11 @@ export async function initVibeBox(root = process.cwd()) {
   await writeIfMissing(vibeboxPath(root, 'registry/projects.json'), `${JSON.stringify(defaultRegistry(), null, 2)}\n`);
   await writeIfMissing(vibeboxPath(root, 'registry/wiki-docs.json'), `${JSON.stringify(defaultWikiDocRegistry(config.locale), null, 2)}\n`);
   const project = await resolveCurrentProjectIdentity(root);
+  const hasProject = isRealProjectIdentity(project);
 
-  for (const dir of ['', 'global', 'projects', `projects/${project.projectId}`, 'wiki', 'wiki/projects', 'index', 'logs', 'pending', 'registry']) {
+  const dirs = ['', 'global', 'projects', 'wiki', 'wiki/projects', 'index', 'logs', 'pending', 'registry'];
+  if (hasProject) dirs.push(`projects/${project.projectId}`);
+  for (const dir of dirs) {
     const dirPath = vibeboxPath(root, dir);
     if (!(await exists(dirPath))) {
       created.push(path.relative(base, dirPath) || '.');
@@ -1140,21 +1183,25 @@ export async function initVibeBox(root = process.cwd()) {
     ['index/relation-index.json', `${JSON.stringify(defaultRelationIndex(), null, 2)}\n`],
     ['index/pending-index.json', `${JSON.stringify(defaultPendingIndex(), null, 2)}\n`],
     ['logs/events.jsonl', ''],
-    ['pending/memory-candidates.jsonl', ''],
-    [`projects/${project.projectId}/project.json`, `${JSON.stringify(project, null, 2)}\n`]
+    ['pending/memory-candidates.jsonl', '']
   ];
 
   for (const fileName of GLOBAL_MEMORY_FILE_NAMES) {
     files.push([`global/${fileName}`, `${JSON.stringify(defaultMemoryFile(), null, 2)}\n`]);
   }
-  for (const fileName of PROJECT_MEMORY_FILE_NAMES) {
-    files.push([`projects/${project.projectId}/${fileName}`, `${JSON.stringify(defaultMemoryFile(), null, 2)}\n`]);
+  if (hasProject) {
+    files.push([`projects/${project.projectId}/project.json`, `${JSON.stringify(project, null, 2)}\n`]);
+    for (const fileName of PROJECT_MEMORY_FILE_NAMES) {
+      files.push([`projects/${project.projectId}/${fileName}`, `${JSON.stringify(defaultMemoryFile(), null, 2)}\n`]);
+    }
   }
   for (const doc of WIKI_DOCS) {
     const page = localizedDocFileName(doc.docKey, config.locale);
     files.push([`wiki/${page}`, initialWikiDocPage(doc.docKey, config.locale)]);
   }
-  files.push([`wiki/projects/${project.projectId}.md`, initialProjectWikiPage(project, config.locale)]);
+  if (hasProject) {
+    files.push([`wiki/projects/${project.projectId}.md`, initialProjectWikiPage(project, config.locale)]);
+  }
 
   for (const [relative, content] of files) {
     const didCreate = await writeIfMissing(vibeboxPath(root, relative), content);
@@ -1166,15 +1213,17 @@ export async function initVibeBox(root = process.cwd()) {
   await ensureConfigFields(root);
   const actualConfig = await loadJson(vibeboxPath(root, 'config.json'), config);
   await saveJson(vibeboxPath(root, 'registry/wiki-docs.json'), defaultWikiDocRegistry(actualConfig.locale || config.locale));
-  await saveJson(vibeboxPath(root, `projects/${project.projectId}/project.json`), project);
+  if (hasProject) {
+    await saveJson(vibeboxPath(root, `projects/${project.projectId}/project.json`), project);
+  }
   await rebuildIndexes(root, { syncNamespaceFiles: false });
   const registry = await loadJson(vibeboxPath(root, 'registry/projects.json'), defaultRegistry());
-  await writeManagedWikiDoc(root, 'project_index', renderProjectIndexShell(actualConfig.locale || config.locale), renderProjectIndexManaged(registry.projects || [], actualConfig.locale || config.locale), actualConfig.locale || config.locale);
+  await writeManagedWikiDoc(root, 'project_index', renderProjectIndexShell(actualConfig.locale || config.locale), renderProjectIndexManaged((registry.projects || []).filter(isRegistryProject), actualConfig.locale || config.locale), actualConfig.locale || config.locale);
 
   return {
     root: path.resolve(root),
     projectRoot: project.rootPath,
-    projectId: project.projectId,
+    projectId: hasProject ? project.projectId : null,
     storeRoot: base,
     vibeboxPath: base,
     created
@@ -2856,6 +2905,7 @@ async function rebuildIndexes(root, options = {}) {
   const keywordIndex = defaultKeywordIndex();
   const relationIndex = defaultRelationIndex();
   const registry = await loadJson(vibeboxPath(root, 'registry/projects.json'), defaultRegistry());
+  const projects = (registry.projects || []).filter(isRegistryProject);
   const activeMemoriesForIndex = memoryIndex.memories.filter((memory) => memory.status === 'active');
 
   for (const memory of activeMemoriesForIndex) {
@@ -2872,11 +2922,11 @@ async function rebuildIndexes(root, options = {}) {
     addDerivedMemoryRelations(relationIndex, memory, activeMemoriesForIndex);
   }
 
-  await saveJson(vibeboxPath(root, 'index/project-index.json'), defaultProjectIndex(registry.projects || [], activeMemoriesForIndex));
+  await saveJson(vibeboxPath(root, 'index/project-index.json'), defaultProjectIndex(projects, activeMemoriesForIndex));
   await saveJson(vibeboxPath(root, 'index/keyword-index.json'), keywordIndex);
   await saveJson(vibeboxPath(root, 'index/relation-index.json'), relationIndex);
   if (syncNamespaceFiles) {
-    await syncMemoryNamespaceFiles(root, activeMemoriesForIndex, registry.projects || []);
+    await syncMemoryNamespaceFiles(root, activeMemoriesForIndex, projects);
   }
   await updatePendingIndex(root);
 }
@@ -3004,10 +3054,11 @@ async function rebuildWiki(root) {
   const locale = normalizeLocale(config.locale || config.wikiLanguage || config.outputLanguage || 'en-US');
   const active = memoryIndex.memories.filter((memory) => memory.status === 'active');
   const registry = await loadJson(vibeboxPath(root, 'registry/projects.json'), defaultRegistry());
+  const projects = (registry.projects || []).filter(isRegistryProject);
 
   await saveJson(vibeboxPath(root, 'registry/wiki-docs.json'), defaultWikiDocRegistry(locale));
   await writeManagedWikiDoc(root, 'home', renderHomeShell(locale), renderHomeManaged(active, locale), locale);
-  await writeManagedWikiDoc(root, 'project_index', renderProjectIndexShell(locale), renderProjectIndexManaged(registry.projects || [], locale), locale);
+  await writeManagedWikiDoc(root, 'project_index', renderProjectIndexShell(locale), renderProjectIndexManaged(projects, locale), locale);
   for (const doc of WIKI_DOCS.filter((item) => !['home', 'project_index'].includes(item.docKey))) {
     const pageMemories = active.filter((memory) => (
       docKeyForType(memory.type) === doc.docKey
@@ -3015,7 +3066,7 @@ async function rebuildWiki(root) {
     ));
     await writeManagedWikiDoc(root, doc.docKey, renderMemoryShell(localizedDocFileName(doc.docKey, locale), locale), renderMemoryManaged(pageMemories, locale), locale);
   }
-  for (const project of registry.projects || []) {
+  for (const project of projects) {
     const projectMemories = active.filter((memory) => memory.projectId === project.projectId);
     await writeManagedWikiPage(root, `projects/${project.projectId}.md`, renderProjectShell(project, locale), renderProjectManaged(project, projectMemories, locale));
   }
@@ -4082,7 +4133,9 @@ export async function runDoctor(root = process.cwd()) {
   const legacyPath = path.join(projectRoot, '.vibebox');
   let detectedProject = null;
   try {
-    detectedProject = isIgnoredProjectRoot(root) ? virtualProjectIdentity(root) : await detectProjectIdentity(root);
+    detectedProject = isIgnoredProjectRoot(root) || !(await isRecognizedProjectRoot(root))
+      ? virtualProjectIdentity(root)
+      : await detectProjectIdentity(root);
   } catch (error) {
     warnings.push(`Current project identity could not be fully detected: ${error.message}`);
   }
@@ -4106,7 +4159,7 @@ export async function runDoctor(root = process.cwd()) {
     : null;
   const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig()).catch(() => defaultConfig());
   const locale = resolveLocale({}, config);
-  const currentProjectId = currentProject?.projectId || detectedProject?.projectId || 'unknown';
+  const currentProjectId = currentProject?.projectId || detectedProject?.projectId || 'none';
   const requiredFiles = [
     'config.json',
     'registry/projects.json',
@@ -4125,10 +4178,32 @@ export async function runDoctor(root = process.cwd()) {
     requiredFiles.push(`projects/${currentProjectId}/project.json`);
   }
 
+  const validProjectIds = new Set();
   for (const registered of registry.projects || []) {
-    if (registered.rootPath && isIgnoredProjectRoot(registered.rootPath)) {
-      warnings.push(`Registry contains non-project root ${registered.rootPath}; remove or rebuild the registry.`);
+    if (isRegistryProject(registered)) {
+      validProjectIds.add(registered.projectId);
+      continue;
     }
+    if (registered.projectId === 'global-store' || registered.status === 'virtual' || registered.virtual) {
+      warnings.push(`Registry contains internal pseudo project ${registered.projectId || 'unknown'}; remove or rebuild the registry.`);
+    } else if (registered.rootPath && isIgnoredProjectRoot(registered.rootPath)) {
+      warnings.push(`Registry contains non-project root ${registered.rootPath}; remove or rebuild the registry.`);
+    } else {
+      warnings.push(`Registry contains non-project entry ${registered.projectId || registered.rootPath || 'unknown'}; remove or rebuild the registry.`);
+    }
+  }
+
+  const projectWikiDir = vibeboxPath(root, 'wiki/projects');
+  try {
+    for (const entry of await readdir(projectWikiDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+      const projectId = pageTitle(entry.name);
+      if (!validProjectIds.has(projectId)) {
+        warnings.push(`Orphan project wiki page wiki/projects/${entry.name} has no active project registry entry.`);
+      }
+    }
+  } catch {
+    // Missing wiki/projects is handled by the required directory check below.
   }
 
   for (const dir of [base, vibeboxPath(root, 'global'), vibeboxPath(root, 'projects'), vibeboxPath(root, 'wiki'), vibeboxPath(root, 'wiki/projects'), vibeboxPath(root, 'index'), vibeboxPath(root, 'logs'), vibeboxPath(root, 'pending'), vibeboxPath(root, 'registry')]) {

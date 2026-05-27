@@ -19,6 +19,9 @@
     "longDescription": "Use VibeBox's local CLI and shared skill instructions to retrieve active user-model guidance before coding and capture blackbox events after work. This wrapper does not replace the Core CLI.",
     "developerName": "Boksajang",
     "category": "Productivity",
+    "brandColor": "#0891B2",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png",
     "capabilities": [
       "Write"
     ],

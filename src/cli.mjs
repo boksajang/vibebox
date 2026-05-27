@@ -133,9 +133,10 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
   switch (command) {
     case 'init': {
       const result = await initVibeBox(root);
+      const projectId = result.projectId || '(none)';
       return [
         `VibeBox global store initialized at ${result.storeRoot}`,
-        `Current projectId: ${result.projectId}`,
+        `Current projectId: ${projectId}`,
         `Current project root: ${result.projectRoot}`,
         `Created ${result.created.length} missing item(s).`
       ].join('\n');

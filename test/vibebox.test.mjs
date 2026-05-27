@@ -43,6 +43,7 @@ async function makeWorkspace() {
   process.env.VIBEBOX_HOME = storePath(root);
   process.env.VIBEBOX_LOCALE = 'en-US';
   delete process.env.VIBEBOX_LANGUAGE;
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'vibebox-test-project' }, null, 2), 'utf8');
   return root;
 }
 
@@ -220,7 +221,11 @@ test('project identity prefers git remote names and falls back to package or fol
   const packageResult = await initVibeBox(packageRoot);
   assert.equal(packageResult.projectId, 'acme-agent-kit');
 
-  const folderRoot = await makeWorkspace();
+  const folderRoot = await mkdtemp(path.join(os.tmpdir(), 'vibebox-test-folder-project-'));
+  process.env.VIBEBOX_HOME = storePath(folderRoot);
+  await writeFile(path.join(folderRoot, 'README.md'), '# Folder project\n', 'utf8');
+  await mkdir(path.join(folderRoot, 'src', 'app'), { recursive: true });
+  await writeFile(path.join(folderRoot, 'src', 'app', 'index.js'), 'export default {};\n', 'utf8');
   const folderResult = await initVibeBox(folderRoot);
   assert.equal(folderResult.projectId, path.basename(folderRoot).toLowerCase());
 });
@@ -1372,6 +1377,79 @@ test('doctor avoids global-store false positives and warns about user-home regis
   assert.ok(polluted.warnings.some((warning) => warning.includes('non-project root')));
 });
 
+test('init does not register non-project, home-like, or global-store roots as projects', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vibebox-non-project-'));
+  process.env.VIBEBOX_HOME = path.join(root, '.vibebox');
+  process.env.VIBEBOX_LOCALE = 'en-US';
+  const result = await initVibeBox(root);
+  assert.equal(result.projectId, null);
+
+  const registry = await loadJson(path.join(process.env.VIBEBOX_HOME, 'registry', 'projects.json'));
+  assert.deepEqual(registry.projects, []);
+  await assert.rejects(() => readFile(path.join(process.env.VIBEBOX_HOME, 'wiki', 'projects', 'global-store.md'), 'utf8'), /ENOENT/);
+  await assert.rejects(() => readFile(path.join(process.env.VIBEBOX_HOME, 'projects', 'global-store', 'project.json'), 'utf8'), /ENOENT/);
+
+  const plainDoctor = await runDoctor(root);
+  assert.equal(plainDoctor.ok, true);
+  assert.equal(plainDoctor.currentProjectId, 'none');
+
+  const storeRootResult = await initVibeBox(process.env.VIBEBOX_HOME);
+  assert.equal(storeRootResult.projectId, null);
+  const registryAfterStoreRoot = await loadJson(path.join(process.env.VIBEBOX_HOME, 'registry', 'projects.json'));
+  assert.deepEqual(registryAfterStoreRoot.projects, []);
+
+  const doctor = await runDoctor(process.env.VIBEBOX_HOME);
+  assert.equal(doctor.ok, true);
+  assert.equal(doctor.warnings.some((warning) => warning.includes('global-store')), false);
+});
+
+test('init registers real manifest and git projects but not plain folders', async () => {
+  const store = await mkdtemp(path.join(os.tmpdir(), 'vibebox-project-detection-store-'));
+  process.env.VIBEBOX_HOME = store;
+  process.env.VIBEBOX_LOCALE = 'en-US';
+
+  const plain = await mkdtemp(path.join(os.tmpdir(), 'vibebox-plain-folder-'));
+  const plainResult = await initVibeBox(plain);
+  assert.equal(plainResult.projectId, null);
+
+  const packageProject = await mkdtemp(path.join(os.tmpdir(), 'vibebox-package-project-'));
+  await writeFile(path.join(packageProject, 'package.json'), JSON.stringify({ name: 'package-project' }, null, 2), 'utf8');
+  const packageResult = await initVibeBox(packageProject);
+  assert.equal(packageResult.projectId, 'package-project');
+  await readFile(path.join(store, 'wiki', 'projects', 'package-project.md'), 'utf8');
+
+  const gitProject = await mkdtemp(path.join(os.tmpdir(), 'vibebox-git-project-'));
+  await mkdir(path.join(gitProject, '.git'), { recursive: true });
+  await writeFile(path.join(gitProject, '.git', 'config'), '[remote "origin"]\n\turl = https://github.com/acme/git-project.git\n', 'utf8');
+  const gitResult = await initVibeBox(gitProject);
+  assert.equal(gitResult.projectId, 'git-project');
+  await readFile(path.join(store, 'wiki', 'projects', 'git-project.md'), 'utf8');
+
+  const registry = await loadJson(path.join(store, 'registry', 'projects.json'));
+  assert.equal(registry.projects.some((project) => project.projectId === 'global-store'), false);
+  assert.equal(registry.projects.some((project) => project.rootPath === plain), false);
+});
+
+test('doctor warns about internal pseudo project registry entries and orphan project wiki pages', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+  const registryPath = storePath(root, 'registry', 'projects.json');
+  const registry = await loadJson(registryPath);
+  registry.projects.push({
+    projectId: 'global-store',
+    projectName: 'Global Store',
+    rootPath: storePath(root),
+    status: 'virtual',
+    virtual: true
+  });
+  await writeFile(registryPath, `${JSON.stringify(registry, null, 2)}\n`, 'utf8');
+  await writeFile(storePath(root, 'wiki', 'projects', 'global-store.md'), '# global-store\n', 'utf8');
+
+  const report = await runDoctor(root);
+  assert.ok(report.warnings.some((warning) => warning.includes('internal pseudo project global-store')));
+  assert.ok(report.warnings.some((warning) => warning.includes('wiki/projects/global-store.md')));
+});
+
 test('backup and restore round-trip the global store with destructive confirmation', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
@@ -1610,10 +1688,19 @@ test('universal agent skill package files exist and declare shared skill metadat
   assert.equal(plugin.name, 'vibebox');
   assert.equal(plugin.version, '0.1.0');
   assert.match(plugin.description, /Universal local-first blackbox memory middleware/i);
+  assert.equal(plugin.interface.brandColor, '#0891B2');
+  assert.equal(plugin.interface.composerIcon, './assets/icon.png');
+  assert.equal(plugin.interface.logo, './assets/logo.png');
+  await readFile(path.resolve('assets/icon.png'));
+  await readFile(path.resolve('assets/logo.png'));
   assert.ok(
     plugin.skills === './skills/' || JSON.stringify(plugin.skills).includes('skills/vibebox/SKILL.md'),
     'plugin manifest should expose the shared VibeBox skill'
   );
+
+  const marketplace = await loadJson(path.resolve('.agents/plugins/marketplace.json'));
+  assert.equal(marketplace.name, 'vibebox');
+  assert.equal(marketplace.plugins.some((entry) => entry.name === 'vibebox'), true);
 
   const packageJson = await loadJson(path.resolve('package.json'));
   assert.equal(packageJson.bin.vibebox, './bin/vibebox.mjs');

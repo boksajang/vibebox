@@ -29,6 +29,8 @@ Project Index.md / 프로젝트 인덱스.md
 projects/{projectId}.md
 ```
 
+`wiki/projects/{projectId}.md` is generated only for registered real projects. The global store and user home are not projects, so pages such as `wiki/projects/global-store.md` should not be created; `doctor` warns if an old registry entry or orphan page is found.
+
 The current visible filename is chosen from the configured memory language and stored in `registry/wiki-docs.json`. Internal identity uses stable `docKey` values, so links can be rewritten when the user explicitly runs `convert-lang`.
 
 VibeBox may also create concept pages such as `Dependency Management.md` or `Dashboard Development.md` when active memory links naturally to those topics.

@@ -66,7 +66,7 @@ Fallback:
 node bin/vibebox.mjs init
 ```
 
-Initialization creates missing global-store files, preserves existing ones, and registers or refreshes the current project identity. It does not write runtime state into the current project.
+Initialization creates missing global-store files and preserves existing ones. It registers or refreshes the current project identity only when the current working directory has real project evidence such as a git repository, a project manifest, or a README plus source app structure. User home, the VibeBox global store, plugin caches, `node_modules`, and plain folders are not registered as projects.
 
 ## Pre-Task Usage
 
