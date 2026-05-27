@@ -27,15 +27,14 @@ VIBEBOX_HOME=/path/to/store vibebox <command>
 vibebox <command> --store /path/to/store
 ```
 
-Language override for human-facing headings:
+Memory language seed for a new store:
 
 ```bash
-VIBEBOX_LOCALE=ko-KR vibebox pretask --task "검증 절차 확인"
-VIBEBOX_LANGUAGE=en-US vibebox report
-vibebox report --language ja-JP
+VIBEBOX_LANGUAGE=ko vibebox init
+vibebox init --language ko
 ```
 
-Human-facing output follows explicit CLI options, environment variables, config, and user input language policy. Active memory and wiki user-facing text are normalized to the configured memory language when an agent runtime performs semantic work. Raw logs preserve diagnostic source text. JSON field names, command names, and enum values stay English.
+`VIBEBOX_LOCALE` is only an environment hint. Human-facing active memory, wiki managed text, Context Packs, reports, and blackbox summaries follow the configured `memoryLanguage`. Raw logs preserve diagnostic source text. JSON field names, command names, relation types, and enum values stay English.
 
 ## `vibebox init`
 
@@ -91,14 +90,14 @@ Human-facing output follows explicit CLI options, environment variables, config,
 - Purpose: Generate a compact Context Pack from active memory.
 - Typical usage: Attach memory context to an agent prompt before work.
 - Example: `vibebox context --task "Update dashboard dependency handling"`
-- Notes: `pretask` is usually better before coding because it is more action-oriented. Context can include validation, process, design, correction, and agent failure/success patterns when relevant.
+- Notes: `pretask` is usually better before coding because it is more action-oriented. Context can include `User Success Criteria`, `AI Failure Avoidance`, `AI Successful Approaches`, validation, process, design, correction, and agent failure/success patterns when relevant.
 
 ## `vibebox pretask`
 
 - Purpose: Generate an agent-ready Pre-Task Brief.
 - Typical usage: Run before non-trivial coding or design work.
 - Example: `vibebox pretask --task "Fix dashboard table scrolling"`
-- Notes: Also accepts positional task text, such as `vibebox pretask "Fix dashboard table scrolling"`. The brief is situation-aware and prioritizes failure prevention for debugging, validation patterns for verification, and design philosophy for architecture work.
+- Notes: Also accepts positional task text, such as `vibebox pretask "Fix dashboard table scrolling"`. The brief is situation-aware and prioritizes the three main guidance lanes: `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`. Agents should use those lanes in the actual plan, not only display them.
 
 ## `vibebox aftertask`
 

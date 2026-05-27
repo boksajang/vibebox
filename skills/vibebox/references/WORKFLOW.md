@@ -8,11 +8,12 @@ VibeBox is agent-neutral. Any AI coding agent that can read files and run shell 
 2. Judge whether it is meaningful repository work.
 3. Check whether VibeBox is available, the global store exists or can be initialized, and the current working directory is a usable project workspace rather than user home, global store, cache, or tool-internal path.
 4. If memory could affect the task, run `pretask` before planning or editing.
-5. Use the Pre-Task Brief to reduce wrong assumptions, apply current user patterns, and avoid repeated failures.
-6. Perform the task within the current user request.
-7. After meaningful work, capture the result with `aftertask --request "<original user request or faithful summary>"` unless the user opted out.
-8. Let VibeBox extract userRequest/userFeedback-first candidates and let the Auto Curator decide active, replace, discard, or quarantine.
-9. Treat active memory as the latest optimized pattern graph, not as a permanent history list.
+5. Read `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`.
+6. Use the Pre-Task Brief to reduce wrong assumptions, apply current user patterns, avoid repeated failures, and reuse relevant successful approaches.
+7. Perform the task within the current user request.
+8. After meaningful work, capture the result with `aftertask --request "<original user request or faithful summary>"` unless the user opted out.
+9. Let VibeBox extract userRequest/userFeedback-first candidates and let the Auto Curator decide active, replace, discard, or quarantine.
+10. Treat active memory as the latest optimized pattern graph, not as a permanent history list.
 
 This is an auto-intervention policy, not a hardcoded trigger list. The agent should consider repository context, change risk, prior memory value, and user preference before deciding whether VibeBox should intervene.
 
@@ -44,6 +45,12 @@ node bin/vibebox.mjs pretask --task "Fix dashboard table scrolling"
 On Windows PowerShell, use `vibebox.cmd pretask --task "..."` if the npm `.ps1` shim is blocked.
 
 The brief should guide attention, not replace codebase analysis. Apply active memory as constraints, risk warnings, project context, validation style, process guidance, and failure-prevention rules.
+
+The brief has been consumed only when it changes the agent's plan or execution. A complete plan should identify:
+
+- success criteria to satisfy
+- failure approaches to avoid
+- successful approaches to reuse when applicable
 
 ## After-Task Blackbox Workflow
 
@@ -95,6 +102,12 @@ vibebox context --task "Update dashboard dependency handling"
 
 Use `pretask` when an agent is about to act, because it includes more direct instructions and risks.
 Pretask should consider both failure memory and success patterns when relevant: failure memory is prevention guidance, while success memory is reusable approach guidance.
+
+`context` and `pretask` should both expose the same core lanes when relevant:
+
+- User Success Criteria
+- AI Failure Avoidance
+- AI Successful Approaches
 
 ## Report And Blackbox Usage
 

@@ -46,8 +46,9 @@ node bin/vibebox.mjs init
 2. Check whether VibeBox is available through `vibebox`, `vibebox.cmd`, or the local Node fallback.
 3. Let VibeBox treat the current AI working directory as the project workspace. Git remote `origin` and `package.json` name are identity hints when present; otherwise the current folder name is used.
 4. Run pre-task retrieval before meaningful repository work when memory could matter.
-5. Prefer `vibebox <command>`.
-6. Fall back to `node bin/vibebox.mjs <command>` inside the VibeBox repository.
+5. Apply the returned `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` to the actual plan and execution.
+6. Prefer `vibebox <command>`.
+7. Fall back to `node bin/vibebox.mjs <command>` inside the VibeBox repository.
 
 ## Avoid Storing Secrets
 

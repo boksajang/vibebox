@@ -1,108 +1,93 @@
 # VibeBox
 
-A local-first active user model and coding blackbox for AI coding agents.
+VibeBox is a local-first active user model and coding blackbox for AI coding agents.
 
-AI coding agents often forget the decisions, failed attempts, review habits, design preferences, validation style, and success criteria that made earlier work succeed. VibeBox interprets user requests, user corrections, user feedback, project context, and outcomes into a compact reusable user model. The user's instruction is the success criteria; the user's correction is a more precise success criteria; user dissatisfaction is an AI failure signal, not user failure. VibeBox does not store the user's words as a prompt log and it does not treat AI action summaries as the main memory signal. The Auto Curator decides what becomes active, replaced, discarded, or quarantined, then returns only the latest useful guidance before the next task.
+It exists so users do not have to repeat the same preferences, project rules, validation habits, and "do not do that again" feedback in every session.
 
-## Why VibeBox Exists
+## In One Minute
 
-VibeBox helps when AI coding agents:
+VibeBox watches the AI coding workflow around a project:
 
-- repeat failed approaches
-- forget project decisions
-- suggest tools or patterns the user already rejected
-- miss the user's success criteria
-- ignore the user's preferred workflow or validation style
-- repeat technical, permission, environment, or tool failures
-- lose context across long-running projects and new sessions
-- miss recurring agent failure patterns that should become prevention rules
+1. Before work, the agent reads VibeBox guidance.
+2. During work, the agent applies the guidance as constraints and warnings.
+3. After work, the agent records the original user request, result, commands, files, failures, and feedback.
+4. VibeBox interprets that event into active memory.
+5. The next agent receives updated success criteria, failure avoidance, and successful approaches.
 
-## How It Works
+VibeBox is not a prompt log. It does not keep the user's words as reusable instructions. It normalizes them into short guidance that an AI agent can use before the next task.
 
-```text
-User task
--> Agent checks VibeBox memory
--> VibeBox returns active guidance
--> Agent works with fewer wrong assumptions
--> VibeBox captures the result
--> Candidates are extracted
--> Auto Curator decides active / replace / discard / quarantine
--> Active graph, wiki, and context are updated
-```
+## Core Philosophy
 
-VibeBox does not blindly pile up memories. It keeps the latest optimized active guidance for each subject and scope. When new memory replaces, corrects, or refines older memory, the outdated version is removed from normal retrieval, Context Packs, Pre-Task Briefs, the active relation graph, and the active wiki. Discarded, quarantined, rejected, and legacy pending memory are excluded from normal guidance.
+- The user's instruction is success criteria.
+- The user's correction is a more precise success criteria.
+- User dissatisfaction is an AI failure signal, not user failure.
+- Technical, environment, permission, path, command, browser, API, plugin, and tool failures are AI failure memory.
+- A workaround that succeeds can become an AI successful approach.
+- User approval of memory is not part of the normal workflow.
+- `review`, `approve`, and `reject` are debug/manual override commands.
+- The current user request always wins over older memory.
+
+## What Agents Receive Before Work
+
+`vibebox pretask` and `vibebox context` return three main guidance lanes when relevant:
+
+- **User Success Criteria**: what the user wants, including process, validation, reporting, design direction, preservation rules, and project-specific success conditions.
+- **AI Failure Avoidance**: mistakes the AI should not repeat, including rejected directions, instruction misreads, overgeneralization, command failures, permission failures, and tool failures.
+- **AI Successful Approaches**: reusable methods that helped satisfy the user's criteria, including validation commands, implementation approaches, and recovery/workaround patterns.
+
+The agent must apply this guidance in the actual plan and implementation. VibeBox is not useful if the agent merely prints the memory and ignores it.
 
 ## What VibeBox Remembers
 
-- project decisions
-- user success criteria
-- user preferences and rejection criteria
-- domain preferences and avoidances
-- AI failure memory for preference mismatches, instruction misses, technical failures, environment failures, and tool failures
-- failure prevention rules
-- AI successful approaches and recovery patterns
-- validation style
-- process habits
-- design philosophy
-- response preferences
-- agent failure and success patterns
+VibeBox separates memory by role and scope:
 
-Memory is separated into User Model, Domain Model, Project Model, Task Context, AI Failure Memory, AI Successful Approach, and Discarded Detail. Project facts stay project-local. Only reusable user success criteria, validation habits, reporting preferences, design philosophy, AI failure-prevention rules, and recovery approaches can become broader active memory.
+- **User Model**: reusable user preferences, process habits, reporting expectations, validation style, design philosophy, and success criteria.
+- **Domain Model**: preferences and avoidances for a domain such as brand landing pages, native apps, dashboards, backend work, packaging, or documentation.
+- **Project Model**: project-specific identity, decisions, constraints, asset rules, localization rules, and preservation rules.
+- **Task Context**: details useful only for the current task, such as allowed files or temporary checklists.
+- **AI Failure Memory**: repeated-risk warnings for AI mistakes and technical/environment/tool failures.
+- **AI Successful Approach**: reusable implementation, validation, command, recovery, or workaround methods.
+- **Discarded Detail**: raw instruction text, one-off labels, duplicate summaries, and low-value action summaries.
 
-## What VibeBox Is Not
+Project facts stay project-local. Only reusable user criteria, domain preferences, AI failure prevention rules, and recovery approaches can become broader guidance.
 
-- Not a cloud service
-- Not a passive chat log archive
-- Not a project-local `.vibebox` metadata folder
-- Not tied to one AI coding agent
-- Not a replacement for your coding agent
+## Normal Agent Workflow
 
-## Quick Start
-
-In normal agent workflows, VibeBox commands are called by the agent through the shared skill or an adapter. You can also run them manually for setup, testing, or debugging.
-
-Install from a checkout with Node.js 20 or newer:
+Before meaningful repository work:
 
 ```bash
-git clone https://github.com/boksajang/vibebox.git
-cd vibebox
-npm install
-npm link
+vibebox pretask --task "Fix dashboard table scrolling"
 ```
 
-Manual check:
+After meaningful work:
 
 ```bash
-vibebox doctor
+vibebox aftertask \
+  --request "Fix dashboard table scrolling" \
+  --summary "Used wrapper-based scrolling and ran validation." \
+  --files "src/table.mjs" \
+  --commands "npm.cmd test" \
+  --command-results "tests passed" \
+  --technical-outcome success \
+  --user-acceptance unknown
 ```
 
-Windows PowerShell fallback:
+Always pass the original user request, or a faithful semantic summary, with `--request`. Without a user request, VibeBox records the event but skips active user success criteria extraction. Clear command/tool/environment failures can still become AI failure memory.
 
-```bash
-vibebox.cmd doctor
-```
+## Auto Curation
 
-Direct fallback from this repository:
+After `aftertask`, VibeBox automatically decides whether extracted meaning should become:
 
-```bash
-node bin/vibebox.mjs doctor
-```
+- `active`
+- `replace`
+- `discarded`
+- `quarantined`
 
-Codex marketplace:
+Active memory is the current optimized guidance set. Replaced, discarded, quarantined, rejected, and legacy pending memory are excluded from normal pre-task retrieval, active wiki sections, and active relation indexes.
 
-```bash
-codex plugin marketplace add boksajang/vibebox
-```
+Confirmed and inferred AI successful approaches can become active automatically. Inferred success must not be written as if the user confirmed it. If the user rejects the result, the result becomes AI failure/correction/prevention guidance, not a success pattern.
 
-After adding the marketplace, enable VibeBox from Codex's plugin UI and start a new session.
-
-## Typical Agent Workflow
-
-Before meaningful repository work, the agent checks VibeBox memory. During work, the agent uses active guidance as constraints, warnings, and preferences. After meaningful work, the agent captures a blackbox event; VibeBox extracts candidates and the Auto Curator updates the active graph when the candidate is good enough. Users do not manage memory after every task.
-
-The CLI commands are the engine interface. AI agents can call them automatically through skills or adapters, and users can run review commands manually for debugging or override.
-
-## Global Store
+## Store And Projects
 
 Default store:
 
@@ -116,17 +101,54 @@ Override:
 VIBEBOX_HOME
 ```
 
-Projects are separated by `projectId` inside the global store. The current AI working directory is treated as a project workspace even when it is a plain static site, PHP folder, JSON-only app folder, or documentation folder. Git remotes and package metadata improve the identity, but they are not required. VibeBox does not create `.vibebox` inside your work repositories.
+VibeBox uses one global user store. It does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work repositories.
 
-## Obsidian-Compatible Active Graph
+The current AI working directory is treated as a project workspace unless it is an excluded internal path. Plain folders, static HTML/PHP folders, JSON-only app folders, documentation folders, and framework repos can all be projects. Git remotes and package metadata improve identity, but they are not required.
 
-Open this folder in Obsidian:
+## Memory Language And Obsidian
+
+Open the wiki in Obsidian:
 
 ```text
 ~/.vibebox/wiki
 ```
 
-The wiki connects projects, failures, prevention rules, success patterns, user patterns, validation style, process habits, design philosophy, and decisions. It shows active/current guidance, not a pile of outdated history.
+Human-facing active memory, wiki filenames, wiki headings, aliases, links, Context Packs, reports, and blackbox summaries follow the configured `memoryLanguage`. JSON field names, enum values, relation types, and command names stay English.
+
+The wiki uses stable internal `docKey` values with localized visible filenames. In a Korean store, user-facing wiki pages use Korean names such as `사용자 성향.md`, `처리 방식.md`, `AI 실패 패턴.md`, and `AI 성공 패턴.md`.
+
+Changing system locale does not rename memory. Language conversion is explicit and agent-required:
+
+```bash
+VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko en
+```
+
+## Install And Run
+
+From a checkout with Node.js 20 or newer:
+
+```bash
+git clone https://github.com/boksajang/vibebox.git
+cd vibebox
+npm install
+npm link
+vibebox init
+vibebox doctor
+```
+
+Windows PowerShell fallback:
+
+```bash
+vibebox.cmd doctor
+```
+
+Direct repository fallback:
+
+```bash
+node bin/vibebox.mjs <command>
+```
+
+Codex users can enable the included VibeBox plugin wrapper. See [Codex Adapter](adapters/codex/README.md).
 
 ## Core Commands
 
@@ -134,10 +156,8 @@ The wiki connects projects, failures, prevention rules, success patterns, user p
 vibebox init
 vibebox doctor
 vibebox pretask --task "..."
-vibebox aftertask --request "..." --summary "..." --technical-outcome success
-vibebox review
-vibebox approve <candidate-id>
-vibebox reject <candidate-id>
+vibebox context --task "..."
+vibebox aftertask --request "..." --summary "..."
 vibebox report
 vibebox blackbox
 vibebox backup --output ./vibebox-backup
@@ -146,17 +166,26 @@ VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko en
 VIBEBOX_AGENT_RUNTIME=adapter vibebox rebuild
 ```
 
-`review`, `approve`, and `reject` are debug/manual override commands, not the normal memory promotion path. The Auto Curator can activate confirmed or inferred success memory automatically; inferred success must not be described as user-confirmed.
+Manual debug/override commands:
 
-See the usage guide for the full command reference and fallback forms.
+```bash
+vibebox review
+vibebox approve <candidate-id>
+vibebox approve --safe
+vibebox reject <candidate-id>
+```
 
-`backup` and `restore` are normal CLI operations. `convert-lang` and semantic `rebuild` are agent-required because they can rewrite user-facing active memory and localized wiki identity. If no agent runtime marker is present, those commands exit before modifying files.
+## Backup, Restore, And Rebuild
+
+`backup` and `restore` are normal CLI commands. Restore is destructive replace, not merge, and requires explicit confirmation.
+
+`convert-lang` and semantic `rebuild` require an agent runtime marker because they can rewrite user-facing active memory and localized wiki identity. Without `VIBEBOX_AGENT_RUNTIME`, they exit before changing files.
 
 ## Agent Support
 
-- Codex: marketplace/plugin wrapper included
-- Claude: compatible skill guide included
-- Cursor and other agents: usable through the shared skill and CLI when they can read files and run shell commands
+- Codex: plugin wrapper and shared skill included
+- Claude: compatible adapter guide included
+- Cursor and generic CLI agents: use the shared skill and CLI
 - VibeBox Core: agent-neutral local CLI and memory engine
 
 ## Documentation
@@ -172,7 +201,7 @@ See the usage guide for the full command reference and fallback forms.
 
 ## Privacy
 
-VibeBox is local-first. It does not sync memory to a cloud service by itself. Sensitive-looking values are redacted before active memory, wiki, and context output. Raw logs are diagnostic records, not active guidance. Obsidian wiki filenames, headings, aliases, and managed links follow the configured memory language through a stable internal `docKey` registry, while JSON field names and command names stay English.
+VibeBox is local-first. It does not sync memory to a cloud service by itself. Sensitive-looking values are redacted before active memory, wiki, and context output. Raw logs are diagnostic records, not active guidance.
 
 ## License / Author
 

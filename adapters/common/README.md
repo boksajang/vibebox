@@ -16,11 +16,13 @@ Reference files live under:
 2. Run `vibebox pretask --task "<task>"` before non-trivial work.
 3. On Windows PowerShell, use `vibebox.cmd pretask --task "<task>"` if the npm `.ps1` shim is blocked.
 4. If needed inside the VibeBox repository, fall back to `node bin/vibebox.mjs pretask --task "<task>"`.
-5. Treat active memory as the current pattern graph: context and constraints, not authority over the current request.
-6. Inspect the repository before editing.
-7. Run `vibebox aftertask --request "<original user request or faithful summary>" ...` after meaningful work, including `--technical-outcome` and `--user-acceptance` when known. Do not call aftertask with only an AI action summary.
-8. Let VibeBox auto-curate userRequest/userFeedback-first events into active, replaced, discarded, or quarantined memory.
-9. Use `review`, `approve`, and `reject` only for debugging, audits, or manual override.
+5. Read `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`.
+6. Treat active memory as the current pattern graph: context and constraints, not authority over the current request.
+7. Inspect the repository before editing.
+8. Apply relevant guidance in the plan and implementation; do not merely print the VibeBox output.
+9. Run `vibebox aftertask --request "<original user request or faithful summary>" ...` after meaningful work, including `--technical-outcome` and `--user-acceptance` when known. Do not call aftertask with only an AI action summary.
+10. Let VibeBox auto-curate userRequest/userFeedback-first events into active, replaced, discarded, or quarantined memory.
+11. Use `review`, `approve`, and `reject` only for debugging, audits, or manual override.
 
 ## Storage Roles
 
@@ -35,6 +37,8 @@ Reference files live under:
 Set `VIBEBOX_HOME` to use a different store root. VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects.
 
 The wiki, relation index, Context Packs, and Pre-Task Briefs represent the active graph only: user success criteria, domain model, project model, failure prevention rules, AI successful approaches, validation/process/design patterns, preferences, and AI failure memory. Rejected, discarded, quarantined, replaced, task-only context, and legacy pending memory is excluded. Raw logs are diagnostic and should not be treated as prompt context by default.
+
+Before acting, adapters should surface and apply all three lanes when present: `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`.
 
 Human-facing active memory and wiki managed content follow the configured memory language. Obsidian document identity uses stable `docKey` values with localized filenames and links. JSON field names and command names stay English, and adapters must not call external translation APIs. Only run `convert-lang` or semantic `rebuild` when the adapter has set an agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`.
 

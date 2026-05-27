@@ -52,7 +52,7 @@ The global store contains:
 - `registry/projects.json` for known project identities
 - `registry/wiki-docs.json` for stable `docKey` to localized wiki filename/title/alias mapping
 
-`config.json` includes `locale`, `outputLanguage`, `wikiLanguage`, `reportLanguage`, and `contextLanguage`. Human-facing active memory and wiki managed content follow the configured memory language when semantic work is performed by an agent runtime. Raw logs can preserve source text. JSON field names, command names, and enum values remain English, and VibeBox does not use external translation APIs.
+`config.json` stores one primary `memoryLanguage`. Human-facing active memory, managed wiki text, Context Packs, reports, and blackbox summaries follow that memory language. `VIBEBOX_LOCALE` is only an environment hint and does not rewrite an existing store. Raw logs can preserve source text. JSON field names, command names, relation types, and enum values remain English, and VibeBox does not use external translation APIs.
 
 ## Project Initialization
 
@@ -84,6 +84,14 @@ vibebox pretask "Fix dashboard table scrolling"
 
 `pretask` prints a Pre-Task Brief with relevant active memory, validation and process patterns, known failure risks, prevention rules, success patterns, project guardrails, potential conflicts, and instructions for the agent. It chooses guidance by task situation, so debugging work emphasizes failure prevention and verification work emphasizes validation patterns.
 
+The most important sections are:
+
+- `User Success Criteria`: the user's current and remembered success conditions.
+- `AI Failure Avoidance`: rejected directions, instruction misses, technical failures, environment failures, permission failures, tool failures, and prevention rules.
+- `AI Successful Approaches`: reusable implementation, validation, command, recovery, or workaround methods.
+
+Agents should apply these sections in the actual plan and work. Printing the guidance without using it is an incomplete VibeBox workflow.
+
 ## After-Task Usage
 
 Run after meaningful work:
@@ -99,6 +107,22 @@ vibebox aftertask --from-file task-result.txt
 ```
 
 `aftertask` writes a blackbox event, extracts candidates, and lets the Auto Curator decide whether each candidate becomes active, replaces older active memory, is discarded, or is quarantined. Users do not need to review memory after every task. The user's request can create active success criteria before a result exists. Technical success and user acceptance are separate; user acceptance is the user's reaction to the work result, not memory approval. Passing validation with no rejection can become an inferred AI successful approach. Rejected user feedback means the AI missed the user's criteria, so it becomes AI failure/correction/prevention guidance and updated success criteria, not user failure.
+
+Do not call `aftertask` with only an AI action summary. Use `--request` or include a `User request:` section in a `--from-file` payload. If `userRequest` is missing, VibeBox records the event but skips active user success criteria extraction; clear command/tool/environment failures can still become AI failure memory.
+
+## End-To-End Consumption Routine
+
+A complete VibeBox cycle is:
+
+1. Run `pretask` or `context` before work.
+2. Read `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`.
+3. Write a plan that explicitly applies the relevant criteria, avoids relevant failures, and reuses relevant successful approaches.
+4. Perform the work.
+5. Run real validation when available.
+6. Report changed files and validation results when the user's criteria require it.
+7. Run `aftertask` with the original user request or faithful summary so the active graph can update.
+
+This is the expected practical behavior for agents using the VibeBox skill or adapters.
 
 ## Capture And Extract
 

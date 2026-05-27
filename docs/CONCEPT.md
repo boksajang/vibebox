@@ -33,6 +33,18 @@ User task
 -> active graph, wiki, and context updated for future tasks
 ```
 
+The loop is not complete until the agent consumes the memory. A correct agent workflow must read the Pre-Task Brief, turn relevant memory into a concrete plan, avoid known AI failures, reuse applicable successful approaches, perform the work, and then capture the new event with `aftertask`.
+
+## Guidance Lanes
+
+Pretask and Context Pack output are organized around three practical lanes:
+
+- User Success Criteria: current and remembered criteria for what a good result means to the user.
+- AI Failure Avoidance: AI mistakes and technical/environment/tool failures that should not be repeated.
+- AI Successful Approaches: reusable implementation, validation, command, recovery, or workaround methods.
+
+These lanes are deliberately separate. User success criteria describe what the user wants. AI failure memory describes what the agent should avoid. AI successful approaches describe methods that helped satisfy the criteria.
+
 ## What Is Implemented
 
 The current VibeBox implementation is a Node.js CLI with:
@@ -64,6 +76,8 @@ VibeBox's normal workflow is automatic curation, not per-task user review. After
 
 `review`, `approve`, and `reject` remain available for debugging, audits, and manual override. Pending memory is legacy/manual debug state; it is not normal workflow guidance.
 
+Memory approval is not user acceptance. Memory approval is a manual/debug operation. User acceptance is the user's reaction to a work result, and it is used to classify the result as confirmed success, inferred success, rejected result, correction, or AI failure memory.
+
 ## Active Memory, Not History
 
 VibeBox's active graph is the current optimized guidance set. If memory replaces, corrects, or refines an older memory for the same subject and scope, the older memory is removed from active retrieval, active wiki sections, active relation indexes, namespace files, Context Packs, and Pre-Task Briefs. Scoped exceptions can remain active next to a broader rule only when their condition is clear.
@@ -71,6 +85,8 @@ VibeBox's active graph is the current optimized guidance set. If memory replaces
 Discarded, quarantined, rejected, and legacy pending memory is excluded from normal retrieval, Context Packs, Pre-Task Briefs, the active wiki, and the active relation graph. Raw events in `logs/events.jsonl` are diagnostic blackbox records. They are not normal retrieval input and they are not rendered as current guidance.
 
 Technical success and user acceptance are separate signals. User acceptance is not memory approval. A command can pass while the user rejects the result; that rejection means the AI missed the user's success criteria. Rejected outcomes must become AI failure memory, correction guidance, or updated success criteria, not user failure and not `success_pattern`. A validated reusable approach with no rejection signal may become inferred AI successful approach, but it must not be written as if the user confirmed it.
+
+User instructions can create success criteria before a result exists. User corrections can refine or replace older criteria in the same scope. Command, permission, environment, browser, API, plugin, and tool failures can become AI failure memory even when there is no new user preference to extract.
 
 ## User Model Layers
 

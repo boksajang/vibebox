@@ -63,6 +63,14 @@ User instructions and corrections can become active success criteria before any 
 
 AI Failure Memory includes `preference_mismatch`, `instruction_misread`, `overgeneralization_failure`, `example_overfit_failure`, `technical_failure`, `environment_failure`, `permission_failure`, and `tool_failure`. AI Successful Approach records reusable implementation, validation, command, recovery, or workaround methods that helped satisfy the user's criteria.
 
+Pretask and Context Pack retrieval group active memory by role before presenting it to an agent:
+
+- `user_success_criteria`: what success means for the user in the current task, domain, or project.
+- `ai_failure_memory`: what the AI should avoid repeating.
+- `ai_successful_approach`: methods that can be reused to satisfy the criteria or recover from known failures.
+
+The agent should apply all three lanes together. Success criteria without failure avoidance can repeat old mistakes; failure memory without successful approaches can overconstrain the work.
+
 ## Scopes
 
 - `global`: applies broadly across projects
@@ -180,6 +188,8 @@ Outcome fields:
 - `preventionRule`
 
 `successEvidence=confirmed` means the user accepted, confirmed, or asked to keep the result. `successEvidence=inferred` means validation passed, no rejection signal exists, and the approach is reusable even without explicit user feedback. Inferred success can become active automatically, but it must not claim user confirmation. `technicalOutcome=success` with `userAcceptance=rejected` becomes `technical_success_user_rejected`, not a success pattern.
+
+User success criteria do not require `technicalOutcome=success` or memory approval. A user request can establish criteria before work begins. AI successful approaches require evidence that a method worked or plausibly worked; AI failure memory can be created from user rejection, command failures, permission failures, environment failures, or tool failures.
 
 ## Relation Index
 

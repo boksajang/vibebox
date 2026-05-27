@@ -75,11 +75,12 @@ Before meaningful repository work:
 3. Prefer `vibebox pretask --task "<task description>"`.
 4. If the global command is unavailable inside the VibeBox repository, try `node bin/vibebox.mjs pretask --task "<task description>"`.
 5. Read the Pre-Task Brief.
-6. Apply relevant memory as constraints and risk warnings.
-7. If memory conflicts with the user's current explicit request, mention the conflict and follow the current request.
-8. If memory conflicts with repository reality, report the conflict before acting.
-9. Do not treat low-confidence memory as final fact.
-10. Avoid repeating known failed approaches.
+6. Identify the relevant `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` sections.
+7. Apply relevant memory as constraints, risk warnings, and reusable approaches in the actual plan and implementation.
+8. If memory conflicts with the user's current explicit request, mention the conflict and follow the current request.
+9. If memory conflicts with repository reality, report the conflict before acting.
+10. Do not treat low-confidence memory as final fact.
+11. Avoid repeating known failed approaches.
 
 ## During-Task Rules
 
@@ -96,6 +97,7 @@ During work:
 - Preserve existing behavior unless the user asks for a change.
 - If the task touches an area with known failure memory, explicitly account for it.
 - If the task may create new project decisions, note them for after-task capture.
+- When reporting completion, mention the VibeBox guidance that materially affected the plan, validation, or avoided approaches when that evidence is useful to the user.
 
 ## After-Task Workflow
 
@@ -138,6 +140,17 @@ Active memory is the only memory that should guide normal pre-task context.
 - If a command, tool, permission, or environment failure occurred, capture it as AI failure memory; if a workaround succeeded, capture the recovery as an AI successful approach.
 - If validation passes and the approach is reusable with no rejection signal, VibeBox may record inferred success automatically, but do not describe it as confirmed by the user.
 - Do not run aftertask with only `--summary` or only `--from-file`; without `--request`, active user model extraction is skipped. For long records, either pass `--request "..."` separately or include a `User request:` section in the file.
+
+## Consumption Evidence Policy
+
+VibeBox guidance is meant to be consumed, not merely displayed. When VibeBox materially affects a task:
+
+- Reflect the relevant user success criteria in the work plan.
+- Avoid the specific failure approach named by the brief.
+- Reuse the applicable successful approach when it fits the current request.
+- Capture the result afterward with `aftertask --request`.
+
+If the brief is empty or irrelevant, proceed normally and capture only meaningful outcomes.
 
 ## Conflict Handling Policy
 

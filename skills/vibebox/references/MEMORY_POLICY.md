@@ -89,6 +89,14 @@ User instructions are success criteria. User corrections are more precise succes
 Failure memory must include prevention guidance when possible. Success patterns should describe when to reuse the successful approach and whether the evidence is confirmed by the user or inferred from validation.
 Pretask/context retrieval should consider relevant failure and success nodes together, not only one side.
 
+Pre-task output is organized for consumption:
+
+- User Success Criteria: the active criteria the agent should satisfy.
+- AI Failure Avoidance: the active failure/prevention memory the agent should avoid repeating.
+- AI Successful Approaches: the active reusable methods the agent can apply when they fit the current task.
+
+The agent should reflect relevant guidance in its plan and execution. Merely printing the memory without applying it is not a complete VibeBox workflow.
+
 Technical success and user acceptance are separate. User acceptance is the user's reaction to the result, not memory approval. Passing tests, clean command output, or completed edits can support inferred AI successful approach when the approach is reusable and no rejection signal exists, but a user-rejected result means the AI missed the user's criteria and must become AI failure/correction/prevention memory.
 
 AI failure memory includes preference mismatch, instruction misread, overgeneralization, example overfit, technical failure, environment failure, permission failure, and tool failure. Recovery or workaround methods that succeed should be stored as AI successful approaches, without replacing user success criteria.

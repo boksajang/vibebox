@@ -70,6 +70,8 @@ Before non-trivial work:
 vibebox pretask --task "<task description>"
 ```
 
+Codex should read and apply the `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` sections before planning or editing. The memory is useful only when it changes the actual plan, validation choices, avoided approaches, or final report.
+
 After meaningful work:
 
 ```bash

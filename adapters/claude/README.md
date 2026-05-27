@@ -42,6 +42,8 @@ Before non-trivial work, run:
 vibebox pretask --task "<task description>"
 ```
 
+Claude-compatible agents should read and apply the `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` sections before planning or editing. Do not merely paste the memory into a response; use it to shape the plan, validation, avoided approaches, and final report.
+
 After meaningful work, run:
 
 ```bash
