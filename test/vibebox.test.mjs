@@ -74,6 +74,29 @@ function memoryText(record) {
   ].filter(Boolean).join('\n');
 }
 
+async function listMarkdownFiles(dirPath) {
+  const entries = await readdir(dirPath, { withFileTypes: true });
+  const nested = await Promise.all(entries.map(async (entry) => {
+    const fullPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) return listMarkdownFiles(fullPath);
+    return entry.isFile() && entry.name.endsWith('.md') ? [fullPath] : [];
+  }));
+  return nested.flat();
+}
+
+async function assertWikiLinksResolve(root) {
+  const wikiRoot = storePath(root, 'wiki');
+  const files = await listMarkdownFiles(wikiRoot);
+  const fileSet = new Set(files.map((file) => path.relative(wikiRoot, file).replace(/\\/gu, '/').replace(/\.md$/u, '')));
+  for (const file of files) {
+    const text = await readFile(file, 'utf8');
+    for (const match of text.matchAll(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/gu)) {
+      const target = match[1].trim();
+      assert.equal(fileSet.has(target), true, `${path.basename(file)} has missing wiki target ${target}`);
+    }
+  }
+}
+
 function assertNoParserLabels(records) {
   const labelPattern = /\b(?:Korean file|English file|User request|Original request|AI action summary|Example A|Example B|Fixture|Test|Source|Parser|Section)\s*:/i;
   for (const record of records) {
@@ -839,6 +862,67 @@ test('technical and tool failures become AI failure memory while recovery become
   });
   assert.match(brief, /AI Failure Avoidance:\n- .*npm test/s);
   assert.match(brief, /AI Successful Approaches:\n- .*npm\.cmd test/s);
+});
+
+test('end-to-end consumption reads success, failure, and successful approach guidance before re-recording work', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  await afterTask(root, {
+    userRequest: 'Before coding, create a concise plan. Final report should include changed files and validation result.',
+    aiActionSummary: 'Recovered by using npm.cmd test instead of npm test.',
+    changedFiles: ['seed-note.md'],
+    errors: ['Command failed: npm test exited with code 1 because the npm shim was unavailable.'],
+    commandResults: ['Validation passed. npm.cmd test passed.'],
+    technicalOutcome: 'success',
+    userAcceptance: 'unknown'
+  });
+
+  const brief = await generatePreTaskBrief(root, {
+    task: 'Create live-apply.md using remembered validation guidance.'
+  });
+  const context = await generateContextPack(root, {
+    task: 'Create live-apply.md using remembered validation guidance.'
+  });
+  const guidance = `${brief}\n${context}`;
+  assert.match(guidance, /User Success Criteria:\n- .*concise plan|User Success Criteria:\n- .*changed files/s);
+  assert.match(guidance, /AI Failure Avoidance:\n- .*npm test/s);
+  assert.match(guidance, /AI Successful Approaches:\n- .*npm\.cmd test/s);
+
+  const appliedWork = [
+    '# Live Apply',
+    '',
+    '## Plan',
+    '- Apply the remembered success criteria before editing.',
+    '- Avoid the failed npm test approach.',
+    '- Reuse npm.cmd test as the successful validation approach.',
+    '',
+    '## Validation',
+    '- npm.cmd test passed.',
+    '',
+    '## Result',
+    '- Changed file: live-apply.md.',
+    '- Report includes changed files and validation result.'
+  ].join('\n');
+  await writeFile(path.join(root, 'live-apply.md'), appliedWork, 'utf8');
+
+  await afterTask(root, {
+    userRequest: 'Create live-apply.md using remembered validation guidance.',
+    aiActionSummary: 'Applied VibeBox guidance by planning first, avoiding npm test, and reusing npm.cmd test.',
+    changedFiles: ['live-apply.md'],
+    commands: ['npm.cmd test'],
+    commandResults: ['npm.cmd test passed.'],
+    technicalOutcome: 'success',
+    userAcceptance: 'unknown'
+  });
+
+  const events = await readJsonl(storePath(root, 'logs', 'events.jsonl'));
+  assert.equal(events.at(-1).userRequest, 'Create live-apply.md using remembered validation guidance.');
+  assert.deepEqual(events.at(-1).commands, ['npm.cmd test']);
+  assert.equal(events.at(-1).commands.includes('npm test'), false);
+  const savedWork = await readFile(path.join(root, 'live-apply.md'), 'utf8');
+  assert.match(savedWork, /Avoid the failed npm test approach/);
+  assert.match(savedWork, /Reuse npm\.cmd test/);
 });
 
 test('auto-curation discards duplicates and quarantines ambiguous conflicting candidates', async () => {
@@ -1733,6 +1817,46 @@ test('localized Obsidian doc registry uses Korean filenames and valid managed li
   assert.equal(doctor.warnings.some((warning) => warning.includes('Wiki link target is missing')), false);
 });
 
+test('Korean wiki display localizes recent active memory, AI failures, AI successful approaches, and memory notes', async () => {
+  const root = await makeWorkspace();
+  process.env.VIBEBOX_LOCALE = 'ko-KR';
+  await initVibeBox(root);
+
+  const result = await afterTask(root, {
+    userRequest: 'Before coding, create a concise plan. Final report should include changed files and validation result.',
+    aiActionSummary: 'Recovered by using npm.cmd test instead of npm test.',
+    errors: ['Command failed: npm test exited with code 1 because the npm shim was unavailable.'],
+    commandResults: ['Validation passed. npm.cmd test passed.'],
+    technicalOutcome: 'success',
+    userAcceptance: 'unknown'
+  });
+  assert.ok(result.candidates.some((candidate) => candidate.memoryRole === 'user_success_criteria'));
+  assert.ok(result.candidates.some((candidate) => candidate.memoryRole === 'ai_failure_memory'));
+  assert.ok(result.candidates.some((candidate) => candidate.memoryRole === 'ai_successful_approach'));
+
+  const home = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
+  assert.match(home, /\uCD5C\uADFC \uD65C\uC131 \uBA54\uBAA8\uB9AC/);
+  assert.match(home, /\uAD6C\uD604 \uC804\uC5D0 \uAC04\uACB0\uD55C \uACC4\uD68D\uC744 \uC138\uC6B4\uB2E4/);
+  assert.match(home, /\uBA85\uB839 \uC2E4\uD589 \uC2E4\uD328|\uBC18\uBCF5 \uAE08\uC9C0/);
+  assert.match(home, /AI \uC131\uACF5 \uC811\uADFC/);
+  assert.doesNotMatch(home, /Command failed:|Agent succeeded by|Do not repeat this failed approach/i);
+
+  const memoryNoteFiles = await listMarkdownFiles(storePath(root, 'wiki', 'memories'));
+  assert.ok(memoryNoteFiles.length >= 3);
+  const memoryNoteText = (await Promise.all(memoryNoteFiles.map((file) => readFile(file, 'utf8')))).join('\n');
+  assert.match(memoryNoteText, /\uBA54\uBAA8\uB9AC \uB178\uD2B8/);
+  assert.match(memoryNoteText, /\[\[.*\|AI \uC131\uACF5 \uC811\uADFC\]\]/);
+  assert.match(memoryNoteText, /\uBA85\uB839 \uC2E4\uD589 \uC2E4\uD328|\uBC18\uBCF5 \uAE08\uC9C0/);
+  assert.doesNotMatch(memoryNoteText, /Command failed:|Agent succeeded by|Do not repeat this failed approach/i);
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.ok(memoryIndex.memories.some((memory) => /Do not repeat this failed approach|Agent succeeded by/i.test(memory.summary)));
+  await assertWikiLinksResolve(root);
+  const doctor = await runDoctor(root);
+  assert.equal(doctor.ok, true);
+  assert.equal(doctor.warnings.some((warning) => warning.includes('Wiki link target is missing')), false);
+});
+
 test('doctor avoids global-store false positives and warns about user-home registry pollution without mutating registry', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vibebox-test-global-store-'));
   process.env.VIBEBOX_HOME = path.join(root, '.vibebox');
@@ -2131,8 +2255,34 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
   const processDoc = registry.docs.find((doc) => doc.docKey === 'process_patterns');
   await readFile(storePath(root, 'wiki', processDoc.fileName), 'utf8');
   await assert.rejects(() => readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8'), /ENOENT/);
+  assert.notEqual(processDoc.fileName, 'Process Patterns.md');
+  const koMemoryNotes = await listMarkdownFiles(storePath(root, 'wiki', 'memories'));
+  assert.ok(koMemoryNotes.length > 0);
+  await assertWikiLinksResolve(root);
 
-  await rm(storePath(root, 'wiki', processDoc.fileName), { force: true });
+  process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
+  await convertLanguage(root, { from: 'ko', to: 'en' });
+  delete process.env.VIBEBOX_AGENT_RUNTIME;
+  const enRegistry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+  const enProcessDoc = enRegistry.docs.find((doc) => doc.docKey === 'process_patterns');
+  assert.equal(enProcessDoc.fileName, 'Process Patterns.md');
+  await readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8');
+  await assert.rejects(() => readFile(storePath(root, 'wiki', processDoc.fileName), 'utf8'), /ENOENT/);
+  const enMemoryNotes = await listMarkdownFiles(storePath(root, 'wiki', 'memories'));
+  assert.ok(enMemoryNotes.some((file) => /User Success Criteria|Process Patterns|Response Preference|Success/i.test(path.basename(file))));
+  await assertWikiLinksResolve(root);
+
+  process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
+  await convertLanguage(root, { from: 'en', to: 'ko' });
+  delete process.env.VIBEBOX_AGENT_RUNTIME;
+  const koAgainRegistry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+  const koAgainProcessDoc = koAgainRegistry.docs.find((doc) => doc.docKey === 'process_patterns');
+  assert.notEqual(koAgainProcessDoc.fileName, 'Process Patterns.md');
+  await readFile(storePath(root, 'wiki', koAgainProcessDoc.fileName), 'utf8');
+  await assert.rejects(() => readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8'), /ENOENT/);
+  await assertWikiLinksResolve(root);
+
+  await rm(storePath(root, 'wiki', koAgainProcessDoc.fileName), { force: true });
   process.env.VIBEBOX_LOCALE = 'en-US';
   process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
   await rebuildVibeBox(root);
@@ -2142,6 +2292,10 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
   const rebuiltProcessDoc = rebuiltRegistry.docs.find((doc) => doc.docKey === 'process_patterns');
   await readFile(storePath(root, 'wiki', rebuiltProcessDoc.fileName), 'utf8');
   await assert.rejects(() => readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8'), /ENOENT/);
+  assert.notEqual(rebuiltProcessDoc.fileName, 'Process Patterns.md');
+  const rebuiltHome = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
+  assert.match(rebuiltHome, /\uCD5C\uADFC \uD65C\uC131 \uBA54\uBAA8\uB9AC/);
+  await assertWikiLinksResolve(root);
   await readFile(storePath(root, 'wiki', '처리 방식.md'), 'utf8');
   const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
   assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'summary'), true);

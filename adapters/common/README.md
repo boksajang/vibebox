@@ -40,7 +40,7 @@ The wiki, relation index, Context Packs, and Pre-Task Briefs represent the activ
 
 Before acting, adapters should surface and apply all three lanes when present: `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`.
 
-Human-facing active memory and wiki managed content follow the configured memory language. Obsidian document identity uses stable `docKey` values with localized filenames and links. JSON field names and command names stay English, and adapters must not call external translation APIs. Only run `convert-lang` or semantic `rebuild` when the adapter has set an agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`.
+Internal memory stays canonical for agent processing: JSON field names, relation types, command names, file paths, errors, and raw logs remain stable. Obsidian is the user display layer: filenames, headings, aliases, links, Recent Active Memory, category pages, project pages, and memory-level notes follow the configured memory language through stable `docKey` identity. Adapters must not call external translation APIs. Only run `convert-lang` or semantic `rebuild` when the adapter has set an agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`.
 
 Technical success and user acceptance are separate. User acceptance is the user's reaction to the result, not memory approval. If the user rejects an outcome, adapters must treat it as AI failure and pass the correction as updated success criteria; if validation passes and no rejection signal exists, VibeBox may record inferred AI successful approach without claiming user confirmation. Command, permission, environment, and tool failures should be captured as AI failure memory, with successful workarounds captured as recovery approaches.
 

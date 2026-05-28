@@ -214,7 +214,7 @@ VibeBox does not create project-local `.vibebox` folders, pointer files, or hidd
 
 ## Locale Notes
 
-Human-facing active memory and wiki managed content follow the configured memory language. Obsidian document identity uses stable `docKey` values and localized visible filenames, links, headings, and aliases. JSON field names, command names, relation types, and enum values stay English. Do not call external translation APIs.
+Internal memory stays canonical for agents: JSON field names, command names, relation types, enum values, file paths, errors, and raw logs remain stable. Obsidian is the user display layer: filenames, headings, aliases, links, Recent Active Memory, category pages, project pages, and memory-level notes follow the configured memory language. Do not call external translation APIs.
 
 Only run `vibebox convert-lang` or semantic `vibebox rebuild` when an adapter has provided an agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`; otherwise these commands intentionally fail before changing files.
 

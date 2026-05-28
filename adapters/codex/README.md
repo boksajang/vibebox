@@ -97,4 +97,4 @@ vibebox reject <candidate-id>
 - VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects.
 - `backup` and `restore` are ordinary CLI maintenance commands; restore is destructive replace and requires confirmation.
 - `convert-lang` and semantic `rebuild` require an agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`.
-- Obsidian visible filenames and links follow the configured memory language through stable `docKey` identity; internal JSON fields stay English.
+- Obsidian filenames, headings, aliases, links, Recent Active Memory, and memory-level notes follow the configured memory language through stable `docKey` identity; internal JSON fields, enum values, relation types, command names, file paths, and raw logs stay canonical.

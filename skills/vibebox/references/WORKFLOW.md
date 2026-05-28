@@ -182,7 +182,7 @@ Project identity is derived from the current AI working directory. Git remote `o
 
 ## Adaptive Language Rule
 
-Human-facing active memory and wiki managed content follow the configured memory language. The wiki uses stable internal `docKey` identity with localized filenames, headings, aliases, and links. Raw logs remain diagnostic source records. JSON field names, enum values, relation types, and command names stay English, and adapters must not call external translation APIs.
+Internal memory stays canonical for agents: JSON field names, enum values, relation types, command names, file paths, errors, and raw logs remain stable. The Obsidian wiki is the user display layer: filenames, headings, aliases, links, Recent Active Memory, category pages, project pages, and memory-level notes follow the configured memory language. Adapters must not call external translation APIs.
 
 Language conversion and semantic rebuild are explicit agent-runtime operations:
 

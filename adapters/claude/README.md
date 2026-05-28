@@ -70,3 +70,4 @@ vibebox reject <candidate-id>
 - User requests and user feedback are primary extraction signals; action summaries are supporting evidence.
 - `backup` and `restore` are normal CLI maintenance commands; restore is destructive replace and requires confirmation.
 - `convert-lang` and semantic `rebuild` require an agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`.
+- Obsidian filenames, headings, aliases, links, Recent Active Memory, and memory-level notes follow the configured memory language; internal JSON fields, enum values, relation types, command names, file paths, and raw logs stay canonical.

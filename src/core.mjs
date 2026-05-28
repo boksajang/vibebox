@@ -3549,6 +3549,155 @@ function wikiLinkForDocKey(docKey, locale = 'en-US', alias = '') {
   return cleanAlias && cleanAlias !== target ? `[[${target}|${cleanAlias}]]` : `[[${target}]]`;
 }
 
+const WIKI_DISPLAY_TEXT = {
+  en: {
+    wiki: 'Wiki',
+    recentActiveMemory: 'Recent Active Memory',
+    storage: 'Storage',
+    memoryNote: 'Memory note',
+    projectSection: 'Project',
+    activePatternGraph: 'Active Pattern Graph',
+    projectId: 'Project ID',
+    repository: 'Repository',
+    primaryDomain: 'Primary domain',
+    lastSeen: 'Last seen',
+    category: 'Category',
+    relatedMemory: 'Related memories',
+    relatedSuccessfulApproaches: 'Related Successful Approaches',
+    relatedFailureAvoidance: 'Related Failure Avoidance',
+    userSuccessCriteria: 'User Success Criteria',
+    aiFailureMemory: 'AI Failure Memory',
+    aiSuccessfulApproach: 'AI Successful Approach',
+    taskContext: 'Task Context',
+    discardedDetail: 'Discarded Detail',
+    commandFailed: 'Command failed',
+    aiSuccessApproach: 'AI successful approach',
+    doNotRepeat: 'Do not repeat',
+    reviewPriorFailure: 'Review prior failure before repeating this approach.',
+    similarWork: 'Similar work appears.',
+    sameFailure: 'when the same failure appears.'
+  },
+  ko: {
+    wiki: '\uC704\uD0A4',
+    recentActiveMemory: '\uCD5C\uADFC \uD65C\uC131 \uBA54\uBAA8\uB9AC',
+    storage: '\uC800\uC7A5\uC18C',
+    memoryNote: '\uBA54\uBAA8\uB9AC \uB178\uD2B8',
+    projectSection: '\uD504\uB85C\uC81D\uD2B8',
+    activePatternGraph: '\uD65C\uC131 \uD328\uD134 \uADF8\uB798\uD504',
+    projectId: '\uD504\uB85C\uC81D\uD2B8 ID',
+    repository: '\uC800\uC7A5\uC18C',
+    primaryDomain: '\uC8FC\uC694 \uB3C4\uBA54\uC778',
+    lastSeen: '\uB9C8\uC9C0\uB9C9 \uD655\uC778',
+    category: '\uCE74\uD14C\uACE0\uB9AC',
+    relatedMemory: '\uAD00\uB828 \uBA54\uBAA8\uB9AC',
+    relatedSuccessfulApproaches: '\uAD00\uB828 AI \uC131\uACF5 \uC811\uADFC',
+    relatedFailureAvoidance: '\uAD00\uB828 AI \uC2E4\uD328 \uD68C\uD53C',
+    userSuccessCriteria: '\uC0AC\uC6A9\uC790 \uC131\uACF5 \uAE30\uC900',
+    aiFailureMemory: 'AI \uC2E4\uD328 \uBA54\uBAA8\uB9AC',
+    aiSuccessfulApproach: 'AI \uC131\uACF5 \uC811\uADFC',
+    taskContext: '\uC791\uC5C5 \uCEE8\uD14D\uC2A4\uD2B8',
+    discardedDetail: '\uD3D0\uAE30\uB41C \uC138\uBD80\uC0AC\uD56D',
+    commandFailed: '\uBA85\uB839 \uC2E4\uD589 \uC2E4\uD328',
+    aiSuccessApproach: 'AI \uC131\uACF5 \uC811\uADFC',
+    doNotRepeat: '\uBC18\uBCF5 \uAE08\uC9C0',
+    reviewPriorFailure: '\uAC19\uC740 \uC811\uADFC\uC744 \uBC18\uBCF5\uD558\uAE30 \uC804\uC5D0 \uC774\uC804 \uC2E4\uD328\uB97C \uD655\uC778\uD55C\uB2E4.',
+    similarWork: '\uC720\uC0AC \uC791\uC5C5\uC5D0\uC11C \uC7AC\uC0AC\uC6A9\uD55C\uB2E4.',
+    sameFailure: '\uAC19\uC740 \uC2E4\uD328\uAC00 \uB098\uD0C0\uB0A0 \uB54C'
+  }
+};
+
+function wikiDisplayLanguage(locale = 'en-US') {
+  return languageFromLocale(locale) === 'ko' ? 'ko' : 'en';
+}
+
+function wd(locale, key) {
+  const language = wikiDisplayLanguage(locale);
+  return WIKI_DISPLAY_TEXT[language][key] || WIKI_DISPLAY_TEXT.en[key] || key;
+}
+
+function localizeWikiDisplayText(text, locale = 'en-US') {
+  const value = String(text || '').trim();
+  if (!value) return '';
+  if (wikiDisplayLanguage(locale) !== 'ko') return value;
+  const recoveryMatch = value.match(/^Agent succeeded by\s+(.+?)\s+after the execution failure;?\s+reuse this recovery approach when the same failure appears:?\s*(.+?)\.?$/iu);
+  if (recoveryMatch) {
+    return `AI \uC131\uACF5 \uC811\uADFC: \uC2E4\uD589 \uC2E4\uD328 \uD6C4 ${localizeRecoveryPhraseKo(recoveryMatch[1])}. \uAC19\uC740 \uC2E4\uD328\uAC00 \uB098\uD0C0\uB098\uBA74 ${localizeRecoveryPhraseKo(recoveryMatch[2])}\uC744 \uC7AC\uC0AC\uC6A9\uD55C\uB2E4.`;
+  }
+  return normalizeUserFacingTextForLanguage(value, 'ko')
+    .replace(/\bnpm test exited with code\s+(\d+)\s+because the npm shim was unavailable/giu, 'npm test\uAC00 code $1\uB85C \uC885\uB8CC\uB428 (npm shim \uC0AC\uC6A9 \uBD88\uAC00)')
+    .replace(/\bCommand failed:\s*/giu, `${wd(locale, 'commandFailed')}: `)
+    .replace(/^AI execution failure:\s*/iu, 'AI \uC2E4\uD589 \uC2E4\uD328: ')
+    .replace(/^Do not repeat this failed approach:\s*/iu, `${wd(locale, 'doNotRepeat')}: `)
+    .replace(/^Agent succeeded by\s*/iu, `${wd(locale, 'aiSuccessApproach')}: `)
+    .replace(/\s+after the execution failure\.?/giu, ' \uC2E4\uD589 \uC2E4\uD328 \uD6C4.')
+    .replace(/Reuse this recovery approach when the same failure appears\.?/giu, '\uAC19\uC740 \uC2E4\uD328\uAC00 \uB098\uD0C0\uB098\uBA74 \uC774 \uBCF5\uAD6C \uC811\uADFC\uC744 \uC7AC\uC0AC\uC6A9\uD55C\uB2E4.')
+    .replace(/Review prior failure before repeating this approach\.?/giu, wd(locale, 'reviewPriorFailure'))
+    .replace(/Similar work appears\.?/giu, wd(locale, 'similarWork'))
+    .replace(/when the same failure appears\.?/giu, wd(locale, 'sameFailure'))
+    .replace(/Prevent this by checking the command, path, permission, or tool state before repeating the same attempt\.?/giu, '\uAC19\uC740 \uC2DC\uB3C4\uB97C \uBC18\uBCF5\uD558\uAE30 \uC804\uC5D0 \uBA85\uB839, \uACBD\uB85C, \uAD8C\uD55C, \uB3C4\uAD6C \uC0C1\uD0DC\uB97C \uD655\uC778\uD55C\uB2E4.')
+    .trim();
+}
+
+function localizeRecoveryPhraseKo(text) {
+  const value = String(text || '').trim().replace(/\.$/u, '');
+  const commandSwap = value.match(/^using\s+(.+?)\s+instead of\s+(.+)$/iu);
+  if (commandSwap) {
+    return `${commandSwap[2]} \uB300\uC2E0 ${commandSwap[1]} \uC0AC\uC6A9`;
+  }
+  return normalizeUserFacingTextForLanguage(value, 'ko');
+}
+
+function memoryDisplayTitle(memory, locale = 'en-US') {
+  const role = memory.memoryRole || '';
+  if (role === 'user_success_criteria') return wd(locale, 'userSuccessCriteria');
+  if (role === 'ai_failure_memory') return wd(locale, 'aiFailureMemory');
+  if (role === 'ai_successful_approach') return wd(locale, 'aiSuccessfulApproach');
+  if (role === 'task_context') return wd(locale, 'taskContext');
+  if (role === 'discarded_detail') return wd(locale, 'discardedDetail');
+  return localizedDocTitle(memory.docKey || docKeyForType(memory.type), locale);
+}
+
+function memoryDisplaySummary(memory, locale = 'en-US') {
+  return localizeWikiDisplayText(memory.summary || memory.rule || memory.preferredBehavior || memory.details || memory.title || memory.id, locale);
+}
+
+function memoryDisplayField(memory, field, locale = 'en-US', fallback = '') {
+  return localizeWikiDisplayText(memory[field] || fallback, locale);
+}
+
+function shouldWriteMemoryNote(memory) {
+  if (!memory || memory.status !== 'active') return false;
+  if (memory.type === 'task_context' || memory.type === 'discarded_detail') return false;
+  if (['task', 'temporary'].includes(memory.scope)) return false;
+  return [
+    'user_success_criteria',
+    'ai_failure_memory',
+    'ai_successful_approach'
+  ].includes(memory.memoryRole)
+    || [
+      'avoid_rule',
+      'failure_memory',
+      'success_pattern',
+      'project_decision',
+      'validation_pattern',
+      'response_preference',
+      'process_pattern',
+      'agent_failure_pattern',
+      'agent_success_pattern'
+    ].includes(memory.type);
+}
+
+function memoryNoteFileName(memory, locale = 'en-US') {
+  const title = safeWikiPageName(memoryDisplayTitle(memory, locale));
+  return `memories/${title}-${memory.id}.md`;
+}
+
+function wikiLinkForMemory(memory, locale = 'en-US', alias = '') {
+  const target = wikiLinkTargetFromFileName(memoryNoteFileName(memory, locale));
+  const cleanAlias = String(alias || memoryDisplayTitle(memory, locale)).replace(/[[\]]/gu, '').trim();
+  return cleanAlias && cleanAlias !== target ? `[[${target}|${cleanAlias}]]` : `[[${target}]]`;
+}
+
 async function rebuildWiki(root) {
   const memoryIndex = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
   const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
@@ -3571,6 +3720,7 @@ async function rebuildWiki(root) {
     const projectMemories = active.filter((memory) => memory.projectId === project.projectId);
     await writeManagedWikiPage(root, `projects/${project.projectId}.md`, renderProjectShell(project, locale), renderProjectManaged(project, projectMemories, locale));
   }
+  await writeMemoryWikiNotes(root, active, projects, locale);
   await writeConceptWikiPages(root, active, locale);
 }
 
@@ -3594,6 +3744,10 @@ async function writeManagedWikiPage(root, pageName, shell, managedContent) {
   }
 
   if (existing.includes(MANAGED_BEGIN) && existing.includes(MANAGED_END)) {
+    if (isManagedOnlyWikiText(existing)) {
+      await writeFile(filePath, `${shell.trim()}\n\n${block}\n`, 'utf8');
+      return;
+    }
     const pattern = new RegExp(`${escapeRegExp(MANAGED_BEGIN)}[\\s\\S]*?${escapeRegExp(MANAGED_END)}`, 'u');
     await writeFile(filePath, `${existing.replace(pattern, block).replace(/\s*$/u, '')}\n`, 'utf8');
     return;
@@ -3622,7 +3776,7 @@ function renderHomeManaged(memories, locale = 'en-US') {
     acc[memory.type] = (acc[memory.type] || 0) + 1;
     return acc;
   }, {});
-  return `## Wiki
+  return `## ${wd(locale, 'wiki')}
 
 - ${wikiLinkForDocKey('user_preferences', locale)} (${counts.user_preference || 0})
 - ${wikiLinkForDocKey('user_patterns', locale)} (${PATTERN_TYPES.size > 0 ? memories.filter((memory) => PATTERN_TYPES.has(memory.type)).length : 0})
@@ -3637,11 +3791,11 @@ function renderHomeManaged(memories, locale = 'en-US') {
 - ${wikiLinkForDocKey('workflow_rules', locale)} (${counts.workflow_rule || 0})
 - ${wikiLinkForDocKey('project_index', locale)}
 
-## Recent Active Memory
+## ${wd(locale, 'recentActiveMemory')}
 
-${memories.slice(-10).map((memory) => `- ${wikiLinkForDocKey(docKeyForType(memory.type), locale)} ${memory.title}: ${memory.summary}`).join('\n') || '- No approved memory yet.'}
+${memories.slice(-10).map((memory) => `- ${wikiLinkForMemory(memory, locale)} ${memoryDisplaySummary(memory, locale)}`).join('\n') || `- ${t(locale, 'none')}`}
 
-## Storage
+## ${wd(locale, 'storage')}
 
 - JSON indexes live in \`../index/\`.
 - Raw blackbox events live in \`../logs/events.jsonl\`.
@@ -3672,20 +3826,20 @@ Back to ${wikiLinkForDocKey('project_index', locale)}.`;
 
 function renderProjectManaged(project, memories, locale = 'en-US') {
   const lines = [
-    '## Project',
+    `## ${wd(locale, 'projectSection')}`,
     '',
-    `- Project ID: \`${project.projectId}\``,
-    `- Repository: ${project.repositoryName || 'Not detected'}`,
-    `- Primary domain: \`${project.primaryDomain || 'general'}\``,
-    `- Last seen: ${project.lastSeenAt || 'unknown'}`,
+    `- ${wd(locale, 'projectId')}: \`${project.projectId}\``,
+    `- ${wd(locale, 'repository')}: ${project.repositoryName || t(locale, 'notSpecified')}`,
+    `- ${wd(locale, 'primaryDomain')}: \`${project.primaryDomain || 'general'}\``,
+    `- ${wd(locale, 'lastSeen')}: ${project.lastSeenAt || 'unknown'}`,
     '',
-    '## Active Pattern Graph',
+    `## ${wd(locale, 'activePatternGraph')}`,
     ''
   ];
   if (memories.length === 0) {
     lines.push(`- ${t(locale, 'none')}`);
   } else {
-    lines.push(...memories.map((memory) => `- \`${memory.id}\` ${wikiLinkForDocKey(memory.docKey || docKeyForType(memory.type), locale)} ${memory.title}: ${memory.summary}`));
+    lines.push(...memories.map((memory) => `- \`${memory.id}\` ${wikiLinkForMemory(memory, locale)} ${memoryDisplaySummary(memory, locale)}`));
   }
   return lines.join('\n');
 }
@@ -3704,44 +3858,130 @@ function renderMemoryManaged(memories, locale = 'en-US') {
 function renderMemoryMarkdown(memory, locale = 'en-US') {
   const concepts = conceptsForMemory(memory);
   const links = concepts.map((concept) => conceptWikiLink(concept, locale)).filter(Boolean).join(' ');
+  const displayTitle = memoryDisplayTitle(memory, locale);
+  const displaySummary = memoryDisplaySummary(memory, locale);
+  const topicConcept = conceptNameForTerm(memory.topic);
 
   const lines = [
-    `## ${memory.title}`,
+    `## ${wikiLinkForMemory(memory, locale, displayTitle)}`,
     '',
     `- ${t(locale, 'idLabel')}: \`${memory.id}\``,
     `- ${t(locale, 'modelClass')}: \`${memory.modelClass || inferModelClass(memory)}\``,
     `- ${t(locale, 'modelSubClass')}: \`${memory.modelSubClass || inferModelSubClass(memory)}\``,
     `- ${t(locale, 'scopeLabel')}: \`${memory.scope}\``,
     `- ${t(locale, 'confidenceLabel')}: \`${memory.confidence}\``,
-    `- ${t(locale, 'topicLabel')}: ${conceptWikiLink(memory.topic, locale) || memory.topic}`,
-    `- ${t(locale, 'summaryLabel')}: ${memory.summary}`,
-    `- ${t(locale, 'appliesToLabel')}: ${(memory.appliesTo || []).map((item) => conceptWikiLink(item, locale) || item).join(', ') || t(locale, 'notSpecified')}`
+    `- ${t(locale, 'topicLabel')}: ${topicConcept ? conceptWikiLink(topicConcept, locale) : memory.topic}`,
+    `- ${t(locale, 'summaryLabel')}: ${displaySummary}`,
+    `- ${t(locale, 'appliesToLabel')}: ${(memory.appliesTo || []).join(', ') || t(locale, 'notSpecified')}`
   ];
 
   if (memory.type === 'failure_memory' || memory.type === 'agent_failure_pattern') {
     lines.push(`- ${t(locale, 'failureTypeLabel')}: \`${memory.failureType || 'unclear_requirement'}\``);
-    lines.push(`- ${t(locale, 'preventionRuleLabel')}: ${memory.preventionRule || 'Review before repeating.'}`);
+    lines.push(`- ${t(locale, 'preventionRuleLabel')}: ${memoryDisplayField(memory, 'preventionRule', locale, 'Review before repeating.')}`);
   }
   if (memory.type === 'success_pattern' || memory.type === 'agent_success_pattern') {
-    lines.push(`- ${t(locale, 'reuseWhenLabel')}: ${(memory.reuseWhen || memory.appliesTo || []).join(', ') || 'Similar work appears.'}`);
+    lines.push(`- ${t(locale, 'reuseWhenLabel')}: ${localizeWikiDisplayText((memory.reuseWhen || memory.appliesTo || []).join(', ') || 'Similar work appears.', locale)}`);
   }
   if (memory.patternType) {
     lines.push(`- ${t(locale, 'patternTypeLabel')}: \`${memory.patternType}\``);
     lines.push(`- ${t(locale, 'situationLabel')}: \`${memory.situation || 'general'}\``);
-    if (memory.preferredBehavior) lines.push(`- ${t(locale, 'preferredBehaviorLabel')}: ${memory.preferredBehavior}`);
+    if (memory.preferredBehavior) lines.push(`- ${t(locale, 'preferredBehaviorLabel')}: ${memoryDisplayField(memory, 'preferredBehavior', locale)}`);
   }
   if (memory.type === 'avoid_rule') {
-    lines.push(`- ${t(locale, 'forbiddenActionLabel')}: ${memory.forbiddenAction || memory.rule}`);
+    lines.push(`- ${t(locale, 'forbiddenActionLabel')}: ${memoryDisplayField(memory, 'forbiddenAction', locale, memory.rule)}`);
     lines.push(`- ${t(locale, 'severityLabel')}: \`${memory.severity || 'medium'}\``);
   }
   if (memory.type === 'project_decision') {
-    lines.push(`- ${t(locale, 'decisionLabel')}: ${memory.decision || memory.rule}`);
+    lines.push(`- ${t(locale, 'decisionLabel')}: ${memoryDisplayField(memory, 'decision', locale, memory.rule)}`);
     if ((memory.alternativesRejected || []).length > 0) {
       lines.push(`- ${t(locale, 'alternativesRejectedLabel')}: ${memory.alternativesRejected.join(', ')}`);
     }
   }
   if (links) {
     lines.push('', '## Related', '', links);
+  }
+  return lines.join('\n');
+}
+
+async function writeMemoryWikiNotes(root, memories, projects = [], locale = 'en-US') {
+  const activeMemoryNotes = new Set();
+  const projectById = new Map(projects.map((project) => [project.projectId, project]));
+  const noteMemories = memories.filter(shouldWriteMemoryNote);
+  for (const memory of noteMemories) {
+    const pageName = memoryNoteFileName(memory, locale);
+    activeMemoryNotes.add(pageName);
+    const title = `${memoryDisplayTitle(memory, locale)} - ${memory.id}`;
+    const shell = `${wikiFrontmatter(title)}# ${title}
+
+Back to ${wikiLinkForDocKey(memory.docKey || docKeyForType(memory.type), locale)}.`;
+    await writeManagedWikiPage(root, pageName, shell, renderMemoryNoteManaged(memory, memories, projectById, locale));
+  }
+
+  const memoryDir = vibeboxPath(root, 'wiki', 'memories');
+  try {
+    for (const entry of await readdir(memoryDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+      const relative = `memories/${entry.name}`;
+      if (activeMemoryNotes.has(relative)) continue;
+      const fullPath = path.join(memoryDir, entry.name);
+      const text = await readFile(fullPath, 'utf8');
+      if (isManagedOnlyWikiText(text)) {
+        await rm(fullPath, { force: true });
+      }
+    }
+  } catch {
+    // The memory note directory is optional until graph-visible notes are generated.
+  }
+}
+
+function renderMemoryNoteManaged(memory, allMemories, projectById, locale = 'en-US') {
+  const project = memory.projectId ? projectById.get(memory.projectId) : null;
+  const categoryLink = wikiLinkForDocKey(memory.docKey || docKeyForType(memory.type), locale);
+  const relatedSuccesses = allMemories.filter((item) => (
+    item.id !== memory.id
+    && item.status === 'active'
+    && item.memoryRole === 'ai_successful_approach'
+    && (memory.memoryRole === 'ai_failure_memory' || memory.type === 'avoid_rule' || memory.type === 'failure_memory' || memory.type === 'agent_failure_pattern')
+    && (item.projectId === memory.projectId || !item.projectId || !memory.projectId)
+  )).slice(0, 5);
+  const relatedFailures = allMemories.filter((item) => (
+    item.id !== memory.id
+    && item.status === 'active'
+    && item.memoryRole === 'ai_failure_memory'
+    && memory.memoryRole === 'ai_successful_approach'
+    && (item.projectId === memory.projectId || !item.projectId || !memory.projectId)
+  )).slice(0, 5);
+
+  const lines = [
+    `## ${wd(locale, 'memoryNote')}`,
+    '',
+    `- ${t(locale, 'idLabel')}: \`${memory.id}\``,
+    `- ${wd(locale, 'category')}: ${categoryLink}`,
+    `- ${t(locale, 'modelClass')}: \`${memory.modelClass || inferModelClass(memory)}\``,
+    `- ${t(locale, 'modelSubClass')}: \`${memory.modelSubClass || inferModelSubClass(memory)}\``,
+    `- ${t(locale, 'scopeLabel')}: \`${memory.scope}\``,
+    `- ${t(locale, 'confidenceLabel')}: \`${memory.confidence}\``,
+    `- ${t(locale, 'summaryLabel')}: ${memoryDisplaySummary(memory, locale)}`
+  ];
+
+  if (project) {
+    lines.push(`- ${wd(locale, 'projectSection')}: [[projects/${project.projectId}|${project.projectName || project.projectId}]]`);
+  }
+  if (memory.preventionRule) {
+    lines.push(`- ${t(locale, 'preventionRuleLabel')}: ${memoryDisplayField(memory, 'preventionRule', locale)}`);
+  }
+  if (memory.recoveryApproach) {
+    lines.push(`- ${t(locale, 'reuseWhenLabel')}: ${memoryDisplayField(memory, 'recoveryApproach', locale)}`);
+  } else if (memory.successfulApproach) {
+    lines.push(`- ${t(locale, 'reuseWhenLabel')}: ${memoryDisplayField(memory, 'successfulApproach', locale)}`);
+  }
+
+  lines.push('', `## ${wd(locale, 'relatedMemory')}`, '', `- ${categoryLink}`);
+  if (relatedSuccesses.length > 0) {
+    lines.push('', `## ${wd(locale, 'relatedSuccessfulApproaches')}`, '', ...relatedSuccesses.map((item) => `- ${wikiLinkForMemory(item, locale)} ${memoryDisplaySummary(item, locale)}`));
+  }
+  if (relatedFailures.length > 0) {
+    lines.push('', `## ${wd(locale, 'relatedFailureAvoidance')}`, '', ...relatedFailures.map((item) => `- ${wikiLinkForMemory(item, locale)} ${memoryDisplaySummary(item, locale)}`));
   }
   return lines.join('\n');
 }
@@ -3772,9 +4012,9 @@ async function writeConceptWikiPages(root, memories, locale = 'en-US') {
 
 Back to ${wikiLinkForDocKey('home', locale)}.`;
     const managed = [
-      '## Related memories',
+      `## ${wd(locale, 'relatedMemory')}`,
       '',
-      ...relatedMemories.map((memory) => `- \`${memory.id}\` ${wikiLinkForDocKey(memory.docKey || docKeyForType(memory.type), locale)}: ${memory.summary}`)
+      ...relatedMemories.map((memory) => `- \`${memory.id}\` ${wikiLinkForMemory(memory, locale)} ${memoryDisplaySummary(memory, locale)}`)
     ].join('\n');
     await writeManagedWikiPage(root, pageName, shell, managed);
   }
@@ -3795,7 +4035,7 @@ Back to ${wikiLinkForDocKey('home', locale)}.`;
     const shell = `${wikiFrontmatter(concept)}# ${concept}
 
 Back to ${wikiLinkForDocKey('home', locale)}.`;
-    await writeManagedWikiPage(root, relative, shell, ['## Related memories', '', `- ${t(locale, 'none')}`].join('\n'));
+    await writeManagedWikiPage(root, relative, shell, [`## ${wd(locale, 'relatedMemory')}`, '', `- ${t(locale, 'none')}`].join('\n'));
   }
 }
 
@@ -3807,7 +4047,8 @@ function shouldWriteConceptWikiPage(concept, locale = 'en-US') {
 function conceptWikiLink(concept, locale = 'en-US') {
   const docKey = conceptDocKey(concept);
   if (docKey) return wikiLinkForDocKey(docKey, locale);
-  return shouldWriteConceptWikiPage(concept, locale) ? wikiLink(concept) : '';
+  const conceptTitle = conceptNameForTerm(concept) || safeWikiPageName(concept);
+  return shouldWriteConceptWikiPage(conceptTitle, locale) ? wikiLink(safeWikiPageName(conceptTitle)) : '';
 }
 
 function conceptDocKey(concept) {
@@ -4395,7 +4636,7 @@ export async function afterTask(root = process.cwd(), input = {}) {
       ? `AI execution failure: ${generatedSnippet(primaryExecutionFailureText(input, event))}. Prevent this by checking the command, path, permission, or tool state before repeating the same attempt.`
       : '',
     hasFailureWithoutRequest && hasTechnicalSuccessSignal(validationEvidenceText, event) && actionSummaryText
-      ? `Agent succeeded by ${recoveryText} after the execution failure. Reuse this recovery approach when the same failure appears.`
+      ? `Agent succeeded by ${recoveryText} after the execution failure; reuse this recovery approach when the same failure appears: ${recoveryText}.`
       : '',
     wasRejected
       ? [
@@ -4758,11 +4999,6 @@ export async function convertLanguage(root = process.cwd(), options = {}) {
   };
   await saveJson(configPath, updatedConfig);
 
-  const memoryIndexPath = vibeboxPath(root, 'index/global-memory-index.json');
-  const memoryIndex = await loadJson(memoryIndexPath, defaultMemoryIndex());
-  memoryIndex.memories = (memoryIndex.memories || []).map((memory) => normalizeMemoryLanguage(memory, targetLanguage, targetLocale));
-  memoryIndex.updatedAt = nowIso();
-  await saveJson(memoryIndexPath, memoryIndex);
   await saveJson(vibeboxPath(root, 'registry/wiki-docs.json'), defaultWikiDocRegistry(targetLocale));
   await rebuildIndexes(root);
   await rebuildWiki(root);
@@ -5038,6 +5274,12 @@ export async function runDoctor(root = process.cwd()) {
       for (const match of managedText.matchAll(/\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/gu)) {
         const target = match[1].trim();
         if (!target || target.startsWith('projects/')) continue;
+        if (target.includes('/')) {
+          if (!(await exists(path.join(vibeboxPath(root, 'wiki'), `${target}.md`)))) {
+            warnings.push(`Wiki link target is missing: ${target}.`);
+          }
+          continue;
+        }
         if (!wikiFileNames.has(target)) {
           warnings.push(`Wiki link target is missing: ${target}.`);
         }

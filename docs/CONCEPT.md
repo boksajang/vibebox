@@ -112,7 +112,7 @@ VibeBox Core is designed for local command workflows. It is not tied to Codex, C
 
 ## Adaptive Language
 
-Human-facing active memory and Obsidian managed content follow the configured memory language. The wiki uses stable internal `docKey` identity with localized visible filenames, headings, aliases, and links so English and Korean pages are not duplicated in one store. Raw logs can preserve source text. JSON field names, enum values, relation types, and command names stay English. VibeBox does not call external translation APIs; semantic conversion requires an AI agent runtime marker.
+Internal memory stays canonical enough for agents to process reliably: JSON field names, enum values, relation types, command names, file paths, and raw technical literals stay stable. Obsidian is the user display layer: filenames, headings, aliases, links, Recent Active Memory, category pages, project pages, and memory-level notes follow the configured memory language so English and Korean pages are not duplicated in one store. Raw logs can preserve source text. VibeBox does not call external translation APIs; display-layer conversion requires an AI agent runtime marker.
 
 ## Maintenance Commands
 

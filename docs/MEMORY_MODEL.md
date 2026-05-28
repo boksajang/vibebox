@@ -207,9 +207,9 @@ Existing project-local `.vibebox/` folders are legacy stores. VibeBox warns abou
 
 ## Language And Wiki Identity
 
-Active memory and wiki managed text follow the configured `memoryLanguage`. Input language and `VIBEBOX_LOCALE` do not rewrite an existing store. Raw logs can preserve original source text. Internal JSON field names, enum values, relation types, and command names stay English.
+VibeBox separates canonical memory from the Obsidian display layer. Internal memory records keep stable field names, enum values, relation types, command names, file paths, error text, and technical literals. Input language and `VIBEBOX_LOCALE` do not rewrite an existing store. Raw logs can preserve original source text.
 
-The wiki separates `docKey` from localized filename/title/aliases. Changing system locale does not automatically rename files. `convert-lang` must be explicitly run and requires an agent runtime marker. `rebuild` recreates indexes, relation-index, namespace files, wiki files, and stale localized file cleanup from active memory.
+The wiki separates `docKey` from localized filename/title/aliases. Obsidian filenames, headings, section labels, Recent Active Memory, managed summaries, aliases, and links follow `memoryLanguage`. Changing system locale does not automatically rename files. `convert-lang` must be explicitly run and requires an agent runtime marker; it converts the wiki display layer, not raw logs or internal JSON field names/enums. `rebuild` recreates indexes, relation-index, namespace files, wiki files, memory-level notes, and stale localized file cleanup from active memory.
 
 ## Backup And Restore
 

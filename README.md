@@ -113,9 +113,12 @@ Open the wiki in Obsidian:
 ~/.vibebox/wiki
 ```
 
-Human-facing active memory, wiki filenames, wiki headings, aliases, links, Context Packs, reports, and blackbox summaries follow the configured `memoryLanguage`. JSON field names, enum values, relation types, and command names stay English.
+VibeBox keeps two layers separate:
 
-The wiki uses stable internal `docKey` values with localized visible filenames. In a Korean store, user-facing wiki pages use Korean names such as `사용자 성향.md`, `처리 방식.md`, `AI 실패 패턴.md`, and `AI 성공 패턴.md`.
+- **Canonical memory**: JSON field names, enum values, relation types, memory roles, command names, file paths, and raw logs stay stable and mostly English/canonical.
+- **Wiki display**: Obsidian filenames, headings, section labels, Recent Active Memory, memory notes, aliases, and managed links follow the configured `memoryLanguage`.
+
+The wiki uses stable internal `docKey` values with localized visible filenames. In a Korean store, user-facing wiki pages use Korean names such as `사용자 성향.md`, `처리 방식.md`, `AI 실패 패턴.md`, and `AI 성공 패턴.md`. Important active memories also get graph-visible notes under `wiki/memories/`, so the graph expands beyond category hub pages.
 
 Changing system locale does not rename memory. Language conversion is explicit and agent-required:
 
@@ -179,7 +182,7 @@ vibebox reject <candidate-id>
 
 `backup` and `restore` are normal CLI commands. Restore is destructive replace, not merge, and requires explicit confirmation.
 
-`convert-lang` and semantic `rebuild` require an agent runtime marker because they can rewrite user-facing active memory and localized wiki identity. Without `VIBEBOX_AGENT_RUNTIME`, they exit before changing files.
+`convert-lang` and semantic `rebuild` require an agent runtime marker because they rewrite the Obsidian display layer: Markdown filenames, headings, aliases, links, category pages, project pages, memory notes, and the wiki-doc registry. They do not rewrite raw logs or internal JSON field names/enums. Without `VIBEBOX_AGENT_RUNTIME`, they exit before changing files.
 
 ## Agent Support
 

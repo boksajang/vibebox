@@ -52,7 +52,7 @@ The global store contains:
 - `registry/projects.json` for known project identities
 - `registry/wiki-docs.json` for stable `docKey` to localized wiki filename/title/alias mapping
 
-`config.json` stores one primary `memoryLanguage`. Human-facing active memory, managed wiki text, Context Packs, reports, and blackbox summaries follow that memory language. `VIBEBOX_LOCALE` is only an environment hint and does not rewrite an existing store. Raw logs can preserve source text. JSON field names, command names, relation types, and enum values remain English, and VibeBox does not use external translation APIs.
+`config.json` stores one primary `memoryLanguage`. Obsidian filenames, headings, section labels, Recent Active Memory, managed summaries, aliases, and links follow that language. `VIBEBOX_LOCALE` is only an environment hint and does not rewrite an existing store. Raw logs can preserve source text. JSON field names, command names, relation types, enum values, file paths, and technical literals remain canonical, and VibeBox does not use external translation APIs.
 
 ## Project Initialization
 
@@ -158,7 +158,7 @@ Conflict, exception, supersede, duplicate, low-confidence, and review-needed can
 
 ## Memory Language
 
-Active memory, managed wiki text, Context Packs, reports, and blackbox user-facing text use the configured `memoryLanguage`. `VIBEBOX_LANGUAGE` or `--language` can seed a new store; `VIBEBOX_LOCALE` is only an environment hint and does not change an existing store. To intentionally change memory language and localized wiki filenames, run `convert-lang` from an adapter runtime.
+`memoryLanguage` controls the human-facing display language. Internal JSON fields, enum values, relation types, command names, file paths, and raw logs stay canonical. Obsidian filenames, headings, Recent Active Memory, managed summaries, aliases, and links follow the configured language. `VIBEBOX_LANGUAGE` or `--language` can seed a new store; `VIBEBOX_LOCALE` is only an environment hint and does not change an existing store. To intentionally change the wiki display language and localized filenames, run `convert-lang` from an adapter runtime.
 
 ## Context Pack
 
@@ -221,7 +221,7 @@ VIBEBOX_AGENT_RUNTIME=adapter vibebox language convert ko en
 VIBEBOX_AGENT_RUNTIME=adapter vibebox rebuild
 ```
 
-Without `VIBEBOX_AGENT_RUNTIME` or an adapter-provided runtime marker, `convert-lang` and semantic `rebuild` exit before changing files. Raw logs are not rewritten by language conversion. JSON field names, enum values, relation types, and command names stay English.
+Without `VIBEBOX_AGENT_RUNTIME` or an adapter-provided runtime marker, `convert-lang` and semantic `rebuild` exit before changing files. `convert-lang` updates the Obsidian display layer: Markdown filenames, headings, aliases, managed links, Recent Active Memory, category pages, project pages, memory notes, and the wiki-doc registry. Raw logs are not rewritten, and internal JSON field names, enum values, relation types, and command names stay English.
 
 ## External Project Workflow
 

@@ -12,7 +12,16 @@ If `VIBEBOX_HOME` is set, open:
 $VIBEBOX_HOME/wiki/
 ```
 
-The wiki is for inspection. Retrieval uses JSON indexes under `index/`; raw blackbox events stay under `logs/`.
+The wiki is an inspection layer. Retrieval uses JSON indexes under `index/`; raw blackbox events stay under `logs/`.
+
+## Canonical Memory vs Wiki Display
+
+VibeBox keeps internal memory and Obsidian display separate:
+
+- Canonical memory: `memoryRole`, `type`, `modelClass`, relation types, enum values, command names, file paths, errors, raw logs, and technical literals stay stable and mostly English/canonical.
+- Wiki display: Markdown filenames, headings, section names, Recent Active Memory, memory summaries, aliases, and links follow the configured `memoryLanguage`.
+
+For example, an internal failure summary can contain `Command failed: npm test exited with code 1`, while a Korean wiki renders it as `명령 실행 실패: npm test가 code 1로 종료됨.` Command literals such as `npm test`, `npm.cmd test`, package names, paths, and error codes may remain as-is inside localized sentences.
 
 ## What The Wiki Shows
 
@@ -27,7 +36,7 @@ The wiki shows current active guidance, not a transcript archive. Managed pages 
 - AI successful approaches and recovery patterns
 - design philosophy and domain patterns
 
-User dissatisfaction is never shown as user failure. It is represented as AI failure memory, correction guidance, or a refined success criteria when useful.
+User dissatisfaction is never shown as user failure. It is represented as AI failure memory, correction guidance, or refined success criteria when useful.
 
 ## Localized Filenames
 
@@ -54,6 +63,7 @@ Failure Memory.md / 실패 메모리.md
 Success Patterns.md / 성공 패턴.md
 Project Index.md / 프로젝트 인덱스.md
 projects/{projectId}.md
+memories/{localized-role}-{memoryId}.md
 ```
 
 The mapping lives in `registry/wiki-docs.json`:
@@ -64,6 +74,23 @@ The mapping lives in `registry/wiki-docs.json`:
 - `aliases`: canonical and localized names
 
 System locale changes do not rename files. Language conversion happens only when the user explicitly runs `convert-lang` with an agent runtime marker.
+
+## Memory-Level Graph Notes
+
+Category pages are not the whole graph. Important active memories also get graph-visible notes under `wiki/memories/`.
+
+Node-level notes are generated for durable guidance such as:
+
+- `user_success_criteria`
+- `ai_failure_memory`
+- `ai_successful_approach`
+- prevention rules
+- project decisions
+- validation/reporting/process patterns
+- repeated tool, command, permission, or environment failures
+- recovery approaches
+
+Task-only details, raw instruction text, temporary file paths, parser labels, discarded memory, quarantined memory, rejected memory, and low-value action summaries are not expanded into normal graph nodes.
 
 ## Project Pages
 
@@ -107,13 +134,14 @@ Pages use Obsidian-style links:
 [[AI 실패 패턴]]
 [[AI 성공 패턴]]
 [[예방 규칙]]
+[[memories/사용자 성공 기준-mem_123|사용자 성공 기준]]
 ```
 
 In a Korean store, managed links point to Korean filenames. In an English store, they point to English filenames. Links should not create empty English/Korean duplicates in the same store.
 
 ## Managed Blocks
 
-VibeBox updates only managed blocks:
+VibeBox updates managed blocks:
 
 ```text
 <!-- VIBEBOX:BEGIN -->
@@ -121,7 +149,7 @@ generated memory summary
 <!-- VIBEBOX:END -->
 ```
 
-Human notes outside managed blocks are preserved.
+Generated-only pages can have their managed shell refreshed during language conversion or rebuild so headings and navigation links match the current language. Human notes outside managed blocks should be preserved.
 
 ## Active Graph Only
 
@@ -157,6 +185,16 @@ Language conversion is explicit and agent-required:
 VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko en
 ```
 
-`convert-lang` rewrites active memory user-facing text, localized filenames, aliases, headings, and managed wiki links. It leaves raw logs unchanged. JSON field names, enum values, relation types, and command names stay English.
+`convert-lang` changes the Obsidian display layer: Markdown filenames, headings, aliases, managed links, Recent Active Memory, category pages, project pages, memory notes, and `registry/wiki-docs.json`. It leaves raw logs and internal canonical JSON fields/enums untouched.
 
 VibeBox does not call external translation APIs.
+
+## Rebuild
+
+Semantic rebuild is explicit and agent-required:
+
+```bash
+VIBEBOX_AGENT_RUNTIME=adapter vibebox rebuild
+```
+
+`rebuild` regenerates the active index, relation index, namespace files, doc registry, localized wiki files, memory-level notes, and stale generated file cleanup from active memory. After rebuild, wiki links should resolve to real localized files and Recent Active Memory should render in the configured language.
