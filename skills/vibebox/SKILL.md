@@ -12,7 +12,7 @@ VibeBox Core is a local CLI and memory engine. This skill tells an AI coding age
 
 Past memory is context, not authority. Pending memory must not be treated as active memory.
 VibeBox is not a passive archive or a review-first memory manager: active memory is the latest optimized guidance set chosen by the Auto Curator or a manual override. Replaced, corrected, discarded, quarantined, rejected, or legacy pending memory must not be treated as current guidance.
-VibeBox is not an AI action summary recorder. Treat the user's request and user feedback as the strongest memory signals; use AI summaries, changed files, and command output only as supporting evidence.
+VibeBox is not an AI action summary recorder. Treat the user's request and user feedback as the strongest memory signals; use AI summaries, changed files, and command output only as supporting evidence. Treat structured user requests as meaning graphs: extract reusable success criteria, preservation rules, validation expectations, scope limits, user/domain/project patterns, and AI failure-prevention signals before relying on AI action summaries.
 
 For details, load these references only when needed:
 
@@ -214,7 +214,7 @@ VibeBox does not create project-local `.vibebox` folders, pointer files, or hidd
 
 ## Locale Notes
 
-Internal memory stays canonical for agents: JSON field names, command names, relation types, enum values, file paths, errors, and raw logs remain stable. Obsidian is the user display layer: filenames, category folders, headings, aliases, links, Recent Active Memory, category pages, project pages, and category-based memory notes follow the configured memory language. Visible memory note filenames should be human-readable; `mem_...` ids belong in frontmatter. Do not call external translation APIs.
+Internal memory stays canonical for agents: JSON field names, command names, relation types, enum values, file paths, errors, and raw logs remain stable. Obsidian is the user display layer: filenames, category folders, headings, aliases, links, Recent Active Memory, category pages, project pages, and category-based memory notes follow the configured memory language. Visible memory note filenames should be human-readable; `mem_...` ids belong in frontmatter. One memory can be linked from multiple category pages: the canonical note belongs under its primary category, while related category pages and the source project page link to that same note. Do not call external translation APIs.
 
 Only run `vibebox convert-lang` or semantic `vibebox rebuild` when an adapter has provided an agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`; otherwise these commands intentionally fail before changing files.
 

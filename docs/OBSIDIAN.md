@@ -123,9 +123,13 @@ Task-only details, raw instruction text, temporary file paths, parser labels, di
 
 Each memory note links back to its category and, when available, the project where the memory was observed. `sourceProjectId` means "observed in this project"; `scope` means where the memory applies. A global memory can still link to the project where it was learned.
 
+A memory can belong to more than one category. VibeBox writes one canonical note under `primaryCategory`, records all `relatedCategories` in frontmatter, and has every related category page link to that same note. It does not duplicate the same memory note into multiple category folders.
+
 ## Project Pages
 
 `wiki/projects/{projectId}.md` is generated only for registered project workspaces.
+
+Project pages include memory observed through `sourceProjectId`, even when the memory scope is global or domain-level. Managed project sections separate observed user success criteria, user tendencies/patterns, AI failures, AI successful approaches, validation/preservation rules, project-specific decisions, and other related memory.
 
 Valid workspaces include framework repos, static HTML/PHP folders, JSON-only app folders, documentation folders, and plain folders where an AI coding agent is working.
 
@@ -217,7 +221,7 @@ Doctor is read-only. It should not mutate the project registry or create project
 Language conversion is explicit and agent-required:
 
 ```bash
-VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko en
+VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko-KR en-US
 ```
 
 `convert-lang` changes the Obsidian display layer: Markdown filenames, category folders, headings, aliases, managed links, Recent Active Memory, category pages, project pages, memory notes, and `registry/wiki-docs.json`. It leaves raw logs and internal canonical JSON fields/enums untouched.

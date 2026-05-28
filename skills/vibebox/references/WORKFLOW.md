@@ -68,7 +68,7 @@ vibebox aftertask --request "Fix dashboard table scrolling" --from-file task-res
 
 Alternatively, the file may contain a `User request:` section and a `Summary:` section. Do not use `--summary` or `--from-file` alone for success criteria extraction; without a user request, VibeBox records the event and skips user success criteria extraction. Clear command/tool/environment failures can still become AI failure memory.
 
-Aftertask writes a blackbox event, extracts memory candidates, and lets the Auto Curator decide whether to activate, replace, discard, or quarantine each candidate. Skip capture when the user explicitly opts out.
+Aftertask writes a blackbox event, extracts memory candidates, and lets the Auto Curator decide whether to activate, replace, discard, or quarantine each candidate. Structured user requests are decomposed into reusable success criteria, project rules, user/domain patterns, validation/preservation expectations, scope limits, AI failure-prevention rules, and task context before AI action summaries are used as supporting evidence. Skip capture when the user explicitly opts out.
 
 ## Manual Review And Override Workflow
 
@@ -89,6 +89,8 @@ vibebox approve --safe
 Safe approval skips candidates with direct conflicts, supersedes, exceptions, duplicate status, low confidence, or review-needed status.
 
 Activating a replacement, correction, or same-subject refinement removes the older active memory from normal retrieval, Context Packs, Pre-Task Briefs, namespace files, active relations, and active wiki sections. Activating a scoped exception keeps the broader memory active only when the exception has a clear condition. Rejected, discarded, quarantined, and legacy pending memory stays out of normal retrieval and active graph outputs.
+
+A durable memory can link to multiple categories. VibeBox writes one canonical note under the memory's primary category and links that same note from related category pages and the source project page.
 
 Technical success and user acceptance are separate. Passing commands or completed edits do not justify a `success_pattern` when the user rejected the outcome. User rejection means the AI missed the user's success criteria. The user's correction becomes the latest success criteria, while the rejected AI result becomes AI failure memory. Passing validation plus a reusable approach and no rejection signal can become inferred AI successful approach automatically, but inferred success must not be described as confirmed by the user.
 
@@ -187,7 +189,7 @@ Internal memory stays canonical for agents: JSON field names, enum values, relat
 Language conversion and semantic rebuild are explicit agent-runtime operations:
 
 ```bash
-VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko en
+VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko-KR en-US
 VIBEBOX_AGENT_RUNTIME=adapter vibebox rebuild
 ```
 

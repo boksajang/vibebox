@@ -119,6 +119,23 @@ async function listMemoryNoteFiles(root) {
   return tagged;
 }
 
+const LANGUAGE_CONFIG_KEYS = ['locale', 'memoryLanguage', 'outputLanguage', 'wikiLanguage', 'reportLanguage', 'contextLanguage'];
+const SUPPORTED_TEST_LANGUAGE_TAGS = ['ko-KR', 'en-US', 'ja-JP', 'zh-CN', 'zh-TW', 'ar'];
+
+function assertBcp47Tag(value, label = 'language tag') {
+  assert.equal(typeof value, 'string', `${label} should be a string`);
+  assert.notEqual(value.toLowerCase(), 'auto', `${label} should not store the non-BCP47 auto sentinel`);
+  assert.doesNotThrow(() => Intl.getCanonicalLocales(value), `${label} should be a valid BCP 47 tag`);
+  assert.ok(SUPPORTED_TEST_LANGUAGE_TAGS.includes(value), `${label} should use a supported strict BCP 47 tag`);
+}
+
+function assertConfigLanguageTags(config, expected = null) {
+  for (const key of LANGUAGE_CONFIG_KEYS) {
+    assertBcp47Tag(config[key], key);
+    if (expected) assert.equal(config[key], expected, `${key} should preserve the configured BCP 47 tag`);
+  }
+}
+
 function assertNoParserLabels(records) {
   const labelPattern = /\b(?:Korean file|English file|User request|Original request|AI action summary|Example A|Example B|Fixture|Test|Source|Parser|Section)\s*:/i;
   for (const record of records) {
@@ -182,6 +199,121 @@ After implementation, verify build or type checks if available, inspect the main
 
 Do not assume the same design direction as the BOKSAJANG landing page.
 This is a different project type.`;
+
+const FLOVIX_LANGUAGE_POLICY_FIXTURE = `* Project : Flovix
+
+현재 Flovix 저장소에서 Generated Content Language Policy + DESIGN Export Finalization 0.1을 구현하라.
+
+작업 목적:
+Flovix Workbench의 정적 UI 문자열은 영어로 유지한다.
+다만 AI가 생성하거나 보정하는 설명문, 안내문, 설계 본문, 디자인 의도, agent brief, source notes, spec narrative는 사용자 언어를 따라야 한다.
+이번 작업은 이 언어 정책을 Shape/Graph/Spec/Design 흐름 전체의 데이터 구조와 export 흐름에 반영한 뒤, DESIGN.md export 단계에서 unmapped source content가 있을 때 사용자 선택 흐름을 명확히 처리하는 것이다.
+
+작업 방식:
+Codex는 subagent workflow를 사용해 작업을 수행하라.
+Explorer, Planner, Implementer, Verifier, Reporter 역할로 작업을 분해하고, 각 역할의 결과를 반영해 최종 구현과 검증을 완료하라.
+
+Planner:
+- 정적 UI 문자열은 영어로 유지한다.
+- 전체 UI i18n 구현은 하지 않는다.
+- AI-generated content language를 저장하고 전달할 metadata 구조를 계획한다.
+- schema key, token name, section name, property name은 영어로 유지한다.
+- generated description, summary, design intent, implementation note, agent build brief, source notes, spec narrative는 userLanguage를 따르도록 한다.
+- userLanguage는 사용자의 원본 입력 또는 import source에서 추론할 수 있도록 하되, 불확실하면 기본값을 영어로 둔다.
+- 현재 브라우저 앱에서 AI를 직접 실행하지 않는다.
+- DESIGN.md export 시 unmapped source content가 있으면 사용자에게 선택지를 제공하는 흐름을 계획한다.
+- 수정 범위는 apps/workbench 내부로 제한한다.
+
+Implementer:
+- language.code, language.source, language.confidence metadata를 design model에 저장한다.
+- Import DESIGN.md 후 source content의 언어를 추론해 language metadata에 반영한다.
+- Save Design 시 language metadata가 .flovix/design.json에 저장되어야 한다.
+- Export DESIGN.md 시 language metadata가 DESIGN.md 상단 또는 Design Contract 섹션에 표시되어야 한다.
+- section headings는 영어로 유지한다.
+- body narrative가 AI-generated content인 경우 userLanguage 기준으로 작성되도록 policy note를 포함한다.
+- sourceNotes 또는 unmapped content가 있으면 Export DESIGN.md 클릭 시 선택 UI를 표시한다.
+- Export Current Design 선택 시 현재 상태로 .flovix/specs/DESIGN.md를 생성하고 Source Notes 섹션에 보존한다.
+- Ask AI to Organize 선택 시 DESIGN.md를 바로 export하지 않고 .flovix/design-ai-request.json을 생성한다.
+- Cancel 선택 시 아무 파일도 생성하지 않고 현재 design state를 유지한다.
+
+수정 금지:
+- examples/ 아래 파일 수정 금지
+- docs/ 기준 문서 수정 금지
+- package.json 수정 금지
+- package-lock.json 수정 금지
+- 의존성 추가 금지
+- 전체 UI i18n 구현 금지
+- CODEX_INSTRUCTION.md export 구현 금지
+
+완료 기준:
+- design model에 userLanguage metadata가 저장되어야 한다.
+- Import DESIGN.md 후 source language가 가능한 범위에서 추론되어야 한다.
+- UI static labels는 영어로 유지되어야 한다.
+- DESIGN.md section headings는 영어로 유지되어야 한다.
+- AI-generated content policy가 design model과 DESIGN.md export에 반영되어야 한다.
+- sourceNotes/unmapped content가 없는 경우 Export DESIGN.md가 기존처럼 바로 동작해야 한다.
+- sourceNotes/unmapped content가 있는 경우 Export DESIGN.md 클릭 시 선택 UI가 표시되어야 한다.
+- Export Current Design 선택 시 현재 상태로 DESIGN.md가 생성되어야 한다.
+- Ask AI to Organize 선택 시 .flovix/design-ai-request.json이 생성되어야 한다.
+- Ask AI to Organize 선택 시 DESIGN.md는 생성되지 않아야 한다.
+- Cancel 선택 시 파일 생성 없이 Design 화면으로 돌아와야 한다.
+- npm.cmd --prefix apps/workbench run build가 통과해야 한다.
+- git diff --check가 통과해야 한다.`;
+
+const KICKER_INSTRUCTION_FIXTURE = `섹션 상단의 작은 라벨(키커) 디자인과 위치를 전부 통일하라.
+
+기준 디자인:
+현재 Vision 섹션의 THE VISION 스타일을 기준으로 한다.
+
+공통 스타일:
+- 작은 라벨 텍스트
+- 시안/민트 계열 색상
+- 라벨 아래 짧은 시안색 라인
+- 동일한 폰트 크기
+- 동일한 자간
+- 동일한 라인 길이
+- 동일한 라벨과 본문 사이 여백
+
+적용 대상:
+1. Hero 섹션의 BOKSAJANG.COM
+2. Vision 섹션의 THE VISION
+3. VibeBox 섹션의 LATEST TOOL / 최신 도구
+4. Open Source 섹션의 OPEN SOURCE / 오픈 소스
+
+위치 기준:
+1. 모든 키커는 각 섹션의 콘텐츠 시작점 기준 왼쪽 상단에 배치한다.
+2. Vision의 THE VISION도 현재 위치가 어색하면 섹션 콘텐츠 시작점에 맞춰 재배치한다.
+3. VibeBox의 LATEST TOOL / 최신 도구는 반드시 VibeBox 섹션 최상단 왼쪽에 배치한다.
+4. VIBE CODING + BLACKBOX → VIBEBOX 아이덴티티 바보다 LATEST TOOL / 최신 도구가 먼저 보여야 한다.
+5. Open Source의 OPEN SOURCE / 오픈 소스도 같은 기준으로 왼쪽 상단에 정렬한다.
+6. Hero의 BOKSAJANG.COM도 동일한 키커 스타일로 정리한다.
+
+주의:
+- 큰 제목, 본문, 섹션 구조는 불필요하게 건드리지 말 것.
+- 키커 스타일과 위치 정렬만 수정할 것.
+- KO / EN 전환 시에도 같은 위치와 스타일을 유지할 것.`;
+
+const NON_KICKER_GENERALIZATION_FIXTURE = `네이티브 앱의 기본 내비게이션을 정리하라.
+
+기준 동작:
+현재 Settings 화면의 하단 탭 높이와 아이콘 크기를 기준으로 한다.
+
+공통 조건:
+- 주요 화면은 같은 탭 순서를 유지한다.
+- 활성 탭 표시 방식은 모두 동일하게 맞춘다.
+- 뒤로가기 버튼 위치와 터치 영역은 같은 기준을 따른다.
+- 라이트/다크 모드에서 같은 간격과 대비를 유지한다.
+
+적용 대상:
+1. Home 화면
+2. Requests 화면
+3. Expenses 화면
+4. Settings 화면
+
+주의:
+- 데이터 모델, API 호출, 인증 흐름은 불필요하게 건드리지 말 것.
+- 내비게이션 동작과 위치 정렬만 수정할 것.
+- iOS / Android 전환 시에도 같은 위치와 동작을 유지할 것.`;
 
 test('init creates the VibeBox storage layout and preserves existing wiki files', async () => {
   const root = await makeWorkspace();
@@ -1621,7 +1753,9 @@ test('failure memory injects prevention rules and links to success patterns and 
   assert.ok(relationIndex.relations.some((relation) => relation.type === 'success_resolves_failure'));
 
   const failureWiki = await readFile(storePath(root, 'wiki', 'Agent Failure Patterns.md'), 'utf8');
-  assert.match(failureWiki, /\[\[Agent Failure Patterns\/Global body overflow changes caused layout regressions before; prevent this by/);
+  assert.match(failureWiki, /\[\[Agent Failure Patterns\/Global body overflow changes caused layout regressions b/);
+  assert.match(failureWiki, /Summary: Global body overflow changes caused layout regressions before; prevent this by using component-level wrapper scrolling\./);
+  assert.doesNotMatch(failureWiki, /\[\[Agent Failure Patterns\/Global body overflow changes caused layout regressions before; prevent this by using component-level wrapper scrolling/);
   const memoryNotes = await listMemoryNoteFiles(root);
   const noteText = (await Promise.all(memoryNotes.map((file) => readFile(file, 'utf8')))).join('\n');
   assert.match(noteText, /\[\[Prevention Rules\]\]/);
@@ -1718,7 +1852,7 @@ test('locale controls human-facing headings and localized wiki filenames while J
   assert.match(briefEn, /\uAC80\uC99D\uD560 \uB54C\uB294 \uC644\uB8CC\uB97C/);
 });
 
-test('memoryLanguage normalizes active memory independently from input language and locale hint', async () => {
+test('memoryLanguage stores BCP 47 tags and applies language in the Obsidian display layer', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
   const configPath = storePath(root, 'config.json');
@@ -1726,11 +1860,11 @@ test('memoryLanguage normalizes active memory independently from input language 
   await writeFile(configPath, JSON.stringify({
     ...config,
     locale: 'en-US',
-    memoryLanguage: 'ko',
-    outputLanguage: 'ko',
-    wikiLanguage: 'ko',
-    reportLanguage: 'ko',
-    contextLanguage: 'ko'
+    memoryLanguage: 'ko-KR',
+    outputLanguage: 'ko-KR',
+    wikiLanguage: 'ko-KR',
+    reportLanguage: 'ko-KR',
+    contextLanguage: 'ko-KR'
   }, null, 2), 'utf8');
   process.env.VIBEBOX_LOCALE = 'en-US';
 
@@ -1743,11 +1877,19 @@ test('memoryLanguage normalizes active memory independently from input language 
   });
 
   assert.ok(result.candidates.some((candidate) => candidate.status === 'active'));
+  const updatedConfig = await loadJson(configPath);
+  assertBcp47Tag(updatedConfig.locale, 'locale');
+  for (const key of LANGUAGE_CONFIG_KEYS.filter((item) => item !== 'locale')) {
+    assert.equal(updatedConfig[key], 'ko-KR');
+    assertBcp47Tag(updatedConfig[key], key);
+  }
   const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
   const text = memoryIndex.memories.map(memoryText).join('\n');
-  assert.match(text, /\uAD6C\uD604 \uC804\uC5D0|\uAC80\uC99D\uC744 \uD1B5\uACFC/);
-  assert.doesNotMatch(text, /Before coding|User request|English file/i);
-  assert.ok(memoryIndex.memories.some((memory) => memory.displayLanguage === 'ko'));
+  assert.match(text, /Before coding|validation passed/i);
+  assert.doesNotMatch(text, /User request|English file/i);
+  assert.ok(memoryIndex.memories.some((memory) => memory.displayLanguage === 'ko-KR'));
+  const home = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
+  assert.match(home, /\uAD6C\uD604 \uC804\uC5D0|\uAC80\uC99D\uC744 \uD1B5\uACFC/);
   assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'summary'), true);
   assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], '\uC694\uC57D'), false);
 });
@@ -1886,6 +2028,229 @@ test('Korean wiki display localizes recent active memory, AI failures, AI succes
   const doctor = await runDoctor(root);
   assert.equal(doctor.ok, true);
   assert.equal(doctor.warnings.some((warning) => warning.includes('Wiki link target is missing')), false);
+});
+
+test('structured Korean userRequest extracts success criteria before action-summary success memory', async () => {
+  const root = await makeWorkspace();
+  process.env.VIBEBOX_LOCALE = 'ko-KR';
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'boksajang' }, null, 2), 'utf8');
+  await initVibeBox(root);
+
+  const result = await afterTask(root, {
+    userRequest: KICKER_INSTRUCTION_FIXTURE,
+    aiActionSummary: 'Created a shared section-kicker style with the Vision-style cyan label, short cyan line, matching font size, letter spacing, line length, and bottom spacing; Moved the VibeBox LATEST TOOL/최신 도구 label out of the right identity bar area so it appears first.',
+    commandResults: ['Validation passed.'],
+    technicalOutcome: 'success',
+    userAcceptance: 'unknown'
+  });
+
+  assert.equal(result.event.userRequest, KICKER_INSTRUCTION_FIXTURE);
+  assert.ok(result.candidates.some((candidate) => candidate.memoryRole === 'user_success_criteria' && candidate.status === 'active'));
+  assert.ok(result.candidates.some((candidate) => candidate.memoryRole === 'user_success_criteria' && candidate.modelClass === 'project_model' && candidate.sourceProjectId === 'boksajang'));
+  assert.ok(result.candidates.some((candidate) => candidate.memoryRole === 'user_success_criteria' && candidate.modelClass === 'user_model'));
+  assert.ok(result.candidates.some((candidate) => candidate.memoryRole === 'user_success_criteria' && candidate.modelClass === 'domain_model'));
+  assert.ok(result.candidates.some((candidate) => candidate.type === 'validation_pattern' && candidate.memoryRole === 'user_success_criteria'));
+  assert.ok(result.candidates.some((candidate) => candidate.type === 'prevention_rule' && candidate.memoryRole === 'ai_failure_memory'));
+  assert.ok(result.candidates.some((candidate) => candidate.type === 'task_context' && candidate.status === 'discarded' && /Task context|Task-scoped/u.test(candidate.discardReason || candidate.curationReason || '')));
+  assert.equal(result.candidates.every((candidate) => candidate.memoryRole === 'ai_successful_approach'), false);
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  const activeSuccessCriteria = memoryIndex.memories.filter((memory) => memory.memoryRole === 'user_success_criteria');
+  assert.ok(activeSuccessCriteria.length >= 4);
+  assert.ok(activeSuccessCriteria.some((memory) => memory.relatedCategories?.length > 1));
+  assert.ok(activeSuccessCriteria.some((memory) => /THE VISION|KO \/ EN|기준|전환/u.test(memory.summary)));
+  assert.equal(memoryIndex.memories.every((memory) => memory.sourceProjectId === 'boksajang'), true);
+
+  const projectPage = await readFile(storePath(root, 'wiki', 'projects', 'boksajang.md'), 'utf8');
+  assert.match(projectPage, /이 프로젝트에서 관찰된 사용자 성공 기준/);
+  assert.match(projectPage, /이 프로젝트에서 관찰된 사용자 성향\/패턴/);
+  assert.match(projectPage, /이 프로젝트의 검증\/보존 규칙/);
+  assert.match(projectPage, /\[\[.*\|.*\]\]/);
+  assert.doesNotMatch(projectPage, /Created a shared section-kicker style/);
+
+  const home = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
+  assert.match(home, /최근 활성 메모리/);
+  assert.match(home, /사용자는 같은 역할의 요소|이 프로젝트에서는/);
+  assert.doesNotMatch(home, /Created a shared section-kicker style/);
+});
+
+test('structured extraction generalizes beyond the kicker fixture without fixture-specific branches', async () => {
+  const root = await makeWorkspace();
+  process.env.VIBEBOX_LOCALE = 'ko-KR';
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'travel-ops-native' }, null, 2), 'utf8');
+  await initVibeBox(root);
+
+  assert.doesNotMatch(NON_KICKER_GENERALIZATION_FIXTURE, /kicker|Vision|THE VISION|BOKSAJANG|section label|섹션|키커|라벨|시안|민트/iu);
+
+  const result = await afterTask(root, {
+    userRequest: NON_KICKER_GENERALIZATION_FIXTURE,
+    aiActionSummary: 'Implemented shared navigation alignment and verified mode switching.',
+    commandResults: ['Validation passed.'],
+    technicalOutcome: 'success',
+    userAcceptance: 'unknown'
+  });
+
+  assert.ok(result.candidates.some((candidate) => candidate.memoryRole === 'user_success_criteria' && candidate.modelClass === 'project_model' && candidate.sourceProjectId === 'travel-ops-native'));
+  assert.ok(result.candidates.some((candidate) => candidate.memoryRole === 'user_success_criteria' && candidate.modelClass === 'user_model'));
+  assert.ok(result.candidates.some((candidate) => candidate.type === 'validation_pattern'));
+  assert.ok(result.candidates.some((candidate) => candidate.type === 'prevention_rule' && candidate.memoryRole === 'ai_failure_memory'));
+  assert.ok(result.candidates.some((candidate) => candidate.relatedCategories?.length > 1));
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.ok(memoryIndex.memories.some((memory) => memory.memoryRole === 'user_success_criteria' && /Settings|iOS \/ Android|내비게이션|전환/u.test(memory.summary)));
+  assert.ok(memoryIndex.memories.some((memory) => memory.memoryRole === 'user_success_criteria' && memory.relatedCategories?.includes('user_patterns')));
+  assert.ok(memoryIndex.memories.some((memory) => memory.memoryRole === 'ai_failure_memory' && memory.relatedCategories?.includes('agent_failure_patterns')));
+
+  const projectPage = await readFile(storePath(root, 'wiki', 'projects', 'travel-ops-native.md'), 'utf8');
+  assert.match(projectPage, /이 프로젝트에서 관찰된 사용자 성공 기준/);
+  assert.match(projectPage, /이 프로젝트에서 발생한 AI 실패/);
+  assert.match(projectPage, /\[\[.*\|.*\]\]/);
+
+  const source = await readFile(path.resolve('src/core.mjs'), 'utf8');
+  assert.doesNotMatch(source, /THE VISION|BOKSAJANG|LATEST TOOL|section-kicker|키커/iu);
+});
+
+test('Flovix language policy instruction creates event, active memory, multi-category wiki links, and project samples', async () => {
+  const root = await makeWorkspace();
+  delete process.env.VIBEBOX_LOCALE;
+  process.env.VIBEBOX_LANGUAGE = 'ko-KR';
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'flovix' }, null, 2), 'utf8');
+  await initVibeBox(root);
+  delete process.env.VIBEBOX_LANGUAGE;
+
+  assert.doesNotMatch(FLOVIX_LANGUAGE_POLICY_FIXTURE, /kicker|Vision|THE VISION|BOKSAJANG|section label/iu);
+
+  const result = await afterTask(root, {
+    userRequest: FLOVIX_LANGUAGE_POLICY_FIXTURE,
+    aiActionSummary: 'Implemented generated content language metadata, DESIGN.md export choices, and source notes preservation.',
+    commandResults: ['npm.cmd --prefix apps/workbench run build passed.', 'git diff --check passed.'],
+    technicalOutcome: 'success',
+    userAcceptance: 'unknown'
+  });
+
+  assert.equal(result.event.projectId, 'flovix');
+  assert.equal(result.event.userRequest, FLOVIX_LANGUAGE_POLICY_FIXTURE);
+  assert.ok(result.candidates.some((candidate) => candidate.memoryRole === 'user_success_criteria' && candidate.sourceProjectId === 'flovix'));
+  assert.ok(result.candidates.some((candidate) => candidate.memoryRole === 'user_success_criteria' && candidate.modelClass === 'project_model'));
+  assert.ok(result.candidates.some((candidate) => candidate.type === 'validation_pattern'));
+  assert.ok(result.candidates.some((candidate) => candidate.type === 'prevention_rule' && candidate.memoryRole === 'ai_failure_memory'));
+
+  const events = await readJsonl(storePath(root, 'logs', 'events.jsonl'));
+  assert.match(events.at(-1).userRequest, /Generated Content Language Policy \+ DESIGN Export Finalization 0\.1/);
+
+  const config = await loadJson(storePath(root, 'config.json'));
+  assertConfigLanguageTags(config, 'ko-KR');
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  const activeSuccessCriteria = memoryIndex.memories.filter((memory) => memory.memoryRole === 'user_success_criteria' && memory.sourceProjectId === 'flovix');
+  assert.ok(activeSuccessCriteria.some((memory) => /Flovix|DESIGN\.md|userLanguage|language metadata/u.test(memory.summary)));
+  assert.ok(activeSuccessCriteria.some((memory) => memory.relatedCategories?.length > 1));
+  const primaryCategories = new Set(activeSuccessCriteria.map((memory) => memory.primaryCategory));
+  assert.ok(primaryCategories.size > 1);
+  assert.notEqual(activeSuccessCriteria.every((memory) => memory.primaryCategory === 'success_patterns'), true);
+  assert.ok(activeSuccessCriteria.some((memory) => ['design_philosophy', 'process_patterns', 'validation_patterns'].includes(memory.primaryCategory)));
+
+  const registry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+  assert.equal(registry.languageTag, 'ko-KR');
+  const noteFiles = await listMemoryNoteFiles(root);
+  const noteById = new Map();
+  for (const file of noteFiles) {
+    const text = await readFile(file, 'utf8');
+    const id = text.match(/^id:\s*"?([^"\n]+)"?\s*$/mu)?.[1];
+    if (id) noteById.set(id, { file, text, target: wikiRelative(root, file).replace(/\.md$/u, '') });
+  }
+  const sampleMemory = activeSuccessCriteria.find((memory) => noteById.has(memory.id) && memory.relatedCategories?.length > 1);
+  assert.ok(sampleMemory);
+  const sampleNote = noteById.get(sampleMemory.id);
+  assert.ok(sampleNote.target.includes('/'));
+  assert.doesNotMatch(path.basename(sampleNote.file), /mem_/iu);
+  assert.ok(path.basename(sampleNote.file).length <= 64);
+  assert.doesNotMatch(sampleNote.target, /이 프로젝트에서는 Project Flovix 기준/u);
+  assert.match(sampleNote.target, /AI 생성 설명문은 사용자 언어를 따른다|DESIGN export 전 source notes 확인/u);
+
+  const primaryPage = await readFile(storePath(root, 'wiki', registry.docs.find((doc) => doc.docKey === sampleMemory.primaryCategory).fileName), 'utf8');
+  assert.match(primaryPage, new RegExp(`\\[\\[${sampleNote.target.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`));
+  const relatedPage = await readFile(storePath(root, 'wiki', registry.docs.find((doc) => doc.docKey === sampleMemory.relatedCategories[0]).fileName), 'utf8');
+  assert.match(relatedPage, new RegExp(`\\[\\[${sampleNote.target.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`));
+
+  const projectPage = await readFile(storePath(root, 'wiki', 'projects', 'flovix.md'), 'utf8');
+  assert.match(projectPage, /\uC0AC\uC6A9\uC790 \uC131\uACF5 \uAE30\uC900/);
+  assert.match(projectPage, new RegExp(`\\[\\[${sampleNote.target.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`));
+  assert.match(sampleNote.text, /\[\[projects\/flovix\|flovix\]\]/);
+  const keywordIndex = await loadJson(storePath(root, 'index', 'keyword-index.json'));
+  assert.ok((keywordIndex.projects.flovix || []).includes(sampleMemory.id));
+  const projectIndex = await loadJson(storePath(root, 'index', 'project-index.json'));
+  const flovixProject = projectIndex.projects.find((project) => project.projectId === 'flovix');
+  assert.ok(flovixProject.memoryCount >= activeSuccessCriteria.length);
+  await assertWikiLinksResolve(root);
+});
+
+test('multi-category graph links one canonical note from every related category and source project', async () => {
+  const root = await makeWorkspace();
+  process.env.VIBEBOX_LOCALE = 'ko-KR';
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'boksajang' }, null, 2), 'utf8');
+  await initVibeBox(root);
+
+  await afterTask(root, {
+    userRequest: KICKER_INSTRUCTION_FIXTURE,
+    aiActionSummary: 'Implemented the requested alignment and verified language switching.',
+    commandResults: ['Validation passed.'],
+    technicalOutcome: 'success',
+    userAcceptance: 'unknown'
+  });
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  const consistencyMemory = memoryIndex.memories.find((memory) => (
+    memory.primaryCategory === 'user_patterns'
+    && memory.relatedCategories?.includes('user_preferences')
+    && memory.relatedCategories?.includes('design_philosophy')
+    && memory.relatedCategories?.includes('success_patterns')
+    && memory.relatedCategories?.includes('decision_patterns')
+    && memory.relatedCategories?.includes('process_patterns')
+  ));
+  assert.ok(consistencyMemory);
+  assert.equal(consistencyMemory.projectId || null, null);
+  assert.equal(consistencyMemory.sourceProjectId, 'boksajang');
+
+  const registry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+  const folderFor = (docKey) => path.basename(registry.docs.find((doc) => doc.docKey === docKey).fileName, '.md');
+  const noteFiles = await listMemoryNoteFiles(root);
+  const matchingNotes = [];
+  for (const file of noteFiles) {
+    const text = await readFile(file, 'utf8');
+    if (new RegExp(`^id:\\s*"?${consistencyMemory.id}"?\\s*$`, 'mu').test(text)) {
+      matchingNotes.push({ file, text, target: wikiRelative(root, file).replace(/\.md$/u, '') });
+    }
+  }
+  assert.equal(matchingNotes.length, 1);
+  const [note] = matchingNotes;
+  assert.ok(wikiRelative(root, note.file).startsWith(`${folderFor('user_patterns')}/`));
+  assert.doesNotMatch(path.basename(note.file), /mem_/iu);
+  assert.match(note.text, /relatedCategories:/);
+  assert.match(note.text, /\[\[projects\/boksajang\|boksajang\]\]/);
+
+  for (const docKey of ['user_patterns', ...consistencyMemory.relatedCategories]) {
+    const pageName = registry.docs.find((doc) => doc.docKey === docKey).fileName;
+    const page = await readFile(storePath(root, 'wiki', pageName), 'utf8');
+    assert.match(page, new RegExp(`\\[\\[${note.target.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`), `${docKey} should link the canonical note`);
+  }
+
+  const projectPage = await readFile(storePath(root, 'wiki', 'projects', 'boksajang.md'), 'utf8');
+  assert.match(projectPage, new RegExp(`\\[\\[${note.target.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`));
+
+  const relationIndex = await loadJson(storePath(root, 'index', 'relation-index.json'));
+  assert.ok(relationIndex.relations.some((relation) => relation.type === 'category_has_memory' && relation.to === consistencyMemory.id));
+  assert.ok(relationIndex.relations.some((relation) => relation.type === 'project_observed_memory' && relation.to === consistencyMemory.id && relation.projectId === 'boksajang'));
+
+  process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
+  await convertLanguage(root, { from: 'ko-KR', to: 'en-US' });
+  await rebuildVibeBox(root);
+  delete process.env.VIBEBOX_AGENT_RUNTIME;
+  const enRegistry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+  const enUserPatterns = await readFile(storePath(root, 'wiki', enRegistry.docs.find((doc) => doc.docKey === 'user_patterns').fileName), 'utf8');
+  assert.match(enUserPatterns, /\[\[User Patterns\//);
+  const enProjectPage = await readFile(storePath(root, 'wiki', 'projects', 'boksajang.md'), 'utf8');
+  assert.match(enProjectPage, /\[\[User Patterns\//);
+  await assertWikiLinksResolve(root);
 });
 
 test('category-based memory notes hide ids and link categories, source projects, and recent memory', async () => {
@@ -2399,16 +2764,20 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
   const rawBefore = await readFile(storePath(root, 'logs', 'events.jsonl'), 'utf8');
 
   delete process.env.VIBEBOX_AGENT_RUNTIME;
-  await assert.rejects(() => convertLanguage(root, { from: 'en', to: 'ko' }), /requires an AI agent runtime/);
+  await assert.rejects(() => convertLanguage(root, { from: 'en-US', to: 'ko-KR' }), /requires an AI agent runtime/);
   assert.equal(await readFile(storePath(root, 'config.json'), 'utf8'), configBefore);
   await assert.rejects(() => rebuildVibeBox(root), /requires an AI agent runtime/);
 
   process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
-  await convertLanguage(root, { from: 'en', to: 'ko' });
+  await convertLanguage(root, { from: 'en-US', to: 'ko-KR' });
   delete process.env.VIBEBOX_AGENT_RUNTIME;
 
   assert.equal(await readFile(storePath(root, 'logs', 'events.jsonl'), 'utf8'), rawBefore);
+  const configKo = await loadJson(storePath(root, 'config.json'));
+  assertConfigLanguageTags(configKo, 'ko-KR');
   const registry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+  assert.equal(registry.languageTag, 'ko-KR');
+  assertBcp47Tag(registry.locale, 'wiki registry locale');
   const processDoc = registry.docs.find((doc) => doc.docKey === 'process_patterns');
   await readFile(storePath(root, 'wiki', processDoc.fileName), 'utf8');
   await assert.rejects(() => readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8'), /ENOENT/);
@@ -2421,9 +2790,12 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
   await assertWikiLinksResolve(root);
 
   process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
-  await convertLanguage(root, { from: 'ko', to: 'en' });
+  await convertLanguage(root, { from: 'ko-KR', to: 'en-US' });
   delete process.env.VIBEBOX_AGENT_RUNTIME;
+  const configEn = await loadJson(storePath(root, 'config.json'));
+  assertConfigLanguageTags(configEn, 'en-US');
   const enRegistry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+  assert.equal(enRegistry.languageTag, 'en-US');
   const enProcessDoc = enRegistry.docs.find((doc) => doc.docKey === 'process_patterns');
   assert.equal(enProcessDoc.fileName, 'Process Patterns.md');
   await readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8');
@@ -2435,8 +2807,10 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
   await assertWikiLinksResolve(root);
 
   process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
-  await convertLanguage(root, { from: 'en', to: 'ko' });
+  await convertLanguage(root, { from: 'en-US', to: 'ko-KR' });
   delete process.env.VIBEBOX_AGENT_RUNTIME;
+  const configKoAgain = await loadJson(storePath(root, 'config.json'));
+  assertConfigLanguageTags(configKoAgain, 'ko-KR');
   const koAgainRegistry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
   const koAgainProcessDoc = koAgainRegistry.docs.find((doc) => doc.docKey === 'process_patterns');
   assert.notEqual(koAgainProcessDoc.fileName, 'Process Patterns.md');
@@ -2453,7 +2827,10 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
   await rebuildVibeBox(root);
   delete process.env.VIBEBOX_AGENT_RUNTIME;
   delete process.env.VIBEBOX_LOCALE;
+  const rebuiltConfig = await loadJson(storePath(root, 'config.json'));
+  assertConfigLanguageTags(rebuiltConfig, 'ko-KR');
   const rebuiltRegistry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+  assert.equal(rebuiltRegistry.languageTag, 'ko-KR');
   const rebuiltProcessDoc = rebuiltRegistry.docs.find((doc) => doc.docKey === 'process_patterns');
   await readFile(storePath(root, 'wiki', rebuiltProcessDoc.fileName), 'utf8');
   await assert.rejects(() => readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8'), /ENOENT/);
@@ -2532,11 +2909,111 @@ test('adaptive language policy preserves Japanese, Chinese, Arabic, and mixed me
   assert.match(context, /그대로/);
 
   const config = await loadJson(storePath(root, 'config.json'));
-  assert.equal(config.outputLanguage, 'ja');
+  assertConfigLanguageTags(config, 'ja-JP');
 
   const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
   assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'summary'), true);
   assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'userAcceptance'), true);
+});
+
+test('BCP 47 strict language settings reject aliases before writing config', async () => {
+  const bin = path.resolve('bin/vibebox.mjs');
+  for (const tag of SUPPORTED_TEST_LANGUAGE_TAGS) {
+    const root = await makeWorkspace();
+    const result = spawnSync(process.execPath, [bin, 'init', '--language', tag], {
+      cwd: root,
+      encoding: 'utf8'
+    });
+    assert.equal(result.status, 0, tag);
+    assertConfigLanguageTags(await loadJson(storePath(root, 'config.json')), tag);
+  }
+
+  for (const tag of ['ko', 'en', 'ja', 'zh', 'cn', 'tw', 'jp', 'kor', 'eng', 'jpn', 'korean', 'english']) {
+    const root = await makeWorkspace();
+    const result = spawnSync(process.execPath, [bin, 'init', '--language', tag], {
+      cwd: root,
+      encoding: 'utf8'
+    });
+    assert.notEqual(result.status, 0, tag);
+    assert.match(result.stderr, /supported BCP 47 tags/i);
+    await assert.rejects(() => readFile(storePath(root, 'config.json'), 'utf8'), /ENOENT/);
+  }
+});
+
+test('convert-lang accepts only supported BCP 47 tags and leaves files unchanged on invalid input', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+  const configBefore = await readFile(storePath(root, 'config.json'), 'utf8');
+  const wikiBefore = Object.fromEntries(await Promise.all((await listMarkdownFiles(storePath(root, 'wiki'))).map(async (file) => [
+    wikiRelative(root, file),
+    await readFile(file, 'utf8')
+  ])));
+
+  process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
+  for (const pair of [
+    ['ko', 'en'],
+    ['en', 'ko'],
+    ['ar', 'ja'],
+    ['zh', 'cn']
+  ]) {
+    await assert.rejects(() => convertLanguage(root, { from: pair[0], to: pair[1] }), /supported BCP 47 tags/i);
+    assert.equal(await readFile(storePath(root, 'config.json'), 'utf8'), configBefore);
+    const wikiAfter = Object.fromEntries(await Promise.all((await listMarkdownFiles(storePath(root, 'wiki'))).map(async (file) => [
+      wikiRelative(root, file),
+      await readFile(file, 'utf8')
+    ])));
+    assert.deepEqual(wikiAfter, wikiBefore);
+  }
+
+  let current = 'en-US';
+  for (const target of ['ko-KR', 'en-US', 'ja-JP', 'zh-CN', 'zh-TW', 'ar']) {
+    await convertLanguage(root, { from: current, to: target });
+    assertConfigLanguageTags(await loadJson(storePath(root, 'config.json')), target);
+    const registry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+    assert.equal(registry.languageTag, target);
+    current = target;
+  }
+  delete process.env.VIBEBOX_AGENT_RUNTIME;
+});
+
+test('BCP 47 language tags drive distinct Obsidian Wiki display packs through rebuild', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+  await extractMemoryCandidates(root, {
+    text: 'Before coding, create a concise plan. Final report should include changed files and validation result.'
+  });
+
+  const expectations = {
+    'ko-KR': { doc: '사용자 패턴.md', home: /최근 활성 메모리/u },
+    'en-US': { doc: 'User Patterns.md', home: /Recent Active Memory/u },
+    'ja-JP': { doc: 'ユーザーパターン.md', home: /最近の有効メモリー/u },
+    'zh-CN': { doc: '用户模式.md', home: /最近活跃记忆/u },
+    'zh-TW': { doc: '使用者模式.md', home: /最近活躍記憶/u },
+    ar: { doc: 'أنماط المستخدم.md', home: /الذاكرة النشطة الأخيرة/u }
+  };
+
+  let current = 'en-US';
+  process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
+  for (const [target, expected] of Object.entries(expectations)) {
+    await convertLanguage(root, { from: current, to: target });
+    await rebuildVibeBox(root);
+    const config = await loadJson(storePath(root, 'config.json'));
+    assertConfigLanguageTags(config, target);
+    const registry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+    assert.equal(registry.languageTag, target);
+    assert.equal(registry.docs.find((doc) => doc.docKey === 'user_patterns').fileName, expected.doc);
+    const home = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
+    assert.match(home, expected.home);
+    const userPatternsPage = await readFile(storePath(root, 'wiki', expected.doc), 'utf8');
+    if (target !== 'en-US') {
+      assert.doesNotMatch(home, /Global local-first memory store|JSON indexes live|Raw blackbox events live|Pending memory candidates live/u);
+      assert.doesNotMatch(home, /^## Wiki$/mu);
+      assert.doesNotMatch(userPatternsPage, /^Back to /mu);
+    }
+    if (target !== 'ko-KR') assert.doesNotMatch(home, /최근 활성 메모리|사용자 패턴/u);
+    current = target;
+  }
+  delete process.env.VIBEBOX_AGENT_RUNTIME;
 });
 
 test('ko-KR locale applies to report, blackbox, doctor headings and empty states', async () => {
@@ -2704,8 +3181,7 @@ test('CLI --language overrides environment locale for new store configuration', 
 
   assert.equal(result.status, 0);
   const config = await loadJson(storePath(root, 'config.json'));
-  assert.equal(config.locale, 'ja-JP');
-  assert.equal(config.outputLanguage, 'ja');
+  assertConfigLanguageTags(config, 'ja-JP');
 });
 
 test('CLI exposes init, capture, extract, review, approve, context, pretask, aftertask, report, blackbox, doctor, backup, restore, convert-lang, and rebuild commands', async () => {
@@ -2762,13 +3238,13 @@ test('CLI exposes init, capture, extract, review, approve, context, pretask, aft
   assert.equal(backup.status, 0);
   assert.match(backup.stdout, /backup created/i);
 
-  const blockedConvert = run(['convert-lang', 'en', 'ko']);
+  const blockedConvert = run(['convert-lang', 'en-US', 'ko-KR']);
   assert.notEqual(blockedConvert.status, 0);
   assert.match(blockedConvert.stderr, /requires an AI agent runtime/);
 
-  const convert = run(['convert-lang', 'en', 'ko'], { VIBEBOX_AGENT_RUNTIME: 'cli-test' });
+  const convert = run(['convert-lang', 'en-US', 'ko-KR'], { VIBEBOX_AGENT_RUNTIME: 'cli-test' });
   assert.equal(convert.status, 0);
-  assert.match(convert.stdout, /converted to ko/);
+  assert.match(convert.stdout, /converted to ko-KR/);
 
   const blockedRebuild = run(['rebuild']);
   assert.notEqual(blockedRebuild.status, 0);

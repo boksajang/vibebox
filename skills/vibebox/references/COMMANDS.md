@@ -34,7 +34,7 @@ VIBEBOX_LANGUAGE=ko vibebox init
 vibebox init --language ko
 ```
 
-`VIBEBOX_LOCALE` is only an environment hint. Human-facing active memory, wiki managed text, Context Packs, reports, and blackbox summaries follow the configured `memoryLanguage`. Raw logs preserve diagnostic source text. JSON field names, command names, relation types, and enum values stay English.
+`VIBEBOX_LOCALE` is only an environment hint. Obsidian wiki managed text follows the configured strict BCP 47 `memoryLanguage`; active JSON memory stays canonical. Raw logs preserve diagnostic source text. JSON field names, command names, relation types, and enum values stay English.
 
 ## `vibebox init`
 
@@ -144,8 +144,8 @@ vibebox init --language ko
 ## `vibebox convert-lang`
 
 - Purpose: Convert the Obsidian wiki display layer to another configured memory language.
-- Typical usage: `vibebox convert-lang ko en`
-- Alias: `vibebox language convert ko en`
+- Typical usage: `vibebox convert-lang ko-KR en-US`
+- Alias: `vibebox language convert ko-KR en-US`
 - Notes: Requires an AI agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`. Without it, the command exits before changing files. Markdown filenames, category folders, headings, aliases, links, Recent Active Memory, memory notes, and `registry/wiki-docs.json` are regenerated for the target language. Raw logs and internal JSON field names, enum values, relation types, and command names stay English/canonical.
 
 ## `vibebox rebuild`

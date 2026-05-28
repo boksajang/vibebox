@@ -154,7 +154,7 @@ Usage:
 
 Global store:
   Defaults to ~/.vibebox and can be overridden with VIBEBOX_HOME or --store <path>.
-  Active memory uses the configured memoryLanguage. VIBEBOX_LANGUAGE/--language can seed a new store; VIBEBOX_LOCALE/--locale is an environment hint and does not rewrite an existing store.
+  Obsidian Wiki display uses the configured BCP 47 memoryLanguage. VIBEBOX_LANGUAGE/--language can seed a new store; VIBEBOX_LOCALE/--locale is an environment hint and does not rewrite an existing store.
   Semantic operations convert-lang and rebuild require VIBEBOX_AGENT_RUNTIME from an adapter.
 `;
 }
@@ -322,7 +322,7 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
     case 'convert-lang': {
       const from = args[0] || flags.from || '';
       const to = args[1] || flags.to || flags.language || flags.target || '';
-      if (!to) throw new Error('convert-lang requires source and target language, for example: vibebox convert-lang ko en');
+      if (!to) throw new Error('convert-lang requires source and target BCP 47 language tags, for example: vibebox convert-lang ko-KR en-US');
       const result = await convertLanguage(root, { from, to });
       return `VibeBox language converted to ${result.language} (${result.locale}). Raw logs were not changed.`;
     }
@@ -332,7 +332,7 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
         throw new Error(`Unknown language command: ${args[0] || ''}\n\n${help()}`);
       }
       const to = args[2] || flags.to || flags.language || flags.target || '';
-      if (!to) throw new Error('language convert requires source and target language, for example: vibebox language convert ko en');
+      if (!to) throw new Error('language convert requires source and target BCP 47 language tags, for example: vibebox language convert ko-KR en-US');
       const result = await convertLanguage(root, {
         from: args[1] || flags.from || '',
         to

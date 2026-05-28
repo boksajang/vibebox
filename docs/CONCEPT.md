@@ -61,9 +61,11 @@ The current VibeBox implementation is a Node.js CLI with:
 - Auto Curator promotion, replacement, discard, and quarantine decisions
 - User Model, Domain Model, Project Model, Task Context, and Discarded Detail classification
 - userRequest/userFeedback-first extraction with `aiActionSummary` as auxiliary evidence
+- structured userRequest decomposition into project criteria, user/domain patterns, validation and preservation rules, AI failure-prevention rules, and task context
 - manual `review`, `approve`, and `reject` commands for debug and override
 - user pattern memory for validation style, process habits, design philosophy, response preference, correction patterns, and agent failure/success patterns
 - localized Obsidian doc registry with stable internal `docKey` and configured-language filenames
+- category graph expansion with one canonical memory note linked from all related category pages and the source project page
 - backup, restore, convert-lang, and rebuild commands
 - common agent skill documentation
 - Codex, Claude-compatible, and common adapter guides
@@ -87,6 +89,8 @@ Discarded, quarantined, rejected, and legacy pending memory is excluded from nor
 Technical success and user acceptance are separate signals. User acceptance is not memory approval. A command can pass while the user rejects the result; that rejection means the AI missed the user's success criteria. Rejected outcomes must become AI failure memory, correction guidance, or updated success criteria, not user failure and not `success_pattern`. A validated reusable approach with no rejection signal may become inferred AI successful approach, but it must not be written as if the user confirmed it.
 
 User instructions can create success criteria before a result exists. User corrections can refine or replace older criteria in the same scope. Command, permission, environment, browser, API, plugin, and tool failures can become AI failure memory even when there is no new user preference to extract.
+
+For structured requests, VibeBox treats headings, bullet lists, reference baselines, consistency requirements, scope limits, preservation requirements, and validation conditions as meaning units. The user's requested success conditions are extracted before AI action summaries, so a successful implementation summary cannot crowd out the criteria it was supposed to satisfy.
 
 ## User Model Layers
 

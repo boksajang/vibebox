@@ -123,7 +123,7 @@ The wiki uses stable internal `docKey` values with localized visible filenames. 
 Changing system locale does not rename memory. Language conversion is explicit and agent-required:
 
 ```bash
-VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko en
+VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko-KR en-US
 ```
 
 ## Install And Run
@@ -165,7 +165,7 @@ vibebox report
 vibebox blackbox
 vibebox backup --output ./vibebox-backup
 vibebox restore --from ./vibebox-backup --confirm-replace
-VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko en
+VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko-KR en-US
 VIBEBOX_AGENT_RUNTIME=adapter vibebox rebuild
 ```
 

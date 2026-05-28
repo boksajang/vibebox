@@ -216,8 +216,8 @@ Restore never merges. If a store already exists, VibeBox prints a destructive re
 Semantic operations require an AI agent runtime marker:
 
 ```bash
-VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko en
-VIBEBOX_AGENT_RUNTIME=adapter vibebox language convert ko en
+VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko-KR en-US
+VIBEBOX_AGENT_RUNTIME=adapter vibebox language convert ko-KR en-US
 VIBEBOX_AGENT_RUNTIME=adapter vibebox rebuild
 ```
 

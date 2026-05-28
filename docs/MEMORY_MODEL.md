@@ -50,6 +50,8 @@ Every candidate and active memory can include:
 - `docKey`: stable internal wiki identity used for localized Obsidian filenames and links
 - `memoryRole`: `user_success_criteria`, `ai_failure_memory`, `ai_successful_approach`, `task_context`, or `discarded_detail`
 - `successCriterion`: normalized user-facing criteria when the record represents what the user wants
+- `primaryCategory`: the single category folder where the canonical Obsidian memory note is written
+- `relatedCategories`: additional category pages that must link to the same canonical note
 
 User Model includes preference, visual preference, response preference, process preference, validation preference, reporting preference, design philosophy, reference handling, scope control, and rejection criteria.
 
@@ -60,6 +62,8 @@ Project Model includes project identity, project decisions, constraints, preserv
 Task Context and Discarded Detail do not become normal active guidance. Current allowed files, current copy, task-only reference material, one-off labels, raw instruction text, low-value action summaries, and test fixture details should be discarded or kept out of active retrieval.
 
 User instructions and corrections can become active success criteria before any result exists. User dissatisfaction does not mean the user failed; it means the AI result missed the user's criteria and should become AI failure memory, correction guidance, or a more precise active success criteria.
+
+Structured user requests are decomposed before ordinary sentence-level extraction. Headings, bullets, reference/baseline statements, consistency requirements, validation or preservation requirements, scope limits, and target lists are interpreted as meaning units. Durable meaning units can become project, user, domain, validation, prevention, or task-context candidates from the same pipeline; task-only details are still discarded by the Auto Curator.
 
 AI Failure Memory includes `preference_mismatch`, `instruction_misread`, `overgeneralization_failure`, `example_overfit_failure`, `technical_failure`, `environment_failure`, `permission_failure`, and `tool_failure`. AI Successful Approach records reusable implementation, validation, command, recovery, or workaround methods that helped satisfy the user's criteria.
 
@@ -193,7 +197,7 @@ User success criteria do not require `technicalOutcome=success` or memory approv
 
 ## Relation Index
 
-`index/relation-index.json` stores active graph edges with stable English relation types such as `project_has_failure`, `failure_prevented_by_rule`, `success_resolves_failure`, `user_prefers_validation`, `agent_failed_by_pattern`, `memory_replaces_memory`, `memory_refines_memory`, and `memory_exception_to_memory`.
+`index/relation-index.json` stores active graph edges with stable English relation types such as `project_has_failure`, `project_observed_memory`, `category_has_memory`, `memory_in_category`, `failure_prevented_by_rule`, `success_resolves_failure`, `user_prefers_validation`, `agent_failed_by_pattern`, `memory_replaces_memory`, `memory_refines_memory`, and `memory_exception_to_memory`.
 
 Each relation has `id`, `type`, `from`, `to`, `projectId`, `strength`, `evidence`, `createdAt`, and `active`. Relations that point to discarded replacement targets are marked inactive and are not treated as active guidance.
 
