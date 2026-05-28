@@ -116,9 +116,9 @@ Open the wiki in Obsidian:
 VibeBox keeps two layers separate:
 
 - **Canonical memory**: JSON field names, enum values, relation types, memory roles, command names, file paths, and raw logs stay stable and mostly English/canonical.
-- **Wiki display**: Obsidian filenames, headings, section labels, Recent Active Memory, memory notes, aliases, and managed links follow the configured `memoryLanguage`.
+- **Wiki display**: Obsidian filenames, category folders, headings, section labels, Recent Active Memory, memory notes, aliases, and managed links follow the configured `memoryLanguage`.
 
-The wiki uses stable internal `docKey` values with localized visible filenames. In a Korean store, user-facing wiki pages use Korean names such as `사용자 성향.md`, `처리 방식.md`, `AI 실패 패턴.md`, and `AI 성공 패턴.md`. Important active memories also get graph-visible notes under `wiki/memories/`, so the graph expands beyond category hub pages.
+The wiki uses stable internal `docKey` values with localized visible filenames. In a Korean store, user-facing wiki pages use Korean names such as `사용자 성향.md`, `처리 방식.md`, `AI 실패 패턴.md`, and `AI 성공 패턴.md`. Important active memories get graph-visible notes under the matching category folder, such as `처리 방식/구현 전 간결한 계획 수립.md` or `AI 성공 패턴/npm.cmd test로 검증 성공.md`. The memory id stays in frontmatter, not in the visible filename or title.
 
 Changing system locale does not rename memory. Language conversion is explicit and agent-required:
 
@@ -182,7 +182,7 @@ vibebox reject <candidate-id>
 
 `backup` and `restore` are normal CLI commands. Restore is destructive replace, not merge, and requires explicit confirmation.
 
-`convert-lang` and semantic `rebuild` require an agent runtime marker because they rewrite the Obsidian display layer: Markdown filenames, headings, aliases, links, category pages, project pages, memory notes, and the wiki-doc registry. They do not rewrite raw logs or internal JSON field names/enums. Without `VIBEBOX_AGENT_RUNTIME`, they exit before changing files.
+`convert-lang` and semantic `rebuild` require an agent runtime marker because they rewrite the Obsidian display layer: Markdown filenames, category folders, headings, aliases, links, category pages, project pages, memory notes, and the wiki-doc registry. They do not rewrite raw logs or internal JSON field names/enums. Without `VIBEBOX_AGENT_RUNTIME`, they exit before changing files.
 
 ## Agent Support
 

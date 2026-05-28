@@ -182,7 +182,7 @@ Project identity is derived from the current AI working directory. Git remote `o
 
 ## Adaptive Language Rule
 
-Internal memory stays canonical for agents: JSON field names, enum values, relation types, command names, file paths, errors, and raw logs remain stable. The Obsidian wiki is the user display layer: filenames, headings, aliases, links, Recent Active Memory, category pages, project pages, and memory-level notes follow the configured memory language. Adapters must not call external translation APIs.
+Internal memory stays canonical for agents: JSON field names, enum values, relation types, command names, file paths, errors, and raw logs remain stable. The Obsidian wiki is the user display layer: filenames, category folders, headings, aliases, links, Recent Active Memory, category pages, project pages, and category-based memory notes follow the configured memory language. Visible note names are meaning-based; `mem_...` ids stay in frontmatter. Adapters must not call external translation APIs.
 
 Language conversion and semantic rebuild are explicit agent-runtime operations:
 

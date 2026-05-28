@@ -112,7 +112,7 @@ VibeBox Core is designed for local command workflows. It is not tied to Codex, C
 
 ## Adaptive Language
 
-Internal memory stays canonical enough for agents to process reliably: JSON field names, enum values, relation types, command names, file paths, and raw technical literals stay stable. Obsidian is the user display layer: filenames, headings, aliases, links, Recent Active Memory, category pages, project pages, and memory-level notes follow the configured memory language so English and Korean pages are not duplicated in one store. Raw logs can preserve source text. VibeBox does not call external translation APIs; display-layer conversion requires an AI agent runtime marker.
+Internal memory stays canonical enough for agents to process reliably: JSON field names, enum values, relation types, command names, file paths, and raw technical literals stay stable. Obsidian is the user display layer: filenames, category folders, headings, aliases, links, Recent Active Memory, category pages, project pages, and category-based memory notes follow the configured memory language so English and Korean pages are not duplicated in one store. Visible note names are meaning-based; `mem_...` ids stay in frontmatter. Raw logs can preserve source text. VibeBox does not call external translation APIs; display-layer conversion requires an AI agent runtime marker.
 
 ## Maintenance Commands
 

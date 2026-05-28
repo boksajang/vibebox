@@ -19,7 +19,7 @@ The wiki is an inspection layer. Retrieval uses JSON indexes under `index/`; raw
 VibeBox keeps internal memory and Obsidian display separate:
 
 - Canonical memory: `memoryRole`, `type`, `modelClass`, relation types, enum values, command names, file paths, errors, raw logs, and technical literals stay stable and mostly English/canonical.
-- Wiki display: Markdown filenames, headings, section names, Recent Active Memory, memory summaries, aliases, and links follow the configured `memoryLanguage`.
+- Wiki display: Markdown filenames, category folders, headings, section names, Recent Active Memory, memory summaries, aliases, and links follow the configured `memoryLanguage`.
 
 For example, an internal failure summary can contain `Command failed: npm test exited with code 1`, while a Korean wiki renders it as `명령 실행 실패: npm test가 code 1로 종료됨.` Command literals such as `npm test`, `npm.cmd test`, package names, paths, and error codes may remain as-is inside localized sentences.
 
@@ -63,7 +63,10 @@ Failure Memory.md / 실패 메모리.md
 Success Patterns.md / 성공 패턴.md
 Project Index.md / 프로젝트 인덱스.md
 projects/{projectId}.md
-memories/{localized-role}-{memoryId}.md
+Process Patterns/Create a concise plan before implementation.md
+처리 방식/구현 전 간결한 계획 수립.md
+Agent Failure Patterns/npm test shim failure.md
+AI 실패 패턴/npm test shim 실패.md
 ```
 
 The mapping lives in `registry/wiki-docs.json`:
@@ -75,9 +78,35 @@ The mapping lives in `registry/wiki-docs.json`:
 
 System locale changes do not rename files. Language conversion happens only when the user explicitly runs `convert-lang` with an agent runtime marker.
 
-## Memory-Level Graph Notes
+## Category-Based Memory Notes
 
-Category pages are not the whole graph. Important active memories also get graph-visible notes under `wiki/memories/`.
+Category pages are not the whole graph. Important active memories get graph-visible notes under their localized category folder. VibeBox does not put all notes into a single `wiki/memories/` folder.
+
+Examples:
+
+```text
+처리 방식/구현 전 간결한 계획 수립.md
+사용자 성향/최종 보고에 변경 파일과 검증 결과 포함.md
+AI 실패 패턴/npm test shim 실패.md
+AI 성공 패턴/npm.cmd test로 검증 성공.md
+예방 규칙/실패한 validation command 반복 금지.md
+```
+
+Visible filenames and headings are meaning-based. `mem_...` ids are stored only in frontmatter metadata:
+
+```markdown
+---
+title: "구현 전 간결한 계획 수립"
+id: "mem_c582e98bb3b4176a"
+memoryRole: "user_success_criteria"
+type: "process_pattern"
+scope: "global"
+sourceProjectId: "boksajang"
+vibebox: true
+obsidianCompatible: true
+memoryNote: true
+---
+```
 
 Node-level notes are generated for durable guidance such as:
 
@@ -91,6 +120,8 @@ Node-level notes are generated for durable guidance such as:
 - recovery approaches
 
 Task-only details, raw instruction text, temporary file paths, parser labels, discarded memory, quarantined memory, rejected memory, and low-value action summaries are not expanded into normal graph nodes.
+
+Each memory note links back to its category and, when available, the project where the memory was observed. `sourceProjectId` means "observed in this project"; `scope` means where the memory applies. A global memory can still link to the project where it was learned.
 
 ## Project Pages
 
@@ -134,7 +165,8 @@ Pages use Obsidian-style links:
 [[AI 실패 패턴]]
 [[AI 성공 패턴]]
 [[예방 규칙]]
-[[memories/사용자 성공 기준-mem_123|사용자 성공 기준]]
+[[처리 방식/구현 전 간결한 계획 수립|구현 전 간결한 계획 수립]]
+[[AI 성공 패턴/npm.cmd test로 검증 성공|npm.cmd test로 검증 성공]]
 ```
 
 In a Korean store, managed links point to Korean filenames. In an English store, they point to English filenames. Links should not create empty English/Korean duplicates in the same store.
@@ -172,7 +204,10 @@ Raw events in `logs/events.jsonl` are diagnostic and are not rendered as current
 - duplicate localized documents are not present
 - orphan project pages are reported
 - active index references point to active memory records
-- managed links use the current localized filename
+- managed links use the current localized filename and category folder
+- legacy `wiki/memories/*mem_*.md` note paths are reported
+- visible filenames or headings that expose `mem_...` ids are reported
+- project pages link memory notes observed via `sourceProjectId`
 - suspicious raw secrets are reported
 
 Doctor is read-only. It should not mutate the project registry or create project pages.
@@ -185,7 +220,7 @@ Language conversion is explicit and agent-required:
 VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko en
 ```
 
-`convert-lang` changes the Obsidian display layer: Markdown filenames, headings, aliases, managed links, Recent Active Memory, category pages, project pages, memory notes, and `registry/wiki-docs.json`. It leaves raw logs and internal canonical JSON fields/enums untouched.
+`convert-lang` changes the Obsidian display layer: Markdown filenames, category folders, headings, aliases, managed links, Recent Active Memory, category pages, project pages, memory notes, and `registry/wiki-docs.json`. It leaves raw logs and internal canonical JSON fields/enums untouched.
 
 VibeBox does not call external translation APIs.
 
@@ -197,4 +232,4 @@ Semantic rebuild is explicit and agent-required:
 VIBEBOX_AGENT_RUNTIME=adapter vibebox rebuild
 ```
 
-`rebuild` regenerates the active index, relation index, namespace files, doc registry, localized wiki files, memory-level notes, and stale generated file cleanup from active memory. After rebuild, wiki links should resolve to real localized files and Recent Active Memory should render in the configured language.
+`rebuild` regenerates the active index, relation index, namespace files, doc registry, localized wiki files, category-based memory notes, and stale generated file cleanup from active memory. After rebuild, wiki links should resolve to real localized files and Recent Active Memory should render in the configured language.

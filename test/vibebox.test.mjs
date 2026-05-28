@@ -75,7 +75,13 @@ function memoryText(record) {
 }
 
 async function listMarkdownFiles(dirPath) {
-  const entries = await readdir(dirPath, { withFileTypes: true });
+  let entries = [];
+  try {
+    entries = await readdir(dirPath, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
   const nested = await Promise.all(entries.map(async (entry) => {
     const fullPath = path.join(dirPath, entry.name);
     if (entry.isDirectory()) return listMarkdownFiles(fullPath);
@@ -95,6 +101,22 @@ async function assertWikiLinksResolve(root) {
       assert.equal(fileSet.has(target), true, `${path.basename(file)} has missing wiki target ${target}`);
     }
   }
+}
+
+function wikiRelative(root, file) {
+  return path.relative(storePath(root, 'wiki'), file).replace(/\\/gu, '/');
+}
+
+async function listMemoryNoteFiles(root) {
+  const files = await listMarkdownFiles(storePath(root, 'wiki'));
+  const tagged = [];
+  for (const file of files) {
+    const text = await readFile(file, 'utf8');
+    if (/^---[\s\S]*?\nmemoryNote:\s*true[\s\S]*?---/u.test(text)) {
+      tagged.push(file);
+    }
+  }
+  return tagged;
 }
 
 function assertNoParserLabels(records) {
@@ -567,7 +589,7 @@ test('aftertask records a blackbox event and auto-curates failure guidance witho
   assert.match(result.message, /Captured blackbox event/);
   assert.match(result.message, /Auto-curated/);
   assert.ok(result.candidates.some((candidate) => candidate.type === 'failure_memory'));
-  assert.ok(result.candidates.some((candidate) => candidate.type === 'avoid_rule'));
+  assert.ok(result.candidates.some((candidate) => ['avoid_rule', 'prevention_rule'].includes(candidate.type)));
 
   const events = await readJsonl(storePath(root, 'logs', 'events.jsonl'));
   assert.equal(events.length, 1);
@@ -1099,7 +1121,8 @@ test('approval creates related concept wiki pages and doctor validates wiki/inde
 
   const conceptWiki = await readFile(storePath(root, 'wiki', 'Dependency Management.md'), 'utf8');
   assert.match(conceptWiki, /Related memories/);
-  assert.match(conceptWiki, new RegExp(candidate.id));
+  assert.match(conceptWiki, /\[\[Global Avoid Rules\/Do not modify package\.json/);
+  assert.doesNotMatch(conceptWiki, /mem_[a-f0-9]+/i);
 
   const doctor = await runDoctor(root);
   assert.equal(doctor.ok, true);
@@ -1500,7 +1523,8 @@ test('active replacement clears stale concept wiki references for discarded memo
   });
   const oldMemory = await approveMemory(root, oldCandidate.id);
   const redisWikiBefore = await readFile(storePath(root, 'wiki', 'Redis.md'), 'utf8');
-  assert.match(redisWikiBefore, new RegExp(oldMemory.id));
+  assert.match(redisWikiBefore, /For dashboard cache projects, prefer Redis/);
+  assert.doesNotMatch(redisWikiBefore, /mem_[a-f0-9]+/i);
 
   const [replacementCandidate] = await extractMemoryCandidates(root, {
     text: 'Replace the dashboard cache rule: for dashboard cache projects, prefer Memcached instead of Redis.'
@@ -1596,9 +1620,12 @@ test('failure memory injects prevention rules and links to success patterns and 
   assert.ok(relationIndex.relations.some((relation) => relation.type === 'failure_prevented_by_rule' && relation.projectId === projectId));
   assert.ok(relationIndex.relations.some((relation) => relation.type === 'success_resolves_failure'));
 
-  const failureWiki = await readFile(storePath(root, 'wiki', 'Failure Memory.md'), 'utf8');
-  assert.match(failureWiki, /\[\[Prevention Rules\]\]/);
-  assert.match(failureWiki, /\[\[Success Patterns\]\]/);
+  const failureWiki = await readFile(storePath(root, 'wiki', 'Agent Failure Patterns.md'), 'utf8');
+  assert.match(failureWiki, /\[\[Agent Failure Patterns\/Global body overflow changes caused layout regressions before; prevent this by/);
+  const memoryNotes = await listMemoryNoteFiles(root);
+  const noteText = (await Promise.all(memoryNotes.map((file) => readFile(file, 'utf8')))).join('\n');
+  assert.match(noteText, /\[\[Prevention Rules\]\]/);
+  assert.match(noteText, /\[\[Agent Success Patterns\]\]|\[\[Success Patterns\]\]/);
 });
 
 test('user pattern memory is auto-curated and applied by situation-aware context', async () => {
@@ -1841,13 +1868,17 @@ test('Korean wiki display localizes recent active memory, AI failures, AI succes
   assert.match(home, /AI \uC131\uACF5 \uC811\uADFC/);
   assert.doesNotMatch(home, /Command failed:|Agent succeeded by|Do not repeat this failed approach/i);
 
-  const memoryNoteFiles = await listMarkdownFiles(storePath(root, 'wiki', 'memories'));
+  const memoryNoteFiles = await listMemoryNoteFiles(root);
   assert.ok(memoryNoteFiles.length >= 3);
   const memoryNoteText = (await Promise.all(memoryNoteFiles.map((file) => readFile(file, 'utf8')))).join('\n');
-  assert.match(memoryNoteText, /\uBA54\uBAA8\uB9AC \uB178\uD2B8/);
-  assert.match(memoryNoteText, /\[\[.*\|AI \uC131\uACF5 \uC811\uADFC\]\]/);
+  assert.match(memoryNoteText, /memoryNote: true/);
+  assert.match(memoryNoteText, /\uC694\uC57D/);
   assert.match(memoryNoteText, /\uBA85\uB839 \uC2E4\uD589 \uC2E4\uD328|\uBC18\uBCF5 \uAE08\uC9C0/);
   assert.doesNotMatch(memoryNoteText, /Command failed:|Agent succeeded by|Do not repeat this failed approach/i);
+  assert.equal((await listMarkdownFiles(storePath(root, 'wiki', 'memories'))).length, 0);
+  assert.ok(memoryNoteFiles.some((file) => wikiRelative(root, file).includes('/') && !wikiRelative(root, file).startsWith('memories/')));
+  assert.ok(memoryNoteFiles.every((file) => !/mem_[a-f0-9]+/iu.test(path.basename(file))));
+  assert.doesNotMatch(home, /\|.*mem_/i);
 
   const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
   assert.ok(memoryIndex.memories.some((memory) => /Do not repeat this failed approach|Agent succeeded by/i.test(memory.summary)));
@@ -1855,6 +1886,113 @@ test('Korean wiki display localizes recent active memory, AI failures, AI succes
   const doctor = await runDoctor(root);
   assert.equal(doctor.ok, true);
   assert.equal(doctor.warnings.some((warning) => warning.includes('Wiki link target is missing')), false);
+});
+
+test('category-based memory notes hide ids and link categories, source projects, and recent memory', async () => {
+  const root = await makeWorkspace();
+  process.env.VIBEBOX_LOCALE = 'ko-KR';
+  await initVibeBox(root);
+
+  await afterTask(root, {
+    userRequest: 'When validating changes, report command results.',
+    technicalOutcome: 'unknown',
+    userAcceptance: 'unknown'
+  });
+  await afterTask(root, {
+    userRequest: 'Before coding, create a concise plan. Final report should include changed files and validation result.',
+    aiActionSummary: 'Recovered by using npm.cmd test instead of npm test.',
+    errors: ['Command failed: npm test exited with code 1 because the npm shim was unavailable.'],
+    commandResults: ['Validation passed. npm.cmd test passed.'],
+    technicalOutcome: 'success',
+    userAcceptance: 'unknown'
+  });
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  const processMemory = memoryIndex.memories.find((memory) => memory.type === 'process_pattern' && memory.memoryRole === 'user_success_criteria');
+  const responseMemory = memoryIndex.memories.find((memory) => memory.type === 'response_preference' && memory.memoryRole === 'user_success_criteria');
+  const validationMemory = memoryIndex.memories.find((memory) => memory.type === 'validation_pattern' && memory.memoryRole === 'user_success_criteria');
+  const failureMemory = memoryIndex.memories.find((memory) => memory.memoryRole === 'ai_failure_memory' && memory.type === 'agent_failure_pattern');
+  const preventionMemory = memoryIndex.memories.find((memory) => memory.memoryRole === 'ai_failure_memory' && memory.type === 'prevention_rule');
+  const successMemory = memoryIndex.memories.find((memory) => memory.memoryRole === 'ai_successful_approach');
+  assert.ok(processMemory);
+  assert.ok(responseMemory);
+  assert.ok(validationMemory);
+  assert.ok(failureMemory);
+  assert.ok(preventionMemory);
+  assert.ok(successMemory);
+
+  const registry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+  const folderFor = (docKey) => path.basename(registry.docs.find((doc) => doc.docKey === docKey).fileName, '.md');
+  const noteFiles = await listMemoryNoteFiles(root);
+  const notes = new Map();
+  for (const file of noteFiles) {
+    const text = await readFile(file, 'utf8');
+    const id = text.match(/^id:\s*"?(mem_[a-f0-9]+)"?\s*$/mu)?.[1];
+    if (id) notes.set(id, { file, text, relative: wikiRelative(root, file), target: wikiRelative(root, file).replace(/\.md$/u, '') });
+  }
+
+  assert.equal((await listMarkdownFiles(storePath(root, 'wiki', 'memories'))).length, 0);
+  for (const memory of [processMemory, responseMemory, validationMemory, failureMemory, preventionMemory, successMemory]) {
+    const note = notes.get(memory.id);
+    assert.ok(note, `missing note for ${memory.id}`);
+    assert.doesNotMatch(path.basename(note.file), /mem_/i);
+    assert.doesNotMatch(note.text.match(/^title:\s*(.+)$/mu)?.[1] || '', /mem_/i);
+    assert.doesNotMatch(note.text.match(/^#\s+(.+)$/mu)?.[1] || '', /mem_/i);
+    assert.match(note.text, new RegExp(`^id:\\s*"?${memory.id}"?\\s*$`, 'mu'));
+    assert.match(note.text, /\[\[projects\/vibebox-test-project\|vibebox-test-project\]\]/);
+  }
+
+  assert.ok(notes.get(processMemory.id).relative.startsWith(`${folderFor('process_patterns')}/`));
+  assert.ok(notes.get(responseMemory.id).relative.startsWith(`${folderFor('user_preferences')}/`));
+  assert.ok(notes.get(validationMemory.id).relative.startsWith(`${folderFor('validation_patterns')}/`));
+  assert.ok(notes.get(failureMemory.id).relative.startsWith(`${folderFor('agent_failure_patterns')}/`));
+  assert.ok(notes.get(preventionMemory.id).relative.startsWith(`${folderFor('prevention_rules')}/`));
+  assert.ok(notes.get(successMemory.id).relative.startsWith(`${folderFor('agent_success_patterns')}/`));
+  assert.match(notes.get(failureMemory.id).text, new RegExp(`\\[\\[${notes.get(successMemory.id).target.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`));
+  assert.match(notes.get(successMemory.id).text, new RegExp(`\\[\\[${notes.get(failureMemory.id).target.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`));
+
+  const processPage = await readFile(storePath(root, 'wiki', registry.docs.find((doc) => doc.docKey === 'process_patterns').fileName), 'utf8');
+  assert.match(processPage, new RegExp(`\\[\\[${notes.get(processMemory.id).target.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`));
+  const projectPage = await readFile(storePath(root, 'wiki', 'projects', 'vibebox-test-project.md'), 'utf8');
+  assert.match(projectPage, new RegExp(`\\[\\[${notes.get(processMemory.id).target.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`));
+  assert.match(projectPage, new RegExp(`\\[\\[${notes.get(validationMemory.id).target.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`));
+  assert.match(projectPage, new RegExp(`\\[\\[${notes.get(failureMemory.id).target.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`));
+  assert.match(projectPage, new RegExp(`\\[\\[${notes.get(preventionMemory.id).target.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`));
+  assert.match(projectPage, new RegExp(`\\[\\[${notes.get(successMemory.id).target.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`));
+
+  const home = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
+  assert.match(home, new RegExp(`\\[\\[${notes.get(processMemory.id).target.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}\\|`));
+  assert.doesNotMatch(home, /\|[^|\]]*mem_/i);
+  await assertWikiLinksResolve(root);
+});
+
+test('visible wiki memory note names strip memory id tokens from source text', async () => {
+  const root = await makeWorkspace();
+  process.env.VIBEBOX_LOCALE = 'ko-KR';
+  await initVibeBox(root);
+
+  await afterTask(root, {
+    userRequest: 'Never expose mem_deadbeef in wiki titles or filenames.',
+    technicalOutcome: 'unknown',
+    userAcceptance: 'unknown'
+  });
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  const idMentionMemory = memoryIndex.memories.find((memory) => /mem_deadbeef/u.test(memory.summary || ''));
+  assert.ok(idMentionMemory);
+
+  const noteFiles = await listMemoryNoteFiles(root);
+  const note = await Promise.all(noteFiles.map(async (file) => ({ file, text: await readFile(file, 'utf8') })))
+    .then((notes) => notes.find((item) => new RegExp(`^id:\\s*"?${idMentionMemory.id}"?\\s*$`, 'mu').test(item.text)));
+  assert.ok(note);
+  assert.doesNotMatch(path.basename(note.file), /mem_/i);
+  assert.doesNotMatch(note.text.match(/^title:\s*(.+)$/mu)?.[1] || '', /mem_/i);
+  assert.doesNotMatch(note.text.match(/^#\s+(.+)$/mu)?.[1] || '', /mem_/i);
+  assert.doesNotMatch(note.text.replace(/^---[\s\S]*?---/u, ''), /mem_deadbeef/i);
+
+  const doctor = await runDoctor(root);
+  assert.equal(doctor.ok, true);
+  assert.equal(doctor.warnings.some((warning) => warning.includes('exposes memory id')), false);
 });
 
 test('doctor avoids global-store false positives and warns about user-home registry pollution without mutating registry', async () => {
@@ -2189,10 +2327,29 @@ test('doctor warns about internal pseudo project registry entries and orphan pro
   });
   await writeFile(registryPath, `${JSON.stringify(registry, null, 2)}\n`, 'utf8');
   await writeFile(storePath(root, 'wiki', 'projects', 'global-store.md'), '# global-store\n', 'utf8');
+  await mkdir(storePath(root, 'wiki', 'memories'), { recursive: true });
+  await writeFile(
+    storePath(root, 'wiki', 'memories', '사용자 성공 기준-mem_deadbeef.md'),
+    [
+      '---',
+      'title: 사용자 성공 기준-mem_deadbeef',
+      'vibebox: true',
+      'obsidianCompatible: true',
+      '---',
+      '# 사용자 성공 기준-mem_deadbeef',
+      '',
+      '<!-- VIBEBOX:BEGIN -->',
+      'old generated note',
+      '<!-- VIBEBOX:END -->'
+    ].join('\n'),
+    'utf8'
+  );
 
   const report = await runDoctor(root);
   assert.ok(report.warnings.some((warning) => warning.includes('internal pseudo project global-store')));
   assert.ok(report.warnings.some((warning) => warning.includes('wiki/projects/global-store.md')));
+  assert.ok(report.warnings.some((warning) => warning.includes('wiki/memories')));
+  assert.ok(report.warnings.some((warning) => warning.includes('exposes memory id')));
 });
 
 test('backup and restore round-trip the global store with destructive confirmation', async () => {
@@ -2256,8 +2413,11 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
   await readFile(storePath(root, 'wiki', processDoc.fileName), 'utf8');
   await assert.rejects(() => readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8'), /ENOENT/);
   assert.notEqual(processDoc.fileName, 'Process Patterns.md');
-  const koMemoryNotes = await listMarkdownFiles(storePath(root, 'wiki', 'memories'));
+  const koMemoryNotes = await listMemoryNoteFiles(root);
   assert.ok(koMemoryNotes.length > 0);
+  assert.equal((await listMarkdownFiles(storePath(root, 'wiki', 'memories'))).length, 0);
+  assert.ok(koMemoryNotes.some((file) => wikiRelative(root, file).startsWith(`${path.basename(processDoc.fileName, '.md')}/`)));
+  assert.ok(koMemoryNotes.every((file) => !/mem_[a-f0-9]+/iu.test(path.basename(file))));
   await assertWikiLinksResolve(root);
 
   process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
@@ -2268,8 +2428,10 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
   assert.equal(enProcessDoc.fileName, 'Process Patterns.md');
   await readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8');
   await assert.rejects(() => readFile(storePath(root, 'wiki', processDoc.fileName), 'utf8'), /ENOENT/);
-  const enMemoryNotes = await listMarkdownFiles(storePath(root, 'wiki', 'memories'));
-  assert.ok(enMemoryNotes.some((file) => /User Success Criteria|Process Patterns|Response Preference|Success/i.test(path.basename(file))));
+  const enMemoryNotes = await listMemoryNoteFiles(root);
+  assert.ok(enMemoryNotes.some((file) => wikiRelative(root, file).startsWith('Process Patterns/')));
+  assert.ok(enMemoryNotes.some((file) => /Create a concise plan|Include changed files/i.test(path.basename(file))));
+  assert.equal((await listMarkdownFiles(storePath(root, 'wiki', 'memories'))).length, 0);
   await assertWikiLinksResolve(root);
 
   process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
@@ -2280,6 +2442,9 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
   assert.notEqual(koAgainProcessDoc.fileName, 'Process Patterns.md');
   await readFile(storePath(root, 'wiki', koAgainProcessDoc.fileName), 'utf8');
   await assert.rejects(() => readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8'), /ENOENT/);
+  const koAgainMemoryNotes = await listMemoryNoteFiles(root);
+  assert.ok(koAgainMemoryNotes.some((file) => wikiRelative(root, file).startsWith(`${path.basename(koAgainProcessDoc.fileName, '.md')}/`)));
+  assert.equal((await listMarkdownFiles(storePath(root, 'wiki', 'memories'))).length, 0);
   await assertWikiLinksResolve(root);
 
   await rm(storePath(root, 'wiki', koAgainProcessDoc.fileName), { force: true });
@@ -2295,6 +2460,9 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
   assert.notEqual(rebuiltProcessDoc.fileName, 'Process Patterns.md');
   const rebuiltHome = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
   assert.match(rebuiltHome, /\uCD5C\uADFC \uD65C\uC131 \uBA54\uBAA8\uB9AC/);
+  const rebuiltMemoryNotes = await listMemoryNoteFiles(root);
+  assert.ok(rebuiltMemoryNotes.some((file) => wikiRelative(root, file).startsWith(`${path.basename(rebuiltProcessDoc.fileName, '.md')}/`)));
+  assert.equal((await listMarkdownFiles(storePath(root, 'wiki', 'memories'))).length, 0);
   await assertWikiLinksResolve(root);
   await readFile(storePath(root, 'wiki', '처리 방식.md'), 'utf8');
   const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));

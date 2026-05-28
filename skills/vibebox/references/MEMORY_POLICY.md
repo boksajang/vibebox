@@ -198,6 +198,6 @@ VibeBox does not create project-local `.vibebox` folders, pointer files, or hidd
 
 ## Adaptive Language Policy
 
-Internal memory stays canonical for agent processing: JSON field names, enum values, relation types, command names, file paths, errors, and raw logs remain stable. The Obsidian wiki is the user display layer: visible filenames, headings, aliases, links, Recent Active Memory, managed summaries, category pages, project pages, and memory-level notes follow the configured memory language. VibeBox does not use external translation APIs.
+Internal memory stays canonical for agent processing: JSON field names, enum values, relation types, command names, file paths, errors, and raw logs remain stable. The Obsidian wiki is the user display layer: visible filenames, category folders, headings, aliases, links, Recent Active Memory, managed summaries, category pages, project pages, and category-based memory notes follow the configured memory language. Visible note names are meaning-based; `mem_...` ids stay in frontmatter. VibeBox does not use external translation APIs.
 
 `convert-lang` and semantic `rebuild` require an AI agent runtime marker. `backup` and `restore` do not. Restore is destructive replace, not merge, and requires explicit confirmation.

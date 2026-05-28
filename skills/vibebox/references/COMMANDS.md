@@ -146,10 +146,10 @@ vibebox init --language ko
 - Purpose: Convert the Obsidian wiki display layer to another configured memory language.
 - Typical usage: `vibebox convert-lang ko en`
 - Alias: `vibebox language convert ko en`
-- Notes: Requires an AI agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`. Without it, the command exits before changing files. Markdown filenames, headings, aliases, links, Recent Active Memory, memory notes, and `registry/wiki-docs.json` are regenerated for the target language. Raw logs and internal JSON field names, enum values, relation types, and command names stay English/canonical.
+- Notes: Requires an AI agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`. Without it, the command exits before changing files. Markdown filenames, category folders, headings, aliases, links, Recent Active Memory, memory notes, and `registry/wiki-docs.json` are regenerated for the target language. Raw logs and internal JSON field names, enum values, relation types, and command names stay English/canonical.
 
 ## `vibebox rebuild`
 
-- Purpose: Rebuild active indexes, relation graph, namespace files, localized wiki files, memory-level notes, and doc registry from active memory.
+- Purpose: Rebuild active indexes, relation graph, namespace files, localized wiki files, category-based memory notes, and doc registry from active memory.
 - Typical usage: `vibebox rebuild`
 - Notes: Semantic rebuild requires an AI agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`. Use `vibebox rebuild --index-only` for the non-semantic index repair path.
