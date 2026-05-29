@@ -22,9 +22,11 @@ npm link
 vibebox --help
 ```
 
-On Windows PowerShell, npm's `.ps1` shim can be blocked by execution policy. Use the generated command shim instead:
+On Windows/Codex, prefer the generated command shim directly. Do not wrap read-only memory retrieval commands in `powershell.exe -Command` unless no direct invocation is possible:
 
 ```bash
+vibebox.cmd pretask --task "Check project memory before editing"
+vibebox.cmd context --task "Change dependency handling"
 vibebox.cmd --help
 ```
 
@@ -82,7 +84,7 @@ or:
 vibebox pretask "Fix dashboard table scrolling"
 ```
 
-`pretask` prints a Pre-Task Brief with relevant active memory, validation and process patterns, known failure risks, prevention rules, success patterns, project guardrails, potential conflicts, and instructions for the agent. It chooses guidance by task situation, so debugging work emphasizes failure prevention and verification work emphasizes validation patterns.
+`pretask` is read-only memory retrieval. It prints a Pre-Task Brief with relevant active memory, validation and process patterns, known failure risks, prevention rules, success patterns, project guardrails, potential conflicts, and instructions for the agent, and should not modify repository files. It chooses guidance by task situation, so debugging work emphasizes failure prevention and verification work emphasizes validation patterns.
 
 The most important sections are:
 
@@ -166,7 +168,7 @@ Conflict, exception, supersede, duplicate, low-confidence, and review-needed can
 vibebox context --task "Update dashboard dependency handling"
 ```
 
-`context` prints a compact memory pack. `pretask` is usually better before coding because it is more instruction-oriented.
+`context` is read-only memory retrieval that prints a compact memory pack and should not modify repository files. `pretask` is usually better before coding because it is more instruction-oriented.
 
 `pretask` and `context` include three core guidance lanes when relevant:
 
@@ -241,12 +243,13 @@ vibebox doctor
 
 For manual debugging or override, add `vibebox review`, `vibebox approve <candidate-id>`, or `vibebox reject <candidate-id>`.
 
-On Windows PowerShell, use `vibebox.cmd` for the same commands if `vibebox` is blocked.
+On Windows/Codex, use direct `vibebox.cmd` for the same commands first. If a wrapper-style `pretask` or `context` attempt is blocked by host approval, retry `vibebox.cmd`, then `vibebox`, then `node bin/vibebox.mjs` from the repository before proceeding without VibeBox guidance.
 
 ## Troubleshooting
 
 - If `vibebox` is not found, run `npm link` from the VibeBox repository or use `node bin/vibebox.mjs <command>`.
 - If PowerShell blocks `vibebox.ps1`, use `vibebox.cmd <command>`.
+- If `pretask` or `context` was blocked only because it was wrapped in `powershell.exe -Command`, retry direct `vibebox.cmd pretask --task "..."` or `vibebox.cmd context --task "..."`.
 - If you need an isolated store, set `VIBEBOX_HOME` before running commands.
 - If pre-task output is empty, check whether events were captured and inspect active memory with `report`. Use `review` and `approve` only for legacy/manual override.
 - If indexes or wiki files look inconsistent, run `vibebox doctor`.

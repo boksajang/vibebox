@@ -2,23 +2,21 @@
 
 This reference documents the current CLI surface only.
 
-Preferred command after install or `npm link`:
+Preferred command after install or `npm link` outside Windows:
 
 ```bash
 vibebox <command>
 ```
 
-Windows PowerShell may block npm's `.ps1` shim. Use:
+Windows/Codex direct command preference:
 
 ```bash
 vibebox.cmd <command>
-```
-
-Fallback inside the VibeBox repository:
-
-```bash
+vibebox <command>
 node bin/vibebox.mjs <command>
 ```
+
+Do not use `powershell.exe -Command` as a default VibeBox example. If no direct invocation is possible, treat that wrapper as a last-resort fallback and explain that host approval layers may classify wrappers as higher risk than direct `vibebox.cmd` calls.
 
 Global store override:
 
@@ -30,8 +28,8 @@ vibebox <command> --store /path/to/store
 Memory language seed for a new store:
 
 ```bash
-VIBEBOX_LANGUAGE=ko vibebox init
-vibebox init --language ko
+VIBEBOX_LANGUAGE=ko-KR vibebox init
+vibebox init --language ko-KR
 ```
 
 `VIBEBOX_LOCALE` is only an environment hint. Obsidian wiki managed text follows the configured strict BCP 47 `memoryLanguage`; active JSON memory stays canonical. Raw logs preserve diagnostic source text. JSON field names, command names, relation types, and enum values stay English.
@@ -89,21 +87,24 @@ vibebox init --language ko
 
 - Purpose: Generate a compact Context Pack from active memory.
 - Typical usage: Attach memory context to an agent prompt before work.
-- Example: `vibebox context --task "Update dashboard dependency handling"`
-- Notes: `pretask` is usually better before coding because it is more action-oriented. Context can include `User Success Criteria`, `AI Failure Avoidance`, `AI Successful Approaches`, validation, process, design, correction, and agent failure/success patterns when relevant.
+- Windows/Codex example: `vibebox.cmd context --task "Update dashboard dependency handling"`
+- Cross-platform example: `vibebox context --task "Update dashboard dependency handling"`
+- Notes: Read-only memory retrieval. It prints active guidance and should not modify repository files. `pretask` is usually better before coding because it is more action-oriented. Context can include `User Success Criteria`, `AI Failure Avoidance`, `AI Successful Approaches`, validation, process, design, correction, and agent failure/success patterns when relevant.
 
 ## `vibebox pretask`
 
 - Purpose: Generate an agent-ready Pre-Task Brief.
 - Typical usage: Run before non-trivial coding or design work.
-- Example: `vibebox pretask --task "Fix dashboard table scrolling"`
-- Notes: Also accepts positional task text, such as `vibebox pretask "Fix dashboard table scrolling"`. The brief is situation-aware and prioritizes the three main guidance lanes: `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`. Agents should use those lanes in the actual plan, not only display them.
+- Windows/Codex example: `vibebox.cmd pretask --task "Fix dashboard table scrolling"`
+- Cross-platform example: `vibebox pretask --task "Fix dashboard table scrolling"`
+- Notes: Read-only memory retrieval. It prints active guidance and should not modify repository files. Also accepts positional task text, such as `vibebox pretask "Fix dashboard table scrolling"`. If a host approval layer blocks a wrapper-style command, retry direct `vibebox.cmd pretask --task "..."` before falling back to `node bin/vibebox.mjs pretask --task "..."`. The brief is situation-aware and prioritizes the three main guidance lanes: `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`. Agents should use those lanes in the actual plan, not only display them.
 
 ## `vibebox aftertask`
 
-- Purpose: Capture task completion details, extract memory candidates, and run Auto Curator.
+- Purpose: Write/capture task completion details, extract memory candidates, and run Auto Curator.
 - Typical usage: Run after meaningful coding or design work. Always pass the original user request, or a faithful semantic summary of it, with `--request`.
-- Example: `vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling" --files "src/table.mjs" --commands "npm.cmd test" --technical-outcome success --user-acceptance accepted`
+- Windows/Codex example: `vibebox.cmd aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling" --files "src/table.mjs" --commands "npm.cmd test" --technical-outcome success --user-acceptance accepted`
+- Cross-platform example: `vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling" --files "src/table.mjs" --commands "npm.cmd test" --technical-outcome success --user-acceptance accepted`
 - Notes: Supports `--request`, `--summary`, `--files`, `--commands`, `--command-results`, `--errors`, `--feedback`, `--outcome`, `--technical-outcome`, `--user-acceptance`, `--final-outcome`, `--notes`, `--from-file`, and `--manual-review`. `--from-file` may include `User request:` and `Summary:` sections. Without a user request, VibeBox records the event but skips active user model extraction for success criteria; clear command/tool/environment failures can still become AI failure memory. User-accepted outcomes can become confirmed AI successful approaches, validated reusable outcomes with no rejection can become inferred successful approaches, and user-rejected outcomes become AI failure/correction/prevention guidance plus updated success criteria instead of `success_pattern`.
 
 ## `vibebox report`
@@ -111,7 +112,7 @@ vibebox init --language ko
 - Purpose: Summarize current-project active memory, relevant global memory, user patterns, and manual-debug pending state.
 - Typical usage: Inspect memory state without dumping raw logs.
 - Example: `vibebox report`
-- Notes: Useful before cleanup, review, or sharing project memory state with an agent.
+- Notes: Read-only inspection in normal report mode. Useful before cleanup, review, or sharing project memory state with an agent.
 
 ## `vibebox blackbox`
 

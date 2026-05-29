@@ -139,11 +139,15 @@ vibebox init
 vibebox doctor
 ```
 
-Windows PowerShell fallback:
+Windows/Codex direct command preference:
 
 ```bash
-vibebox.cmd doctor
+vibebox.cmd pretask --task "..."
+vibebox.cmd context --task "..."
+vibebox.cmd aftertask --request "..." --summary "..."
 ```
+
+Avoid wrapping read-only VibeBox retrieval commands in `powershell.exe -Command`; use direct `vibebox.cmd` first.
 
 Direct repository fallback:
 

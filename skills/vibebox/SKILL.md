@@ -72,15 +72,18 @@ Before meaningful repository work:
 
 1. Judge whether prior memory could affect the task.
 2. Check whether the VibeBox CLI is available, whether the global store has been initialized, and whether the current working directory is a usable workspace rather than user home, global store, cache, or tool-internal path.
-3. Prefer `vibebox pretask --task "<task description>"`.
-4. If the global command is unavailable inside the VibeBox repository, try `node bin/vibebox.mjs pretask --task "<task description>"`.
-5. Read the Pre-Task Brief.
-6. Identify the relevant `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` sections.
-7. Apply relevant memory as constraints, risk warnings, and reusable approaches in the actual plan and implementation.
-8. If memory conflicts with the user's current explicit request, mention the conflict and follow the current request.
-9. If memory conflicts with repository reality, report the conflict before acting.
-10. Do not treat low-confidence memory as final fact.
-11. Avoid repeating known failed approaches.
+3. Treat `pretask` and `context` as read-only memory retrieval commands: they print active guidance and should not edit repository files.
+4. On Windows/Codex, prefer direct invocation with `vibebox.cmd pretask --task "<task description>"`; do not wrap VibeBox commands in `powershell.exe -Command` unless no direct invocation is possible.
+5. Outside Windows, prefer `vibebox pretask --task "<task description>"`.
+6. If a host approval layer blocks a wrapper-style command, retry with direct `vibebox.cmd pretask --task "<task description>"`, then `vibebox pretask --task "<task description>"`, then `node bin/vibebox.mjs pretask --task "<task description>"` from the VibeBox repository.
+7. If all VibeBox retrieval attempts fail, clearly say that VibeBox guidance was unavailable and continue only if the current task can proceed safely.
+8. Read the Pre-Task Brief.
+9. Identify the relevant `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` sections.
+10. Apply relevant memory as constraints, risk warnings, and reusable approaches in the actual plan and implementation.
+11. If memory conflicts with the user's current explicit request, mention the conflict and follow the current request.
+12. If memory conflicts with repository reality, report the conflict before acting.
+13. Do not treat low-confidence memory as final fact.
+14. Avoid repeating known failed approaches.
 
 ## During-Task Rules
 
@@ -109,9 +112,9 @@ After meaningful coding or design work:
 4. List commands run and results.
 5. Summarize errors or failed attempts.
 6. Summarize user feedback if available.
-7. Run after-task capture when appropriate.
-8. Prefer `vibebox aftertask ...`.
-9. If the global command is unavailable inside the VibeBox repository, use `node bin/vibebox.mjs aftertask ...`.
+7. Run after-task capture when appropriate; `aftertask` is a write/capture operation, unlike read-only `pretask` and `context`.
+8. On Windows/Codex, prefer direct `vibebox.cmd aftertask --request "..." ...`; outside Windows, prefer `vibebox aftertask ...`.
+9. If direct installed commands fail inside the VibeBox repository, use `node bin/vibebox.mjs aftertask --request "..." ...`.
 10. Let VibeBox extract candidates and run Auto Curator handling.
 11. Treat user acceptance and technical success as separate signals.
 12. Show review instructions only when debugging or manual override is useful.
@@ -179,29 +182,30 @@ If suspicious data appears, rely on VibeBox redaction and also avoid repeating t
 
 ## Command Fallback Strategy
 
-Preferred:
+Windows/Codex direct command order:
+
+```bash
+vibebox.cmd <command>
+vibebox <command>
+node bin/vibebox.mjs <command>
+```
+
+General installed-command preference outside Windows:
 
 ```bash
 vibebox <command>
 ```
 
-Windows PowerShell may block npm's `.ps1` shim through execution policy. In that case, use:
+Do not wrap VibeBox commands in `powershell.exe -Command` unless no direct invocation is possible. Host approval layers can treat shell wrappers as higher risk than direct CLI invocation, especially for read-only `pretask` and `context`.
 
-```bash
-vibebox.cmd <command>
-```
-
-Fallback inside the VibeBox repository:
-
-```bash
-node bin/vibebox.mjs <command>
-```
+`pretask`, `context`, read-only `report`, and read-only `doctor` are memory retrieval or inspection commands. `aftertask`, `init`, `backup`, `restore`, `convert-lang`, and semantic `rebuild` are write or maintenance operations and should be described that way when requesting approval.
 
 If neither works:
 
 - Check `package.json` bin configuration.
 - Check whether dependencies are installed.
 - Check whether `npm link` is needed for global command usage.
+- If a wrapper command was blocked, retry with direct `vibebox.cmd` before giving up.
 - Do not invent commands that do not exist.
 
 ## Obsidian-Compatible Wiki Notes
@@ -220,8 +224,9 @@ Only run `vibebox convert-lang` or semantic `vibebox rebuild` when an adapter ha
 
 ## Troubleshooting
 
-- If `vibebox` is not found, use `node bin/vibebox.mjs <command>` from the repository root.
+- If `vibebox` is not found on Windows/Codex, try direct `vibebox.cmd <command>` first, then `node bin/vibebox.mjs <command>` from the repository root.
 - If the global store is missing and the user wants VibeBox, run `vibebox init` or `node bin/vibebox.mjs init`.
+- If `pretask` or `context` was blocked because it was wrapped in `powershell.exe -Command`, retry direct `vibebox.cmd pretask --task "..."` or `vibebox.cmd context --task "..."`.
 - If pre-task output looks irrelevant, inspect active memory with `vibebox report`; use `vibebox review` only for legacy/manual debug state.
 - If memory/index health is unclear, run `vibebox doctor`.
 - Before risky maintenance, use `vibebox backup`; restore uses destructive replace and requires confirmation.

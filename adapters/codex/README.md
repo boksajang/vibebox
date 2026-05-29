@@ -44,41 +44,43 @@ Manual edits to Codex marketplace files are for local development or troubleshoo
 
 ## Command Fallback
 
-Preferred:
+Codex on Windows should prefer direct command invocation. A command wrapped as `powershell.exe -Command 'vibebox.cmd ...'` can look riskier to the host approval layer than the direct CLI call, even when the VibeBox command itself is read-only.
+
+Windows/Codex direct command order:
+
+```bash
+vibebox.cmd <command>
+vibebox <command>
+node bin/vibebox.mjs <command>
+```
+
+Preferred command outside Windows:
 
 ```bash
 vibebox <command>
 ```
 
-Windows PowerShell fallback:
+Do not use `powershell.exe -Command` as a default VibeBox workflow example. Treat that wrapper as a last resort only when no direct invocation is possible.
 
-```bash
-vibebox.cmd <command>
-```
-
-Fallback inside the VibeBox repository:
-
-```bash
-node bin/vibebox.mjs <command>
-```
+`pretask` and `context` are read-only memory retrieval commands. `aftertask`, `init`, `backup`, `restore`, `convert-lang`, and semantic `rebuild` are write or maintenance operations.
 
 ## Workflow Summary
 
 Before non-trivial work:
 
 ```bash
-vibebox pretask --task "<task description>"
+vibebox.cmd pretask --task "<task description>"
 ```
 
-Codex should read and apply the `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` sections before planning or editing. The memory is useful only when it changes the actual plan, validation choices, avoided approaches, or final report.
+Codex should read and apply the `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` sections before planning or editing. This is read-only retrieval: it prints active guidance and should not modify repository files. If host approval blocks a wrapper-style attempt, retry direct `vibebox.cmd pretask --task "..."`, then `vibebox pretask --task "..."`, then `node bin/vibebox.mjs pretask --task "..."` from the VibeBox repository. If all attempts fail, report that VibeBox guidance was unavailable before proceeding.
 
 After meaningful work:
 
 ```bash
-vibebox aftertask --request "<original user request or faithful summary>" --summary "..." --technical-outcome success --user-acceptance accepted
+vibebox.cmd aftertask --request "<original user request or faithful summary>" --summary "..." --technical-outcome success --user-acceptance accepted
 ```
 
-The `--request` value is required for active user model extraction. If the request is long, pass a faithful semantic summary with `--request` or include `User request:` in a `--from-file` payload.
+`aftertask` is a write/capture operation. The `--request` value is required for active user model extraction. If the request is long, pass a faithful semantic summary with `--request` or include `User request:` in a `--from-file` payload. If VibeBox guidance could not be retrieved before work, include that fact in `--errors` or `--notes`.
 
 VibeBox extracts candidates and runs Auto Curator by default. The user's request is success criteria, user corrections update those criteria, and user dissatisfaction is an AI failure signal. Structured requests are decomposed into project criteria, user/domain patterns, validation and preservation rules, scope limits, AI failure-prevention rules, and task context before AI action summaries are used as supporting evidence. Confirmed and inferred AI successful approaches can become active without memory approval; inferred success must not be described as user-confirmed. Capture command, permission, environment, and tool failures as AI failure memory. Use review commands only for debugging, audits, or manual override:
 

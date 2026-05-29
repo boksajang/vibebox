@@ -7,7 +7,7 @@ VibeBox is agent-neutral. Any AI coding agent that can read files and run shell 
 1. Receive the user task.
 2. Judge whether it is meaningful repository work.
 3. Check whether VibeBox is available, the global store exists or can be initialized, and the current working directory is a usable project workspace rather than user home, global store, cache, or tool-internal path.
-4. If memory could affect the task, run `pretask` before planning or editing.
+4. If memory could affect the task, run read-only `pretask` before planning or editing.
 5. Read `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`.
 6. Use the Pre-Task Brief to reduce wrong assumptions, apply current user patterns, avoid repeated failures, and reuse relevant successful approaches.
 7. Perform the task within the current user request.
@@ -20,7 +20,7 @@ This is an auto-intervention policy, not a hardcoded trigger list. The agent sho
 ## Standard CLI Workflow
 
 1. Initialize the global user store once with `vibebox init`.
-2. Run `vibebox pretask --task "<task>"` before memory-relevant repository work.
+2. Run read-only `pretask` before memory-relevant repository work, using direct `vibebox.cmd` on Windows/Codex.
 3. Read the Pre-Task Brief and inspect the repository.
 4. Perform the requested coding, design, or review work.
 5. Run `vibebox aftertask --request "<original user request or faithful summary>" ...` after meaningful work unless the user opted out.
@@ -32,17 +32,25 @@ This is an auto-intervention policy, not a hardcoded trigger list. The agent sho
 
 Use this before planning or editing when repository memory could affect the task and VibeBox is available for the current working directory:
 
+Windows/Codex direct invocation:
+
+```bash
+vibebox.cmd pretask --task "Fix dashboard table scrolling"
+```
+
+Cross-platform installed command:
+
 ```bash
 vibebox pretask --task "Fix dashboard table scrolling"
 ```
 
-Fallback:
+Repository fallback:
 
 ```bash
 node bin/vibebox.mjs pretask --task "Fix dashboard table scrolling"
 ```
 
-On Windows PowerShell, use `vibebox.cmd pretask --task "..."` if the npm `.ps1` shim is blocked.
+`pretask` is read-only memory retrieval: it prints active guidance and should not modify repository files. Do not wrap it in `powershell.exe -Command` unless no direct invocation is possible. If a host approval layer blocks a wrapper-style command, retry direct `vibebox.cmd pretask --task "..."`, then `vibebox pretask --task "..."`, then the Node fallback. If all attempts fail, report that VibeBox guidance was unavailable and continue only when the current task can proceed safely.
 
 The brief should guide attention, not replace codebase analysis. Apply active memory as constraints, risk warnings, project context, validation style, process guidance, and failure-prevention rules.
 
@@ -68,7 +76,7 @@ vibebox aftertask --request "Fix dashboard table scrolling" --from-file task-res
 
 Alternatively, the file may contain a `User request:` section and a `Summary:` section. Do not use `--summary` or `--from-file` alone for success criteria extraction; without a user request, VibeBox records the event and skips user success criteria extraction. Clear command/tool/environment failures can still become AI failure memory.
 
-Aftertask writes a blackbox event, extracts memory candidates, and lets the Auto Curator decide whether to activate, replace, discard, or quarantine each candidate. Structured user requests are decomposed into reusable success criteria, project rules, user/domain patterns, validation/preservation expectations, scope limits, AI failure-prevention rules, and task context before AI action summaries are used as supporting evidence. Skip capture when the user explicitly opts out.
+Aftertask is a write/capture operation: it writes a blackbox event, extracts memory candidates, and lets the Auto Curator decide whether to activate, replace, discard, or quarantine each candidate. Structured user requests are decomposed into reusable success criteria, project rules, user/domain patterns, validation/preservation expectations, scope limits, AI failure-prevention rules, and task context before AI action summaries are used as supporting evidence. Skip capture when the user explicitly opts out.
 
 ## Manual Review And Override Workflow
 
@@ -99,8 +107,10 @@ Technical success and user acceptance are separate. Passing commands or complete
 Use `context` when a compact memory pack is enough:
 
 ```bash
-vibebox context --task "Update dashboard dependency handling"
+vibebox.cmd context --task "Update dashboard dependency handling"
 ```
+
+`context` is read-only memory retrieval. It prints a compact active-memory pack and should not modify repository files. On non-Windows systems, `vibebox context --task "..."` is the normal installed command.
 
 Use `pretask` when an agent is about to act, because it includes more direct instructions and risks.
 Pretask should consider both failure memory and success patterns when relevant: failure memory is prevention guidance, while success memory is reusable approach guidance.
@@ -133,23 +143,21 @@ Reports and blackbox output summarize the active graph and meaningful task outco
 
 Adapters should call the same VibeBox CLI and read the same shared skill. They should not fork memory behavior or create agent-specific memory stores.
 
-Preferred command:
+Windows/Codex direct command order:
+
+```bash
+vibebox.cmd <command>
+vibebox <command>
+node bin/vibebox.mjs <command>
+```
+
+Preferred command outside Windows:
 
 ```bash
 vibebox <command>
 ```
 
-Fallback inside this repository:
-
-```bash
-node bin/vibebox.mjs <command>
-```
-
-Windows PowerShell fallback:
-
-```bash
-vibebox.cmd <command>
-```
+Do not use `powershell.exe -Command` as a normal workflow example. It is only a last-resort wrapper when direct invocation is impossible, and agents should report when they had to proceed without VibeBox guidance.
 
 ## External Project Workflow
 

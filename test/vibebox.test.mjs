@@ -3153,6 +3153,7 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
 
   const docs = [
     'README.md',
+    'docs/USAGE.md',
     'skills/vibebox/SKILL.md',
     'skills/vibebox/references/COMMANDS.md',
     'skills/vibebox/references/WORKFLOW.md',
@@ -3163,10 +3164,19 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   ];
   const combined = (await Promise.all(docs.map((relativePath) => readFile(path.resolve(relativePath), 'utf8')))).join('\n');
   assert.match(combined, /vibebox <command>/);
+  assert.match(combined, /vibebox\.cmd <command>/);
+  assert.match(combined, /vibebox\.cmd pretask --task/);
   assert.match(combined, /node bin\/vibebox\.mjs <command>/);
+  assert.match(combined, /pretask[\s\S]{0,220}read-only|read-only[\s\S]{0,220}pretask/i);
+  assert.match(combined, /context[\s\S]{0,220}read-only|read-only[\s\S]{0,220}context/i);
   assert.match(combined, /original user request or faithful summary/i);
   assert.match(combined, /without a user request, VibeBox records the event but skips active user model extraction/i);
   assert.match(combined, /Do not call aftertask with only an AI action summary/i);
+  assert.match(combined, /convert-lang[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}convert-lang/i);
+  assert.match(combined, /rebuild[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}rebuild/i);
+  const codeBlocks = [...combined.matchAll(/```(?:\w+)?\n([\s\S]*?)```/gu)].map((match) => match[1]);
+  assert.equal(codeBlocks.some((block) => /powershell(?:\.exe)?\s+-Command/iu.test(block)), false);
+  assert.match(combined, /Do not (?:use|wrap)[^.]{0,160}powershell(?:\.exe)? -Command/i);
   assert.doesNotMatch(combined, /Codex-only|Claude-only|Codex 전용|Claude 전용/i);
   assert.doesNotMatch(combined, /marketplace distribution is available|official Claude install is available|cloud install is available/i);
 });
