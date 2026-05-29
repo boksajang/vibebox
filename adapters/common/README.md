@@ -34,15 +34,17 @@ Reference files live under:
 - `~/.vibebox/pending/`: legacy/manual debug candidates.
 - `~/.vibebox/registry/`: project identity registry data.
 
-Set `VIBEBOX_HOME` to use a different store root. VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects.
+Set `VIBEBOX_HOME` to use a different store root. VibeBox uses this global store as the single source of truth. VibeBox does not create project-local `.vibebox` folders, workspace-local memory snapshots, copied memory stores, pointer files, or hidden metadata in work projects.
+
+Sandboxed hosts may block access to `~/.vibebox` or `$VIBEBOX_HOME` because the global store is outside the current workspace. `pretask` and `context` are read-only memory retrieval for repository files, but they still need global store read access. `aftertask` writes capture records and active memory updates, so it needs global store write access. If access is denied, request the appropriate approval or report that VibeBox guidance/capture was unavailable; do not create a copied memory fallback.
 
 The wiki, relation index, Context Packs, and Pre-Task Briefs represent the active graph only: user success criteria, domain model, project model, failure prevention rules, AI successful approaches, validation/process/design patterns, preferences, and AI failure memory. Rejected, discarded, quarantined, replaced, task-only context, and legacy pending memory is excluded. Raw logs are diagnostic and should not be treated as prompt context by default.
 
 Before acting, adapters should surface and apply all three lanes when present: `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`.
 
-Do not wrap VibeBox commands in `powershell.exe -Command` as the normal adapter path. Shell wrappers can look riskier to host approval layers than direct CLI calls. If a wrapper-style `pretask` or `context` attempt is blocked, retry direct `vibebox.cmd`, then `vibebox`, then `node bin/vibebox.mjs` from the repository. If all attempts fail, report that VibeBox guidance was unavailable and include that fact in the aftertask notes or errors.
+Do not wrap VibeBox commands in `powershell.exe -Command` as the normal adapter path. Shell wrappers can look riskier to host approval layers than direct CLI calls. If a wrapper-style `pretask` or `context` attempt is blocked, retry direct `vibebox.cmd`, then `vibebox`, then `node bin/vibebox.mjs` from the repository. If the global store is blocked, request read-only global VibeBox store access. If all attempts fail, report that VibeBox guidance was unavailable and include that fact in the aftertask notes or errors.
 
-`pretask` and `context` are read-only memory retrieval commands that print active guidance and should not modify repository files. `aftertask` is a write/capture operation and must include `--request` or a `User request:` section for active user success criteria extraction.
+`pretask` and `context` are read-only memory retrieval commands that print active guidance and should not modify repository files. `aftertask` is a global store write/capture operation and must include `--request` or a `User request:` section for active user success criteria extraction.
 
 Internal memory stays canonical for agent processing: JSON field names, relation types, command names, file paths, errors, and raw logs remain stable. Obsidian is the user display layer: filenames, category folders, headings, aliases, links, Recent Active Memory, category pages, project pages, and category-based memory notes follow the configured memory language through stable `docKey` identity. Visible note names are meaning-based; `mem_...` ids stay in frontmatter. A memory has one canonical note under its primary category and can be linked from multiple related category pages plus the source project page. Adapters must not call external translation APIs. Only run `convert-lang` or semantic `rebuild` when the adapter has set an agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`.
 

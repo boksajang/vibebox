@@ -40,7 +40,9 @@ node bin/vibebox.mjs <command>
 
 `vibebox init` creates or updates one user-level global store. By default that store is `~/.vibebox` on macOS/Linux and `C:\Users\{USER}\.vibebox` on Windows. Set `VIBEBOX_HOME` or pass `--store <path>` to use a different store.
 
-The current AI working directory is treated as a project workspace unless it is an excluded internal path such as the user home directory, the VibeBox global store, a drive root, `.codex`, `.agents`, plugin cache, `node_modules`, or the system temp root. Git remote origin and `package.json` name improve project identity when present; otherwise VibeBox uses the current folder name. Project memory is stored under `projects/{projectId}/` inside the global store. VibeBox does not create `.vibebox/`, pointer files, or hidden metadata inside work repositories.
+The current AI working directory is treated as a project workspace unless it is an excluded internal path such as the user home directory, the VibeBox global store, a drive root, `.codex`, `.agents`, plugin cache, `node_modules`, or the system temp root. Git remote origin and `package.json` name improve project identity when present; otherwise VibeBox uses the current folder name. Project memory is stored under `projects/{projectId}/` inside the global store. VibeBox does not create `.vibebox/`, workspace-local memory snapshots, copied memory stores, pointer files, or hidden metadata inside work repositories.
+
+In Codex or other sandboxed hosts, the global store may require explicit access because it is outside the workspace. `pretask` and `context` are read-only memory retrieval for repository files but still read the global store; `aftertask` writes capture records to that store. See `adapters/codex/README.md` for the Codex sandbox and approval guidance.
 
 The global store contains:
 
@@ -250,6 +252,8 @@ On Windows/Codex, use direct `vibebox.cmd` for the same commands first. If a wra
 - If `vibebox` is not found, run `npm link` from the VibeBox repository or use `node bin/vibebox.mjs <command>`.
 - If PowerShell blocks `vibebox.ps1`, use `vibebox.cmd <command>`.
 - If `pretask` or `context` was blocked only because it was wrapped in `powershell.exe -Command`, retry direct `vibebox.cmd pretask --task "..."` or `vibebox.cmd context --task "..."`.
+- If `pretask` or `context` was blocked because the sandbox denied `~/.vibebox` or `$VIBEBOX_HOME`, approve read-only global VibeBox store access or proceed only after reporting that guidance was unavailable.
+- If `aftertask` was blocked by global store permissions, approve global VibeBox store write access for aftertask capture or report capture unavailable.
 - If you need an isolated store, set `VIBEBOX_HOME` before running commands.
 - If pre-task output is empty, check whether events were captured and inspect active memory with `report`. Use `review` and `approve` only for legacy/manual override.
 - If indexes or wiki files look inconsistent, run `vibebox doctor`.

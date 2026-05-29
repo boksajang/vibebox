@@ -25,6 +25,35 @@ VIBEBOX_HOME=/path/to/store vibebox <command>
 vibebox <command> --store /path/to/store
 ```
 
+VibeBox uses one global store as the single source of truth. Sandboxed hosts may require approval to read or write that store when it lives at `~/.vibebox` or outside the current workspace. Do not create workspace-local snapshots, copied memory stores, or project-local `.vibebox` folders as a fallback.
+
+Read-only or inspection commands:
+
+- `vibebox pretask`
+- `vibebox context`
+- `vibebox report`
+- `vibebox blackbox`
+- `vibebox doctor` when used for inspection
+
+These commands should not modify repository files, but they read the global VibeBox store.
+
+Write or maintenance commands:
+
+- `vibebox aftertask`
+- `vibebox capture`
+- `vibebox extract`
+- `vibebox approve`
+- `vibebox reject`
+- `vibebox init`
+- `vibebox backup`
+- `vibebox restore`
+- `vibebox convert-lang`
+- `vibebox rebuild`
+
+These commands create, update, export, restore, or maintain files in the global VibeBox store.
+
+Permission failure guidance: if a sandbox denies `~/.vibebox` or `$VIBEBOX_HOME`, report that VibeBox global store access is required. For `pretask` or `context`, request read-only global VibeBox store access. For `aftertask`, request global VibeBox store write access for aftertask capture. Do not work around the denial by copying memory into the workspace.
+
 Memory language seed for a new store:
 
 ```bash
@@ -89,7 +118,7 @@ vibebox init --language ko-KR
 - Typical usage: Attach memory context to an agent prompt before work.
 - Windows/Codex example: `vibebox.cmd context --task "Update dashboard dependency handling"`
 - Cross-platform example: `vibebox context --task "Update dashboard dependency handling"`
-- Notes: Read-only memory retrieval. It prints active guidance and should not modify repository files. `pretask` is usually better before coding because it is more action-oriented. Context can include `User Success Criteria`, `AI Failure Avoidance`, `AI Successful Approaches`, validation, process, design, correction, and agent failure/success patterns when relevant.
+- Notes: Read-only memory retrieval for repository files. It prints active guidance and should not modify repository files, but it needs read access to the global VibeBox store. `pretask` is usually better before coding because it is more action-oriented. Context can include `User Success Criteria`, `AI Failure Avoidance`, `AI Successful Approaches`, validation, process, design, correction, and agent failure/success patterns when relevant.
 
 ## `vibebox pretask`
 
@@ -97,7 +126,7 @@ vibebox init --language ko-KR
 - Typical usage: Run before non-trivial coding or design work.
 - Windows/Codex example: `vibebox.cmd pretask --task "Fix dashboard table scrolling"`
 - Cross-platform example: `vibebox pretask --task "Fix dashboard table scrolling"`
-- Notes: Read-only memory retrieval. It prints active guidance and should not modify repository files. Also accepts positional task text, such as `vibebox pretask "Fix dashboard table scrolling"`. If a host approval layer blocks a wrapper-style command, retry direct `vibebox.cmd pretask --task "..."` before falling back to `node bin/vibebox.mjs pretask --task "..."`. The brief is situation-aware and prioritizes the three main guidance lanes: `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`. Agents should use those lanes in the actual plan, not only display them.
+- Notes: Read-only memory retrieval for repository files. It prints active guidance and should not modify repository files, but it needs read access to the global VibeBox store. Also accepts positional task text, such as `vibebox pretask "Fix dashboard table scrolling"`. If a host approval layer blocks a wrapper-style command, retry direct `vibebox.cmd pretask --task "..."` before falling back to `node bin/vibebox.mjs pretask --task "..."`. If a sandbox blocks `~/.vibebox`, request read-only global VibeBox store access. The brief is situation-aware and prioritizes the three main guidance lanes: `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`. Agents should use those lanes in the actual plan, not only display them.
 
 ## `vibebox aftertask`
 
@@ -105,7 +134,7 @@ vibebox init --language ko-KR
 - Typical usage: Run after meaningful coding or design work. Always pass the original user request, or a faithful semantic summary of it, with `--request`.
 - Windows/Codex example: `vibebox.cmd aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling" --files "src/table.mjs" --commands "npm.cmd test" --technical-outcome success --user-acceptance accepted`
 - Cross-platform example: `vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling" --files "src/table.mjs" --commands "npm.cmd test" --technical-outcome success --user-acceptance accepted`
-- Notes: Supports `--request`, `--summary`, `--files`, `--commands`, `--command-results`, `--errors`, `--feedback`, `--outcome`, `--technical-outcome`, `--user-acceptance`, `--final-outcome`, `--notes`, `--from-file`, and `--manual-review`. `--from-file` may include `User request:` and `Summary:` sections. Without a user request, VibeBox records the event but skips active user model extraction for success criteria; clear command/tool/environment failures can still become AI failure memory. User-accepted outcomes can become confirmed AI successful approaches, validated reusable outcomes with no rejection can become inferred successful approaches, and user-rejected outcomes become AI failure/correction/prevention guidance plus updated success criteria instead of `success_pattern`.
+- Notes: Supports `--request`, `--summary`, `--files`, `--commands`, `--command-results`, `--errors`, `--feedback`, `--outcome`, `--technical-outcome`, `--user-acceptance`, `--final-outcome`, `--notes`, `--from-file`, and `--manual-review`. `--from-file` may include `User request:` and `Summary:` sections. This is a global store write/capture operation and may need approved write access in sandboxed hosts. Without a user request, VibeBox records the event but skips active user model extraction for success criteria; clear command/tool/environment failures can still become AI failure memory. User-accepted outcomes can become confirmed AI successful approaches, validated reusable outcomes with no rejection can become inferred successful approaches, and user-rejected outcomes become AI failure/correction/prevention guidance plus updated success criteria instead of `success_pattern`.
 
 ## `vibebox report`
 

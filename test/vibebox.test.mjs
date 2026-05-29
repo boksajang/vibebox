@@ -37,6 +37,7 @@ import {
   reviewPending,
   runDoctor
 } from '../src/core.mjs';
+import { formatCliError } from '../src/cli.mjs';
 
 async function makeWorkspace() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vibebox-test-'));
@@ -597,6 +598,26 @@ test('approve and reject move only reviewed memory into active indexes, wiki, an
   assert.match(pack, /Relevant Success Patterns:\n- .*Wrapper-based table scrolling/s);
   assert.match(pack, /Guidance for AI Agent:/);
   assert.doesNotMatch(pack, /sk-test|password|Bearer/);
+});
+
+test('pretask and context do not mutate project registry during retrieval', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+  const registryPath = storePath(root, 'registry', 'projects.json');
+  const before = await readFile(registryPath, 'utf8');
+
+  await generatePreTaskBrief(root, {
+    task: 'Check project memory before editing.'
+  });
+  const afterPretask = await readFile(registryPath, 'utf8');
+
+  await generateContextPack(root, {
+    task: 'Check project memory before editing.'
+  });
+  const afterContext = await readFile(registryPath, 'utf8');
+
+  assert.equal(afterPretask, before);
+  assert.equal(afterContext, before);
 });
 
 test('pretask creates an agent-ready brief that prioritizes project guardrails and shows active conflicts', async () => {
@@ -3169,6 +3190,13 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /node bin\/vibebox\.mjs <command>/);
   assert.match(combined, /pretask[\s\S]{0,220}read-only|read-only[\s\S]{0,220}pretask/i);
   assert.match(combined, /context[\s\S]{0,220}read-only|read-only[\s\S]{0,220}context/i);
+  assert.match(combined, /global store as the single source of truth|single source of truth[\s\S]{0,120}global store/i);
+  assert.match(combined, /sandbox[\s\S]{0,220}(?:~\/\.vibebox|\$VIBEBOX_HOME|global VibeBox store)/i);
+  assert.match(combined, /read-only global VibeBox store access/i);
+  assert.match(combined, /global VibeBox store write access/i);
+  assert.match(combined, /\[features\]\.hooks/);
+  assert.match(combined, /\[features\]\.codex_hooks[\s\S]{0,120}deprecated/i);
+  assert.match(combined, /Do not create workspace-local memory snapshots/i);
   assert.match(combined, /original user request or faithful summary/i);
   assert.match(combined, /without a user request, VibeBox records the event but skips active user model extraction/i);
   assert.match(combined, /Do not call aftertask with only an AI action summary/i);
@@ -3179,6 +3207,33 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /Do not (?:use|wrap)[^.]{0,160}powershell(?:\.exe)? -Command/i);
   assert.doesNotMatch(combined, /Codex-only|Claude-only|Codex 전용|Claude 전용/i);
   assert.doesNotMatch(combined, /marketplace distribution is available|official Claude install is available|cloud install is available/i);
+  assert.doesNotMatch(combined, /fallback to (?:a )?(?:workspace-local|project-local|copied) memory/i);
+});
+
+test('CLI permission diagnostics explain sandboxed global store access', async () => {
+  const previousHome = process.env.VIBEBOX_HOME;
+  process.env.VIBEBOX_HOME = path.join(os.tmpdir(), 'vibebox-permission-diagnostic-store');
+  try {
+    const error = new Error('EPERM: operation not permitted, open registry/projects.json');
+    error.code = 'EPERM';
+
+    const readMessage = formatCliError(error, 'pretask');
+    assert.match(readMessage, /VibeBox global store access is required/);
+    assert.match(readMessage, /pretask\/context\/report\/doctor read active memory/);
+    assert.match(readMessage, /Sandboxed hosts such as Codex/);
+    assert.match(readMessage, /Do not create workspace-local memory snapshots/);
+    assert.match(readMessage, /approved read-only global VibeBox store access/);
+
+    const writeMessage = formatCliError(error, 'aftertask');
+    assert.match(writeMessage, /aftertask\/capture\/maintenance commands write capture/);
+    assert.match(writeMessage, /approved global VibeBox store write access/);
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.VIBEBOX_HOME;
+    } else {
+      process.env.VIBEBOX_HOME = previousHome;
+    }
+  }
 });
 
 test('CLI --language overrides environment locale for new store configuration', async () => {

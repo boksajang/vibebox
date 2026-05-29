@@ -28,6 +28,8 @@ This is an auto-intervention policy, not a hardcoded trigger list. The agent sho
 7. Use `vibebox review`, `vibebox approve <candidate-id>`, `vibebox approve --safe`, or `vibebox reject <candidate-id>` only for debugging, audits, or manual override.
 8. Inspect project health with `vibebox report`, `vibebox blackbox`, and `vibebox doctor`.
 
+VibeBox uses the global user store as the single source of truth. Sandboxed hosts can block access to `~/.vibebox` or `$VIBEBOX_HOME` because that store is outside the current workspace. Agents should request approved global-store access when needed, not create workspace-local memory snapshots, copied stores, or project-local `.vibebox` fallbacks.
+
 ## Pre-Task Brief Workflow
 
 Use this before planning or editing when repository memory could affect the task and VibeBox is available for the current working directory:
@@ -50,7 +52,7 @@ Repository fallback:
 node bin/vibebox.mjs pretask --task "Fix dashboard table scrolling"
 ```
 
-`pretask` is read-only memory retrieval: it prints active guidance and should not modify repository files. Do not wrap it in `powershell.exe -Command` unless no direct invocation is possible. If a host approval layer blocks a wrapper-style command, retry direct `vibebox.cmd pretask --task "..."`, then `vibebox pretask --task "..."`, then the Node fallback. If all attempts fail, report that VibeBox guidance was unavailable and continue only when the current task can proceed safely.
+`pretask` is read-only memory retrieval for repository files: it prints active guidance and should not modify repository files, but it still reads the global VibeBox store. Do not wrap it in `powershell.exe -Command` unless no direct invocation is possible. If a host approval layer blocks a wrapper-style command, retry direct `vibebox.cmd pretask --task "..."`, then `vibebox pretask --task "..."`, then the Node fallback. If a sandbox blocks the global store, request read-only global VibeBox store access. If all attempts fail, report that VibeBox guidance was unavailable and continue only when the current task can proceed safely.
 
 The brief should guide attention, not replace codebase analysis. Apply active memory as constraints, risk warnings, project context, validation style, process guidance, and failure-prevention rules.
 
@@ -76,7 +78,7 @@ vibebox aftertask --request "Fix dashboard table scrolling" --from-file task-res
 
 Alternatively, the file may contain a `User request:` section and a `Summary:` section. Do not use `--summary` or `--from-file` alone for success criteria extraction; without a user request, VibeBox records the event and skips user success criteria extraction. Clear command/tool/environment failures can still become AI failure memory.
 
-Aftertask is a write/capture operation: it writes a blackbox event, extracts memory candidates, and lets the Auto Curator decide whether to activate, replace, discard, or quarantine each candidate. Structured user requests are decomposed into reusable success criteria, project rules, user/domain patterns, validation/preservation expectations, scope limits, AI failure-prevention rules, and task context before AI action summaries are used as supporting evidence. Skip capture when the user explicitly opts out.
+Aftertask is a global store write/capture operation: it writes a blackbox event, extracts memory candidates, and lets the Auto Curator decide whether to activate, replace, discard, or quarantine each candidate. Structured user requests are decomposed into reusable success criteria, project rules, user/domain patterns, validation/preservation expectations, scope limits, AI failure-prevention rules, and task context before AI action summaries are used as supporting evidence. If sandbox permissions block aftertask, request global VibeBox store write access for aftertask capture or report that capture was unavailable. Skip capture when the user explicitly opts out.
 
 ## Manual Review And Override Workflow
 
@@ -110,7 +112,7 @@ Use `context` when a compact memory pack is enough:
 vibebox.cmd context --task "Update dashboard dependency handling"
 ```
 
-`context` is read-only memory retrieval. It prints a compact active-memory pack and should not modify repository files. On non-Windows systems, `vibebox context --task "..."` is the normal installed command.
+`context` is read-only memory retrieval for repository files. It prints a compact active-memory pack and should not modify repository files, but it still reads the global VibeBox store. On non-Windows systems, `vibebox context --task "..."` is the normal installed command.
 
 Use `pretask` when an agent is about to act, because it includes more direct instructions and risks.
 Pretask should consider both failure memory and success patterns when relevant: failure memory is prevention guidance, while success memory is reusable approach guidance.
@@ -178,7 +180,7 @@ vibebox restore --from ./vibebox-backup --confirm-replace
 
 For manual debugging or override, add `vibebox review`, `vibebox approve <candidate-id>`, or `vibebox reject <candidate-id>`.
 
-These commands use the global user store at `~/.vibebox` by default, or `VIBEBOX_HOME` when configured. They do not create project-local `.vibebox` folders, pointer files, or hidden metadata in that project.
+These commands use the global user store at `~/.vibebox` by default, or `VIBEBOX_HOME` when configured. They do not create project-local `.vibebox` folders, workspace-local memory snapshots, copied memory stores, pointer files, or hidden metadata in that project.
 
 ## Current User Request Priority Rule
 

@@ -64,6 +64,14 @@ Do not use `powershell.exe -Command` as a default VibeBox workflow example. Trea
 
 `pretask` and `context` are read-only memory retrieval commands. `aftertask`, `init`, `backup`, `restore`, `convert-lang`, and semantic `rebuild` are write or maintenance operations.
 
+## Codex Sandbox And Global Store Access
+
+VibeBox uses one global store as the single source of truth, normally `~/.vibebox` or `C:\Users\{USER}\.vibebox`. It does not create workspace-local memory snapshots, project-local `.vibebox` folders, copied memory stores, pointer files, or hidden metadata in work projects.
+
+Codex sandbox settings can block that global store because it is outside the current workspace. In a read-only sandbox, even `pretask` and `context` may need approved read-only global VibeBox store access. With on-request approval, Codex may ask before reading `~/.vibebox`; `aftertask` needs global VibeBox store write access because it records the task result and updates active memory. If access is denied, report that VibeBox guidance or capture was unavailable. Do not replace the global store with a local snapshot.
+
+VibeBox does not automatically edit Codex configuration. If you configure hooks manually, use the current `[features].hooks` setting; legacy `[features].codex_hooks` references are deprecated and should not be used for new setup.
+
 ## Workflow Summary
 
 Before non-trivial work:
@@ -72,7 +80,7 @@ Before non-trivial work:
 vibebox.cmd pretask --task "<task description>"
 ```
 
-Codex should read and apply the `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` sections before planning or editing. This is read-only retrieval: it prints active guidance and should not modify repository files. If host approval blocks a wrapper-style attempt, retry direct `vibebox.cmd pretask --task "..."`, then `vibebox pretask --task "..."`, then `node bin/vibebox.mjs pretask --task "..."` from the VibeBox repository. If all attempts fail, report that VibeBox guidance was unavailable before proceeding.
+Codex should read and apply the `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` sections before planning or editing. This is read-only retrieval for repository files: it prints active guidance and should not modify repository files, but it reads the global VibeBox store. If host approval blocks a wrapper-style attempt, retry direct `vibebox.cmd pretask --task "..."`, then `vibebox pretask --task "..."`, then `node bin/vibebox.mjs pretask --task "..."` from the VibeBox repository. If the sandbox blocks `~/.vibebox`, request read-only global VibeBox store access. If all attempts fail, report that VibeBox guidance was unavailable before proceeding.
 
 After meaningful work:
 
@@ -80,7 +88,7 @@ After meaningful work:
 vibebox.cmd aftertask --request "<original user request or faithful summary>" --summary "..." --technical-outcome success --user-acceptance accepted
 ```
 
-`aftertask` is a write/capture operation. The `--request` value is required for active user model extraction. If the request is long, pass a faithful semantic summary with `--request` or include `User request:` in a `--from-file` payload. If VibeBox guidance could not be retrieved before work, include that fact in `--errors` or `--notes`.
+`aftertask` is a global store write/capture operation. The `--request` value is required for active user model extraction. If the request is long, pass a faithful semantic summary with `--request` or include `User request:` in a `--from-file` payload. If VibeBox guidance could not be retrieved before work, include that fact in `--errors` or `--notes`. If sandbox permissions block aftertask, request global VibeBox store write access for aftertask capture; if approval is denied, report that capture was unavailable.
 
 VibeBox extracts candidates and runs Auto Curator by default. The user's request is success criteria, user corrections update those criteria, and user dissatisfaction is an AI failure signal. Structured requests are decomposed into project criteria, user/domain patterns, validation and preservation rules, scope limits, AI failure-prevention rules, and task context before AI action summaries are used as supporting evidence. Confirmed and inferred AI successful approaches can become active without memory approval; inferred success must not be described as user-confirmed. Capture command, permission, environment, and tool failures as AI failure memory. Use review commands only for debugging, audits, or manual override:
 
@@ -96,7 +104,7 @@ vibebox reject <candidate-id>
 - Agents still need shell access to run the VibeBox CLI.
 - The shared skill is the source of usage behavior; the adapter should not fork memory policy.
 - VibeBox uses one global user store at `~/.vibebox` by default, overrideable with `VIBEBOX_HOME`.
-- VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects.
+- VibeBox does not create project-local `.vibebox` folders, workspace-local snapshots, copied memory stores, pointer files, or hidden metadata in work projects.
 - `backup` and `restore` are ordinary CLI maintenance commands; restore is destructive replace and requires confirmation.
 - `convert-lang` and semantic `rebuild` require an agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`.
 - Obsidian filenames, category folders, headings, aliases, links, Recent Active Memory, and category-based memory notes follow the configured memory language through stable `docKey` identity; internal JSON fields, enum values, relation types, command names, file paths, and raw logs stay canonical. Visible note names are meaning-based; `mem_...` ids stay in frontmatter. A memory has one canonical note under its primary category and can be linked from multiple related category pages plus the source project page.

@@ -72,18 +72,19 @@ Before meaningful repository work:
 
 1. Judge whether prior memory could affect the task.
 2. Check whether the VibeBox CLI is available, whether the global store has been initialized, and whether the current working directory is a usable workspace rather than user home, global store, cache, or tool-internal path.
-3. Treat `pretask` and `context` as read-only memory retrieval commands: they print active guidance and should not edit repository files.
+3. Treat `pretask` and `context` as read-only memory retrieval commands for the repository: they print active guidance and should not edit repository files, but they still need read access to the global VibeBox store.
 4. On Windows/Codex, prefer direct invocation with `vibebox.cmd pretask --task "<task description>"`; do not wrap VibeBox commands in `powershell.exe -Command` unless no direct invocation is possible.
 5. Outside Windows, prefer `vibebox pretask --task "<task description>"`.
 6. If a host approval layer blocks a wrapper-style command, retry with direct `vibebox.cmd pretask --task "<task description>"`, then `vibebox pretask --task "<task description>"`, then `node bin/vibebox.mjs pretask --task "<task description>"` from the VibeBox repository.
-7. If all VibeBox retrieval attempts fail, clearly say that VibeBox guidance was unavailable and continue only if the current task can proceed safely.
-8. Read the Pre-Task Brief.
-9. Identify the relevant `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` sections.
-10. Apply relevant memory as constraints, risk warnings, and reusable approaches in the actual plan and implementation.
-11. If memory conflicts with the user's current explicit request, mention the conflict and follow the current request.
-12. If memory conflicts with repository reality, report the conflict before acting.
-13. Do not treat low-confidence memory as final fact.
-14. Avoid repeating known failed approaches.
+7. If a sandbox blocks `~/.vibebox` or `$VIBEBOX_HOME`, request approved read-only global VibeBox store access; do not create workspace-local memory snapshots or project-local `.vibebox` fallbacks.
+8. If all VibeBox retrieval attempts fail, clearly say that VibeBox guidance was unavailable and continue only if the current task can proceed safely.
+9. Read the Pre-Task Brief.
+10. Identify the relevant `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` sections.
+11. Apply relevant memory as constraints, risk warnings, and reusable approaches in the actual plan and implementation.
+12. If memory conflicts with the user's current explicit request, mention the conflict and follow the current request.
+13. If memory conflicts with repository reality, report the conflict before acting.
+14. Do not treat low-confidence memory as final fact.
+15. Avoid repeating known failed approaches.
 
 ## During-Task Rules
 
@@ -112,13 +113,14 @@ After meaningful coding or design work:
 4. List commands run and results.
 5. Summarize errors or failed attempts.
 6. Summarize user feedback if available.
-7. Run after-task capture when appropriate; `aftertask` is a write/capture operation, unlike read-only `pretask` and `context`.
-8. On Windows/Codex, prefer direct `vibebox.cmd aftertask --request "..." ...`; outside Windows, prefer `vibebox aftertask ...`.
-9. If direct installed commands fail inside the VibeBox repository, use `node bin/vibebox.mjs aftertask --request "..." ...`.
-10. Let VibeBox extract candidates and run Auto Curator handling.
-11. Treat user acceptance and technical success as separate signals.
-12. Show review instructions only when debugging or manual override is useful.
-13. Do not store secrets as memory.
+7. Run after-task capture when appropriate; `aftertask` is a global store write/capture operation, unlike repository read-only `pretask` and `context`.
+8. If sandbox permissions block aftertask, request approved global VibeBox store write access for aftertask capture or report that capture was unavailable. Do not create a copied memory store as a fallback.
+9. On Windows/Codex, prefer direct `vibebox.cmd aftertask --request "..." ...`; outside Windows, prefer `vibebox aftertask ...`.
+10. If direct installed commands fail inside the VibeBox repository, use `node bin/vibebox.mjs aftertask --request "..." ...`.
+11. Let VibeBox extract candidates and run Auto Curator handling.
+12. Treat user acceptance and technical success as separate signals.
+13. Show review instructions only when debugging or manual override is useful.
+14. Do not store secrets as memory.
 
 ## Auto-Curated Memory Policy
 
@@ -198,7 +200,7 @@ vibebox <command>
 
 Do not wrap VibeBox commands in `powershell.exe -Command` unless no direct invocation is possible. Host approval layers can treat shell wrappers as higher risk than direct CLI invocation, especially for read-only `pretask` and `context`.
 
-`pretask`, `context`, read-only `report`, and read-only `doctor` are memory retrieval or inspection commands. `aftertask`, `init`, `backup`, `restore`, `convert-lang`, and semantic `rebuild` are write or maintenance operations and should be described that way when requesting approval.
+`pretask`, `context`, read-only `report`, and read-only `doctor` are memory retrieval or inspection commands. They should not edit repository files, but they read the global VibeBox store and may need approved global-store read access in sandboxed hosts. `aftertask`, `init`, `backup`, `restore`, `convert-lang`, and semantic `rebuild` are write or maintenance operations and should be described that way when requesting approval.
 
 If neither works:
 
@@ -212,9 +214,9 @@ If neither works:
 
 VibeBox writes human-readable Markdown in the global store wiki, `~/.vibebox/wiki/` by default, or `$VIBEBOX_HOME/wiki` when configured. Use it for inspection and review, not as a raw transcript store. The wiki is an active pattern graph linking projects, failures, prevention rules, success patterns, user patterns, design philosophy, validation patterns, process patterns, and decisions. VibeBox managed sections are bounded by `<!-- VIBEBOX:BEGIN -->` and `<!-- VIBEBOX:END -->`; user-written notes outside managed blocks should be preserved.
 
-VibeBox uses one global user store. Global preferences and rules live under `global/`; project memory lives under `projects/{projectId}/`; wiki, index, logs, pending, and registry data live under the global store. Project identity comes from the current AI working directory: git remote `origin` and `package.json` name are preferred when present, otherwise the current folder name is used. Static sites, PHP folders, JSON-only folders, document folders, and plain folders are valid project workspaces unless they are user home, global store, cache, or tool-internal paths.
+VibeBox uses one global user store as the single source of truth. Global preferences and rules live under `global/`; project memory lives under `projects/{projectId}/`; wiki, index, logs, pending, and registry data live under the global store. Project identity comes from the current AI working directory: git remote `origin` and `package.json` name are preferred when present, otherwise the current folder name is used. Static sites, PHP folders, JSON-only folders, document folders, and plain folders are valid project workspaces unless they are user home, global store, cache, or tool-internal paths.
 
-VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects. Old project-local `.vibebox/` folders are legacy; `vibebox doctor` warns about them and no destructive migration is automatic.
+VibeBox does not create project-local `.vibebox` folders, workspace-local snapshots, pointer files, copied memory stores, or hidden metadata in work projects. Old project-local `.vibebox/` folders are legacy; `vibebox doctor` warns about them and no destructive migration is automatic.
 
 ## Locale Notes
 
@@ -227,6 +229,8 @@ Only run `vibebox convert-lang` or semantic `vibebox rebuild` when an adapter ha
 - If `vibebox` is not found on Windows/Codex, try direct `vibebox.cmd <command>` first, then `node bin/vibebox.mjs <command>` from the repository root.
 - If the global store is missing and the user wants VibeBox, run `vibebox init` or `node bin/vibebox.mjs init`.
 - If `pretask` or `context` was blocked because it was wrapped in `powershell.exe -Command`, retry direct `vibebox.cmd pretask --task "..."` or `vibebox.cmd context --task "..."`.
+- If `pretask` or `context` was blocked because the sandbox denied `~/.vibebox` or `$VIBEBOX_HOME`, request read-only global VibeBox store access and report guidance unavailable if approval is denied.
+- If `aftertask` was blocked by global store permissions, request global VibeBox store write access for aftertask capture and report capture unavailable if approval is denied.
 - If pre-task output looks irrelevant, inspect active memory with `vibebox report`; use `vibebox review` only for legacy/manual debug state.
 - If memory/index health is unclear, run `vibebox doctor`.
 - Before risky maintenance, use `vibebox backup`; restore uses destructive replace and requires confirmation.

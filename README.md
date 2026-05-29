@@ -101,7 +101,9 @@ Override:
 VIBEBOX_HOME
 ```
 
-VibeBox uses one global user store. It does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work repositories.
+VibeBox uses one global user store as the single source of truth. It does not create project-local `.vibebox` folders, workspace-local memory snapshots, copied memory stores, pointer files, or hidden metadata in work repositories.
+
+Sandboxed agents may need approval to read or write that global store because it usually lives outside the current workspace. `pretask` and `context` are read-only memory retrieval for repository files, while `aftertask` writes capture records to the global store. Codex users should see [Codex Adapter](adapters/codex/README.md) for sandbox and approval guidance.
 
 The current AI working directory is treated as a project workspace unless it is an excluded internal path. Plain folders, static HTML/PHP folders, JSON-only app folders, documentation folders, and framework repos can all be projects. Git remotes and package metadata improve identity, but they are not required.
 

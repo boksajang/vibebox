@@ -1302,6 +1302,46 @@ async function resolveCurrentProjectIdentity(root = process.cwd()) {
 
 export { resolveCurrentProjectIdentity };
 
+async function resolveProjectIdentityForRead(root = process.cwd()) {
+  if (!(await isRecognizedProjectRoot(root))) {
+    return virtualProjectIdentity(root);
+  }
+
+  const detected = await detectProjectIdentity(root);
+  const registryPath = vibeboxPath(root, 'registry/projects.json');
+  const registry = await loadJson(registryPath, defaultRegistry());
+  registry.projects = Array.isArray(registry.projects) ? registry.projects : [];
+  const existing = registry.projects.find((project) => (
+    (detected.gitRemote && project.gitRemote === detected.gitRemote)
+    || (project.rootPath && path.resolve(project.rootPath) === detected.rootPath)
+    || project.projectId === detected.projectId
+    || (Array.isArray(project.aliases) && project.aliases.includes(detected.projectId))
+  ));
+
+  if (!existing) {
+    return {
+      ...detected,
+      firstSeenAt: null,
+      lastSeenAt: null,
+      aliases: [...new Set(detected.aliases || [])].sort(),
+      readOnly: true
+    };
+  }
+
+  const aliases = new Set([...(existing.aliases || []), ...(detected.aliases || [])]);
+  if (detected.projectId !== existing.projectId) aliases.add(detected.projectId);
+  return {
+    ...existing,
+    ...detected,
+    projectId: existing.projectId,
+    firstSeenAt: existing.firstSeenAt || null,
+    lastSeenAt: existing.lastSeenAt || null,
+    aliases: [...aliases].sort(),
+    status: existing.status || detected.status || 'active',
+    readOnly: true
+  };
+}
+
 async function createDefaultConfig() {
   return defaultConfig();
 }
@@ -5814,7 +5854,7 @@ export async function generateContextPack(root = process.cwd(), input = {}) {
   await ensureStoreForRead(root);
   const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
   const locale = resolveLocale(input, config);
-  const project = await resolveCurrentProjectIdentity(root);
+  const project = await resolveProjectIdentityForRead(root);
   const task = input.task || input.text || '';
   const situation = detectSituation(task);
   const retrievalConfig = { ...config, projectId: project.projectId, situation };
@@ -5947,7 +5987,7 @@ export async function generatePreTaskBrief(root = process.cwd(), input = {}) {
   await ensureStoreForRead(root);
   const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
   const locale = resolveLocale(input, config);
-  const project = await resolveCurrentProjectIdentity(root);
+  const project = await resolveProjectIdentityForRead(root);
   const task = input.task || input.text || '';
   const situation = detectSituation(task);
   const retrievalConfig = { ...config, projectId: project.projectId, situation };

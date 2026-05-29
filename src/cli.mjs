@@ -129,6 +129,50 @@ function parseAfterTaskFile(text = '') {
   return Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, value.trim()]));
 }
 
+function isPermissionDeniedError(error) {
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '');
+  return ['EACCES', 'EPERM'].includes(code)
+    || /\b(?:permission denied|access denied|operation not permitted|not permitted)\b/iu.test(message);
+}
+
+function commandAccessKind(command = '') {
+  const normalized = String(command || '').toLowerCase();
+  if (['pretask', 'context', 'report', 'blackbox', 'doctor', 'review'].includes(normalized)) {
+    return 'read';
+  }
+  if (['aftertask', 'capture', 'extract', 'approve', 'reject', 'init', 'backup', 'restore', 'convert-lang', 'language', 'rebuild'].includes(normalized)) {
+    return 'write';
+  }
+  return 'access';
+}
+
+export function formatCliError(error, command = '') {
+  const message = error?.message || String(error);
+  if (!isPermissionDeniedError(error)) return message;
+
+  const store = getVibeBoxHome();
+  const kind = commandAccessKind(command);
+  const purpose = kind === 'read'
+    ? 'pretask/context/report/doctor read active memory and diagnostics from the global VibeBox store.'
+    : kind === 'write'
+      ? 'aftertask/capture/maintenance commands write capture, index, wiki, backup, or restore data in the global VibeBox store.'
+      : 'this command needs access to the global VibeBox store.';
+  const approval = kind === 'read'
+    ? 'Rerun with approved read-only global VibeBox store access.'
+    : 'Rerun with approved global VibeBox store write access when the command records or maintains memory.';
+
+  return [
+    message,
+    '',
+    `VibeBox global store access is required at ${store}.`,
+    purpose,
+    'Sandboxed hosts such as Codex may block ~/.vibebox because it is outside the workspace.',
+    'Do not create workspace-local memory snapshots, project-local .vibebox folders, or copied memory stores as a fallback.',
+    approval
+  ].join('\n');
+}
+
 function help() {
   return `VibeBox
 
@@ -367,7 +411,8 @@ export async function main() {
       process.stdout.write(`${output}\n`);
     }
   } catch (error) {
-    process.stderr.write(`${error.message}\n`);
+    const { args } = parseArgs(process.argv.slice(2));
+    process.stderr.write(`${formatCliError(error, args[0] || '')}\n`);
     process.exitCode = 1;
   }
 }
