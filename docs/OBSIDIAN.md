@@ -14,6 +14,12 @@ $VIBEBOX_HOME/wiki/
 
 The wiki is an inspection layer. Retrieval uses JSON indexes under `index/`; raw blackbox events stay under `logs/`.
 
+## Agent-Provided Display Text
+
+The AI agent is responsible for user-facing semantic display text. When a structured candidate includes `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage`, the wiki uses those fields first. Core fallback display only combines existing structured fields and strips visible memory ids; it does not translate, summarize, infer categories, or rewrite raw `userRequest` / `aiActionSummary` text into a user-facing note.
+
+`convert-lang` is a semantic language conversion operation. It requires an agent runtime marker and agent-provided localized display candidates for active memories. Core validates BCP 47 tags, renames files, rewrites links, updates `registry/wiki-docs.json`, and runs integrity checks; it does not perform translation itself.
+
 ## Canonical Memory vs Wiki Display
 
 VibeBox keeps internal memory and Obsidian display separate:
@@ -37,6 +43,8 @@ The wiki shows current active guidance, not a transcript archive. Managed pages 
 - design philosophy and domain patterns
 
 User dissatisfaction is never shown as user failure. It is represented as AI failure memory, correction guidance, or refined success criteria when useful.
+
+If a raw event has `userRequest` but no structured memory candidates, the wiki does not gain a synthetic user memory. If an event has only `aiActionSummary`, the wiki can preserve the raw event in logs but cannot promote it to active user memory.
 
 ## Localized Filenames
 

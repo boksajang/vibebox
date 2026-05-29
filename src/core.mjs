@@ -275,6 +275,15 @@ const MEMORY_ROLE_VALUES = new Set([
   'task_context',
   'discarded_detail'
 ]);
+const MODEL_CLASS_VALUES = new Set(['user_model', 'domain_model', 'project_model', 'task_context', 'discarded_detail']);
+const CANDIDATE_SCOPE_VALUES = new Set(['global', 'domain', 'project', 'task', 'temporary']);
+const CANDIDATE_STATUS_VALUES = new Set(['active', 'pending', 'discarded', 'quarantined', 'rejected']);
+const CANDIDATE_SOURCE_TYPE_VALUES = new Set([
+  'agent_semantic_extraction',
+  'technical_failure_detection',
+  'manual_override',
+  'legacy_import'
+]);
 
 const CATEGORY_AXIS_DOC_KEYS = [
   'validation_patterns',
@@ -1777,6 +1786,9 @@ export async function captureEvent(root = process.cwd(), input = {}) {
     rejectionReason: outcomeFields.rejectionReason,
     correctionDirection: outcomeFields.correctionDirection,
     preventionRule: outcomeFields.preventionRule,
+    semanticExtractionStatus: input.semanticExtractionStatus || 'not_applicable',
+    structuredCandidateCount: Number.isFinite(input.structuredCandidateCount) ? input.structuredCandidateCount : 0,
+    semanticExtractionWarning: input.semanticExtractionWarning || '',
     outcome: outcomeFields.outcome,
     notes: input.notes || '',
     createdAt: input.createdAt || timestamp
@@ -2366,7 +2378,26 @@ function inferRecoveryApproach(statement = '') {
 }
 
 function applyMemoryRoleFields(candidate, statement, source = {}) {
-  candidate.memoryRole = normalizeEnum(candidate.memoryRole, MEMORY_ROLE_VALUES, inferMemoryRole(candidate, source, statement));
+  const structured = isAgentStructuredCandidate(candidate) || isAgentStructuredCandidate(source);
+  candidate.memoryRole = normalizeEnum(
+    candidate.memoryRole,
+    MEMORY_ROLE_VALUES,
+    structured ? 'discarded_detail' : inferMemoryRole(candidate, source, statement)
+  );
+  if (structured) {
+    if (candidate.memoryRole === 'user_success_criteria') {
+      candidate.successCriterion = candidate.successCriterion || candidate.rule || candidate.summary;
+    }
+    if (candidate.memoryRole === 'ai_failure_memory') {
+      candidate.failureReason = candidate.failureReason || candidate.summary;
+      candidate.failureCategory = candidate.failureCategory || candidate.failureType || '';
+    }
+    if (candidate.memoryRole === 'ai_successful_approach') {
+      candidate.successfulApproach = candidate.successfulApproach || candidate.summary;
+      candidate.reuseWhen = candidate.reuseWhen || candidate.appliesTo;
+    }
+    return candidate;
+  }
   if (candidate.memoryRole === 'user_success_criteria') {
     candidate.successCriterion = candidate.summary;
     candidate.successEvidence = candidate.successEvidence === 'rejected' ? 'unknown' : candidate.successEvidence;
@@ -2783,9 +2814,6 @@ function primaryCategoryForProjectCriteria(pieces = {}, domains = []) {
     ...(pieces.validation || []),
     ...(pieces.preservation || [])
   ].filter(Boolean).join('\n');
-  if (semanticHasAny(combined, ['language policy', 'generated content', 'userLanguage', 'design intent', 'source notes', 'spec narrative', '언어 정책', '사용자 언어', '설명문', '디자인 의도'])) {
-    return 'design_philosophy';
-  }
   if ((pieces.ordering || []).length > 0 || semanticHasAny(combined, SEMANTIC_CUES.workflow)) {
     return 'process_patterns';
   }
@@ -3342,81 +3370,259 @@ function extractionSegmentsFromInput(input = {}, baseSource = {}) {
   }));
 }
 
+function stripJsonFence(value = '') {
+  const text = String(value || '').trim();
+  const fence = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/iu);
+  return fence ? fence[1].trim() : text;
+}
+
+function parseStructuredCandidateInput(value, label = 'structured memory candidates') {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'object') {
+    if (Array.isArray(value.candidates)) return value.candidates;
+    if (Array.isArray(value.memoryCandidates)) return value.memoryCandidates;
+    if (Array.isArray(value.structuredMemoryCandidates)) return value.structuredMemoryCandidates;
+    return [value];
+  }
+  if (typeof value !== 'string') {
+    throw new Error(`${label} must be a JSON array or object.`);
+  }
+  const text = stripJsonFence(value);
+  if (!text) return [];
+  try {
+    return parseStructuredCandidateInput(JSON.parse(text), label);
+  } catch (error) {
+    throw new Error(`${label} must be valid JSON: ${error.message}`);
+  }
+}
+
+function structuredCandidatesFromInput(input = {}) {
+  const value = input.structuredMemoryCandidates
+    ?? input.memoryCandidates
+    ?? input.candidates
+    ?? input.agentMemoryCandidates
+    ?? input.agentCandidates;
+  return parseStructuredCandidateInput(value);
+}
+
+function hasStructuredCandidateInput(input = {}) {
+  return structuredCandidatesFromInput(input).length > 0;
+}
+
+function normalizeStringArray(value = []) {
+  if (!value) return [];
+  if (Array.isArray(value)) return uniqueNonEmpty(value.map((item) => String(item || '').trim()).filter(Boolean));
+  return uniqueNonEmpty(String(value).split(/\r?\n|[,;]/u).map((item) => item.trim()).filter(Boolean));
+}
+
+function requiredCandidateString(raw, fieldName, candidateLabel) {
+  const value = raw?.[fieldName];
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`Structured memory candidate ${candidateLabel} is missing required field ${fieldName}.`);
+  }
+  return value.trim();
+}
+
+function requiredCandidateEnum(raw, fieldName, allowed, candidateLabel) {
+  const value = requiredCandidateString(raw, fieldName, candidateLabel);
+  if (!allowed.has(value)) {
+    throw new Error(`Structured memory candidate ${candidateLabel} has invalid ${fieldName}: ${value}.`);
+  }
+  return value;
+}
+
+function normalizeCandidateEvidence(value = []) {
+  const evidence = Array.isArray(value) ? value : value ? [value] : [];
+  return evidence.map((item) => {
+    if (item && typeof item === 'object') return redactSensitive(item);
+    return { kind: 'text', summary: String(item || '').trim() };
+  }).filter((item) => Object.values(item).some(Boolean));
+}
+
+function isAgentStructuredCandidate(candidate = {}) {
+  const sourceType = candidate.sourceType || candidate.source?.sourceType || '';
+  return CANDIDATE_SOURCE_TYPE_VALUES.has(sourceType);
+}
+
+function normalizeStructuredMemoryCandidate(rawCandidate, context = {}) {
+  if (!rawCandidate || typeof rawCandidate !== 'object' || Array.isArray(rawCandidate)) {
+    throw new Error('Structured memory candidates must be objects.');
+  }
+  const raw = redactSensitive(rawCandidate);
+  const candidateLabel = raw.candidateId || raw.id || raw.title || '(unidentified)';
+  const memoryRole = requiredCandidateEnum(raw, 'memoryRole', MEMORY_ROLE_VALUES, candidateLabel);
+  const type = requiredCandidateEnum(raw, 'type', MEMORY_TYPES, candidateLabel);
+  const modelClass = requiredCandidateEnum(raw, 'modelClass', MODEL_CLASS_VALUES, candidateLabel);
+  const scope = requiredCandidateEnum(raw, 'scope', CANDIDATE_SCOPE_VALUES, candidateLabel);
+  const confidence = requiredCandidateEnum(raw, 'confidence', new Set(Object.keys(CONFIDENCE_PRIORITY)), candidateLabel);
+  const sourceType = requiredCandidateEnum(raw, 'sourceType', CANDIDATE_SOURCE_TYPE_VALUES, candidateLabel);
+  const title = requiredCandidateString(raw, 'title', candidateLabel);
+  const summary = requiredCandidateString(raw, 'summary', candidateLabel);
+  const rawStatus = raw.status ? requiredCandidateEnum(raw, 'status', CANDIDATE_STATUS_VALUES, candidateLabel) : 'active';
+  const displayLanguage = raw.displayLanguage
+    ? assertSupportedMemoryLanguageTag(raw.displayLanguage, 'structured candidate displayLanguage')
+    : context.locale;
+  const primaryCategory = raw.primaryCategory
+    ? normalizeCategoryDocKeys([raw.primaryCategory])[0]
+    : null;
+  if (raw.primaryCategory && !primaryCategory) {
+    throw new Error(`Structured memory candidate ${candidateLabel} has invalid primaryCategory: ${raw.primaryCategory}.`);
+  }
+  const rawRelatedCategories = normalizeStringArray(raw.relatedCategories || []);
+  const relatedCategories = normalizeCategoryDocKeys(rawRelatedCategories);
+  if (rawRelatedCategories.length && relatedCategories.length !== rawRelatedCategories.length) {
+    throw new Error(`Structured memory candidate ${candidateLabel} has one or more invalid relatedCategories.`);
+  }
+
+  const project = context.project || {};
+  const idSeed = [
+    raw.candidateId || raw.id || '',
+    memoryRole,
+    type,
+    scope,
+    title,
+    summary
+  ].join('|');
+  const id = String(raw.id || raw.candidateId || hashId('mem', idSeed)).trim().replace(/\s+/gu, '_');
+  const timestamp = nowIso();
+  const domains = uniqueNonEmpty([
+    ...normalizeStringArray(raw.domains || []),
+    ...(raw.domain ? [String(raw.domain).trim()] : [])
+  ]);
+  const candidate = {
+    id,
+    candidateId: raw.candidateId || raw.id || id,
+    type,
+    scope,
+    topic: String(raw.topic || title).trim(),
+    title,
+    rule: String(raw.rule || summary).trim(),
+    summary,
+    details: String(raw.details || summary).trim(),
+    tags: normalizeStringArray(raw.tags || []),
+    domains,
+    domain: raw.domain || domains[0] || '',
+    appliesTo: normalizeStringArray(raw.appliesTo || raw.applies_to || []),
+    source: {
+      kind: context.source?.kind || 'agent_candidate',
+      id: context.source?.id || null,
+      sourceType,
+      role: 'structuredMemoryCandidate'
+    },
+    sourceType,
+    sourceTextKind: 'structuredMemoryCandidate',
+    sourcePriority: 1,
+    evidence: normalizeCandidateEvidence(raw.evidence || []),
+    technicalOutcome: normalizeEnum(raw.technicalOutcome || raw.technical_outcome, TECHNICAL_OUTCOMES, 'unknown'),
+    userAcceptance: normalizeEnum(raw.userAcceptance || raw.user_acceptance, USER_ACCEPTANCE_VALUES, 'unknown'),
+    userFeedbackSignal: raw.userFeedbackSignal || 'none',
+    successEvidence: normalizeEnum(raw.successEvidence || raw.acceptanceBasis, SUCCESS_EVIDENCE_VALUES, 'unknown'),
+    acceptanceBasis: normalizeEnum(raw.acceptanceBasis || raw.successEvidence, SUCCESS_EVIDENCE_VALUES, 'unknown'),
+    finalOutcome: normalizeEnum(raw.finalOutcome || raw.final_outcome, FINAL_OUTCOMES, 'unknown'),
+    rejectionReason: raw.rejectionReason || '',
+    correctionDirection: raw.correctionDirection || '',
+    preventionRule: raw.preventionRule || raw.displayRule || '',
+    confidence,
+    status: 'pending',
+    agentProposedStatus: rawStatus,
+    conflictStatus: 'no_conflict',
+    supersedes: normalizeStringArray(raw.supersedes || []),
+    related: normalizeStringArray(raw.related || []),
+    relationCandidates: Array.isArray(raw.relationCandidates) ? raw.relationCandidates : [],
+    replaces: normalizeStringArray(raw.replaces || []),
+    activeCondition: raw.activeCondition && typeof raw.activeCondition === 'object' ? raw.activeCondition : null,
+    discardReason: raw.discardReason || '',
+    quarantineReason: raw.quarantineReason || '',
+    primaryCategory,
+    relatedCategories,
+    memoryRole,
+    modelClass,
+    modelSubClass: raw.modelSubClass || '',
+    docKey: raw.docKey || docKeyForType(type),
+    displayTitle: raw.displayTitle || '',
+    displaySummary: raw.displaySummary || '',
+    displayRule: raw.displayRule || '',
+    displayLanguage,
+    sourceProjectId: raw.sourceProjectId || project.projectId || '',
+    projectId: ['project', 'task', 'temporary'].includes(scope)
+      ? raw.projectId || project.projectId
+      : raw.projectId,
+    sourceProjectRoot: raw.sourceProjectRoot || project.rootPath,
+    repositoryName: raw.repositoryName || project.repositoryName || project.projectName,
+    createdAt: raw.createdAt || timestamp,
+    updatedAt: timestamp,
+    lastUsedAt: null
+  };
+
+  if (memoryRole === 'user_success_criteria') {
+    candidate.successCriterion = raw.successCriterion || candidate.rule || candidate.summary;
+  }
+  if (memoryRole === 'ai_failure_memory') {
+    candidate.failureType = raw.failureType || '';
+    candidate.failureCategory = raw.failureCategory || raw.failureType || '';
+    candidate.failedApproach = raw.failedApproach || '';
+    candidate.failureReason = raw.failureReason || candidate.summary;
+    candidate.affectedContext = raw.affectedContext || '';
+    candidate.recurrenceRisk = raw.recurrenceRisk || '';
+  }
+  if (memoryRole === 'ai_successful_approach') {
+    candidate.successfulApproach = raw.successfulApproach || candidate.summary;
+    candidate.recoveryApproach = raw.recoveryApproach || '';
+    candidate.whyItWorked = raw.whyItWorked || '';
+    candidate.reuseWhen = raw.reuseWhen || candidate.appliesTo;
+  }
+
+  return candidate;
+}
+
+async function buildStructuredMemoryCandidates(root, rawCandidates = [], context = {}) {
+  await initVibeBox(root);
+  const project = await resolveCurrentProjectIdentity(root);
+  const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
+  const locale = configuredMemoryLocale(config);
+  const memories = await activeMemories(root);
+  return rawCandidates.map((rawCandidate) => {
+    const candidate = normalizeStructuredMemoryCandidate(rawCandidate, {
+      ...context,
+      project,
+      locale
+    });
+    const conflict = classifyCandidateConflict(memories, candidate);
+    candidate.conflictStatus = conflict.status;
+    candidate.related = [...new Set([...(candidate.related || []), ...(conflict.related || [])])];
+    candidate.supersedes = [...new Set([...(candidate.supersedes || []), ...(conflict.supersedes || [])])];
+    if (conflict.reason) candidate.conflictReason = conflict.reason;
+    return candidate;
+  });
+}
+
 export async function extractMemoryCandidates(root = process.cwd(), input = {}) {
-  if (isActionSummaryOnlyExtraction(input)) {
+  const structuredCandidates = structuredCandidatesFromInput(input);
+  if (structuredCandidates.length === 0) {
     return [];
   }
   await initVibeBox(root);
   const project = await resolveCurrentProjectIdentity(root);
   const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
-  let segments = extractionSegmentsFromInput(input, input.source || { kind: 'manual_extract' });
-  let source = input.source || { kind: 'manual_extract' };
-
-  if (segments.length === 0 && input.eventId) {
-    const events = await readJsonl(vibeboxPath(root, 'logs/events.jsonl'));
-    const event = events.find((item) => item.id === input.eventId && item.projectId === project.projectId);
-    if (event) {
-      source = sourceFromEvent(event);
-      segments = extractionSegmentsFromEvent(event, source);
-    }
-  }
-
-  if (segments.length === 0 && input.fromLastEvent) {
-    const events = await readJsonl(vibeboxPath(root, 'logs/events.jsonl'));
-    const event = events.filter((item) => item.projectId === project.projectId).at(-1);
-    if (event) {
-      source = sourceFromEvent(event);
-      segments = extractionSegmentsFromEvent(event, source);
-    }
-  }
-
-  const memories = await activeMemories(root);
   const existingPending = await readJsonl(vibeboxPath(root, 'pending/memory-candidates.jsonl'));
   const existingIds = new Set(existingPending.map((candidate) => candidate.id));
   const newCandidates = [];
 
-  for (const segment of segments.sort((left, right) => left.priority - right.priority)) {
-    const segmentCandidates = [
-      ...(segment.source?.role === 'userRequest'
-        ? semanticCandidatesFromUserRequest(redactSensitive(segment.text), segment.source || source, memories)
-        : []),
-      ...splitStatements(redactSensitive(segment.text))
-        .map((statement) => buildCandidate(statement, segment.source || source, memories))
-        .filter(Boolean)
-    ];
-    for (const candidate of segmentCandidates) {
-      if (candidate && !existingIds.has(candidate.id)) {
-      if (['project', 'task', 'temporary'].includes(candidate.scope)) {
-        candidate.projectId = project.projectId;
-        candidate.id = hashId('mem', `${candidate.id}|${project.projectId}`);
-        normalizeCandidateModel(candidate);
-      }
-      if (existingIds.has(candidate.id)) {
-        if (!isManualReviewMode(input, config)) {
-          const duplicateOf = candidate.id;
-          candidate.id = hashId('mem', `${duplicateOf}|duplicate|${nowIso()}`);
-          candidate.conflictStatus = 'duplicate';
-          candidate.related = [...new Set([...(candidate.related || []), duplicateOf])];
-        } else {
-          continue;
-        }
-      }
-      candidate.sourceProjectRoot = project.rootPath;
-      candidate.sourceProjectId = project.projectId;
-      candidate.repositoryName = project.repositoryName || project.projectName;
+  for (const candidate of await buildStructuredMemoryCandidates(root, structuredCandidates, { source: input.source || { kind: 'manual_extract' } })) {
+    if (!existingIds.has(candidate.id)) {
       newCandidates.push(candidate);
       existingIds.add(candidate.id);
-      } else if (candidate && !isManualReviewMode(input, config)) {
-        const duplicateOf = candidate.id;
-        candidate.id = hashId('mem', `${duplicateOf}|duplicate|${nowIso()}`);
-        candidate.conflictStatus = 'duplicate';
-        candidate.related = [...new Set([...(candidate.related || []), duplicateOf])];
-        candidate.sourceProjectRoot = project.rootPath;
-        candidate.sourceProjectId = project.projectId;
-        candidate.repositoryName = project.repositoryName || project.projectName;
-        newCandidates.push(candidate);
-        existingIds.add(candidate.id);
-      }
+      continue;
+    }
+    if (isManualReviewMode(input, config)) continue;
+    const duplicateOf = candidate.id;
+    candidate.id = hashId('mem', `${duplicateOf}|duplicate|${nowIso()}`);
+    candidate.conflictStatus = 'duplicate';
+    candidate.related = [...new Set([...(candidate.related || []), duplicateOf])];
+    if (!existingIds.has(candidate.id)) {
+      newCandidates.push(candidate);
+      existingIds.add(candidate.id);
     }
   }
 
@@ -3511,6 +3717,19 @@ function canReplaceMemory(existing, candidate) {
   if (!projectCompatibleForReplacement(existing, candidate)) return false;
   if (!valuesCompatible(existing.situation, candidate.situation)) return false;
   return hasSameActiveSubject(existing, candidate);
+}
+
+function canApplyAgentReplacement(existing, candidate) {
+  if (isNonDurableMemoryCandidate(candidate) || isNonDurableMemoryCandidate(existing)) return false;
+  const existingModelClass = existing.modelClass || inferModelClass(existing);
+  const candidateModelClass = candidate.modelClass || inferModelClass(candidate);
+  if (!valuesCompatible(existingModelClass, candidateModelClass)) return false;
+  if (!valuesCompatible(existing.type, candidate.type)) return false;
+  if (!valuesCompatible(existing.scope, candidate.scope)) return false;
+  if (!domainsCompatible(existing, candidate)) return false;
+  if (!projectCompatibleForReplacement(existing, candidate)) return false;
+  if (!valuesCompatible(existing.situation, candidate.situation)) return false;
+  return true;
 }
 
 function hasOpposingChoice(memory, candidate) {
@@ -3649,28 +3868,6 @@ function isLatestUserCorrectionCriteria(candidate = {}) {
     && hasConcreteFailureOrRecoveryEvidence(candidate);
 }
 
-function canDemoteRejectedSuccessMemory(memory, contextText, project = {}) {
-  if (!['success_pattern', 'agent_success_pattern'].includes(memory.type)) return false;
-  if (memory.projectId && memory.projectId !== project.projectId) return false;
-  const tags = extractTags(contextText);
-  const domains = extractDomains(contextText);
-  const topic = inferTopic(contextText, tags, domains);
-  const scope = memory.scope || normalizeCandidateScope(memory.type, determineScope(contextText, domains), contextText);
-  const candidate = normalizeCandidateModel({
-    type: memory.type,
-    scope,
-    topic,
-    summary: contextText,
-    rule: contextText,
-    details: contextText,
-    tags,
-    domains,
-    appliesTo: inferAppliesTo(contextText, scope, domains, topic),
-    projectId: memory.projectId ? project.projectId : null
-  });
-  return canReplaceMemory(memory, candidate);
-}
-
 function inferAutoCurationDecision(candidate) {
   if (containsSensitive(candidate)) {
     return { action: 'quarantine', status: 'quarantined', reason: 'Sensitive value suspected.' };
@@ -3689,6 +3886,18 @@ function inferAutoCurationDecision(candidate) {
   if (['task', 'temporary'].includes(candidate.scope)) {
     return { action: 'discard', status: 'discarded', reason: 'Task-scoped candidate is current task context, not active memory.' };
   }
+  if (candidate.agentProposedStatus === 'pending') {
+    return { action: 'keep_pending', status: 'pending', reason: 'Agent submitted this candidate for manual review.' };
+  }
+  if (candidate.agentProposedStatus === 'discarded') {
+    return { action: 'discard', status: 'discarded', reason: candidate.discardReason || 'Agent marked this structured detail as discarded.' };
+  }
+  if (candidate.agentProposedStatus === 'quarantined') {
+    return { action: 'quarantine', status: 'quarantined', reason: candidate.quarantineReason || 'Agent marked this structured candidate for quarantine.' };
+  }
+  if (candidate.agentProposedStatus === 'rejected') {
+    return { action: 'reject', status: 'rejected', reason: candidate.rejectionReason || 'Agent marked this structured candidate as rejected.' };
+  }
   if (isRejectedSuccessCandidate(candidate)) {
     return { action: 'discard', status: 'discarded', reason: 'User rejected the technically successful result; do not promote as success.' };
   }
@@ -3702,7 +3911,7 @@ function inferAutoCurationDecision(candidate) {
     return { action: 'discard', status: 'discarded', reason: 'Low-value task-scoped candidate.' };
   }
   if (candidate.conflictStatus === 'exception') {
-    const activeCondition = candidate.activeCondition || inferActiveCondition(candidate);
+    const activeCondition = candidate.activeCondition || (isAgentStructuredCandidate(candidate) ? null : inferActiveCondition(candidate));
     if (activeCondition?.keywords?.length) {
       candidate.activeCondition = activeCondition;
       return { action: 'active', status: 'active', reason: 'Scoped exception has an active condition.' };
@@ -3922,6 +4131,11 @@ function toMemoryIndexEntry(memory) {
     severity: memory.severity,
     decision: memory.decision,
     alternativesRejected: memory.alternativesRejected,
+    sourceType: memory.sourceType,
+    relationCandidates: memory.relationCandidates || [],
+    displayTitle: memory.displayTitle,
+    displaySummary: memory.displaySummary,
+    displayRule: memory.displayRule,
     displayLanguage: memory.displayLanguage
   };
 }
@@ -3972,6 +4186,12 @@ export async function approveSafeMemories(root = process.cwd()) {
 
 function replacementIdsForMemory(memory, existingMemories = []) {
   if (memory.conflictStatus === 'exception') return [];
+  const explicitIds = [...new Set([...(memory.replaces || []), ...(memory.supersedes || [])])]
+    .filter((id) => {
+      const existing = existingMemories.find((item) => item.id === id);
+      return existing && canApplyAgentReplacement(existing, memory);
+    });
+  if (explicitIds.length > 0) return explicitIds;
   if (['supersedes', 'refinement'].includes(memory.conflictStatus)) {
     const candidateIds = [...new Set([...(memory.supersedes || []), ...(memory.related || [])])];
     return candidateIds.filter((id) => {
@@ -4066,14 +4286,18 @@ export async function approveMemory(root = process.cwd(), candidateId, options =
     curationReason: options.curationReason || candidate.curationReason || 'Manual approval.',
     updatedAt: timestamp
   };
-  normalizeCandidateModel(memory);
+  if (!isAgentStructuredCandidate(memory)) {
+    normalizeCandidateModel(memory);
+  } else {
+    memory.docKey = memory.docKey || docKeyForType(memory.type);
+  }
   applyMemoryRoleFields(memory, memory.summary || memory.rule || memory.details || '', memory.source || {});
   memory = normalizeMemoryLanguage(memory, memoryLanguage, memoryLocale);
   const replaceIds = replacementIdsForMemory(memory, memoryIndex.memories);
   memory.replaces = [...new Set([...(memory.replaces || []), ...replaceIds])];
   memory.related = (memory.related || []).filter((id) => !replaceIds.includes(id));
   memory.supersedes = (memory.supersedes || []).filter((id) => !replaceIds.includes(id));
-  if (memory.conflictStatus === 'exception' && !memory.activeCondition) {
+  if (memory.conflictStatus === 'exception' && !memory.activeCondition && !isAgentStructuredCandidate(memory)) {
     memory.activeCondition = inferActiveCondition(memory);
   }
 
@@ -4847,85 +5071,11 @@ function localizedGenericText(locale, key = 'details') {
 function localizeWikiDisplayText(text, locale = 'en-US') {
   const value = stripVisibleMemoryIds(text);
   if (!value) return '';
-  const language = wikiDisplayLanguage(locale);
-  if (language === 'en') return normalizeUserFacingTextForLanguage(value, 'en');
-  if (language !== 'ko') {
-    return hasHangul(value) ? localizedGenericText(locale) : normalizeUserFacingTextForLanguage(value, 'en');
-  }
-  const recoveryMatch = value.match(/^Agent succeeded by\s+(.+?)\s+after the execution failure;?\s+reuse this recovery approach when the same failure appears:?\s*(.+?)\.?$/iu);
-  if (recoveryMatch) {
-    return `AI \uC131\uACF5 \uC811\uADFC: \uC2E4\uD589 \uC2E4\uD328 \uD6C4 ${localizeRecoveryPhraseKo(recoveryMatch[1])}. \uAC19\uC740 \uC2E4\uD328\uAC00 \uB098\uD0C0\uB098\uBA74 ${localizeRecoveryPhraseKo(recoveryMatch[2])}\uC744 \uC7AC\uC0AC\uC6A9\uD55C\uB2E4.`;
-  }
-  const actionSummary = localizeEnglishActionSummaryKo(value);
-  if (actionSummary) return actionSummary;
-  return normalizeUserFacingTextForLanguage(value, 'ko')
-    .replace(/\bnpm test exited with code\s+(\d+)\s+because the npm shim was unavailable/giu, 'npm test\uAC00 code $1\uB85C \uC885\uB8CC\uB428 (npm shim \uC0AC\uC6A9 \uBD88\uAC00)')
-    .replace(/\bCommand failed:\s*/giu, `${wd(locale, 'commandFailed')}: `)
-    .replace(/^AI execution failure:\s*/iu, 'AI \uC2E4\uD589 \uC2E4\uD328: ')
-    .replace(/^Do not repeat this failed approach:\s*/iu, `${wd(locale, 'doNotRepeat')}: `)
-    .replace(/^Agent succeeded by\s*/iu, `${wd(locale, 'aiSuccessApproach')}: `)
-    .replace(/\s+after the execution failure\.?/giu, ' \uC2E4\uD589 \uC2E4\uD328 \uD6C4.')
-    .replace(/Reuse this recovery approach when the same failure appears\.?/giu, '\uAC19\uC740 \uC2E4\uD328\uAC00 \uB098\uD0C0\uB098\uBA74 \uC774 \uBCF5\uAD6C \uC811\uADFC\uC744 \uC7AC\uC0AC\uC6A9\uD55C\uB2E4.')
-    .replace(/Review prior failure before repeating this approach\.?/giu, wd(locale, 'reviewPriorFailure'))
-    .replace(/Similar work appears\.?/giu, wd(locale, 'similarWork'))
-    .replace(/when the same failure appears\.?/giu, wd(locale, 'sameFailure'))
-    .replace(/Prevent this by checking the command, path, permission, or tool state before repeating the same attempt\.?/giu, '\uAC19\uC740 \uC2DC\uB3C4\uB97C \uBC18\uBCF5\uD558\uAE30 \uC804\uC5D0 \uBA85\uB839, \uACBD\uB85C, \uAD8C\uD55C, \uB3C4\uAD6C \uC0C1\uD0DC\uB97C \uD655\uC778\uD55C\uB2E4.')
-    .trim();
-}
-
-function localizeEnglishActionSummaryKo(text = '') {
-  const value = String(text || '').trim();
-  if (!/[A-Za-z]{3,}/u.test(value)) return '';
-  const clauses = value.split(/;\s+|(?<=[.!?])\s+/u).map((clause) => clause.trim()).filter(Boolean);
-  const localized = clauses.map((clause) => {
-    const clean = clause.replace(/[.!?]+$/u, '').trim();
-    const lower = clean.toLowerCase();
-    if (!clean) return '';
-    if (/^validation passed$/iu.test(clean) || /^checks passed$/iu.test(clean) || /^tests passed$/iu.test(clean)) {
-      return '\uAC80\uC99D\uC744 \uD1B5\uACFC\uD588\uB2E4.';
-    }
-    if (/^this reusable approach should be reused$/iu.test(clean) || /^reuse this approach in similar tasks after validation passes$/iu.test(clean)) {
-      return '\uC774 \uC7AC\uC0AC\uC6A9 \uAC00\uB2A5\uD55C \uC811\uADFC\uC740 \uAC80\uC99D \uD6C4 \uC720\uC0AC \uC791\uC5C5\uC5D0 \uB2E4\uC2DC \uC0AC\uC6A9\uD55C\uB2E4.';
-    }
-    const action = clean.match(/^(Created|Built|Implemented|Updated|Adjusted|Moved|Preserved|Kept|Used|Reused|Verified|Ran|Fixed|Changed)\s+(.+)$/iu);
-    if (!action) return '';
-    const verb = action[1].toLowerCase();
-    const object = action[2].replace(/\s+so\s+.+$/iu, '').trim();
-    const verbKo = {
-      created: '\uB9CC\uB4E4\uC5C8\uB2E4',
-      built: '\uAD6C\uCD95\uD588\uB2E4',
-      implemented: '\uAD6C\uD604\uD588\uB2E4',
-      updated: '\uC5C5\uB370\uC774\uD2B8\uD588\uB2E4',
-      adjusted: '\uC870\uC815\uD588\uB2E4',
-      moved: '\uC774\uB3D9\uD588\uB2E4',
-      preserved: '\uBCF4\uC874\uD588\uB2E4',
-      kept: '\uC720\uC9C0\uD588\uB2E4',
-      used: '\uC0AC\uC6A9\uD588\uB2E4',
-      reused: '\uC7AC\uC0AC\uC6A9\uD588\uB2E4',
-      verified: '\uAC80\uC99D\uD588\uB2E4',
-      ran: '\uC2E4\uD589\uD588\uB2E4',
-      fixed: '\uC218\uC815\uD588\uB2E4',
-      changed: '\uBCC0\uACBD\uD588\uB2E4'
-    }[verb] || '\uCC98\uB9AC\uD588\uB2E4';
-    if (verb === 'moved' && lower.includes(' so ')) {
-      return `${object}\uC744 ${verbKo}. \uC694\uCCAD\uD55C \uC21C\uC11C\uC640 \uC704\uCE58\uAC00 \uBA3C\uC800 \uBCF4\uC774\uB3C4\uB85D \uC815\uB9AC\uD588\uB2E4.`;
-    }
-    return `${object}\uC744 ${verbKo}.`;
-  }).filter(Boolean);
-  if (localized.length === 0) return '';
-  return localized.join(' ');
-}
-
-function localizeRecoveryPhraseKo(text) {
-  const value = String(text || '').trim().replace(/\.$/u, '');
-  const commandSwap = value.match(/^using\s+(.+?)\s+instead of\s+(.+)$/iu);
-  if (commandSwap) {
-    return `${commandSwap[2]} \uB300\uC2E0 ${commandSwap[1]} \uC0AC\uC6A9`;
-  }
-  return normalizeUserFacingTextForLanguage(value, 'ko');
+  return value.trim();
 }
 
 function memoryDisplayTitle(memory, locale = 'en-US') {
+  if (memory.displayTitle) return stripVisibleMemoryIds(memory.displayTitle).trim();
   const role = memory.memoryRole || '';
   if (role === 'user_success_criteria') return wd(locale, 'userSuccessCriteria');
   if (role === 'ai_failure_memory') return wd(locale, 'aiFailureMemory');
@@ -4936,9 +5086,10 @@ function memoryDisplayTitle(memory, locale = 'en-US') {
 }
 
 function memoryDisplaySummary(memory, locale = 'en-US') {
-  const value = memory.summary || memory.rule || memory.preferredBehavior || memory.details || memory.title || memory.id;
+  const value = memory.displaySummary || memory.summary || memory.rule || memory.preferredBehavior || memory.details || memory.title || memory.id;
   const language = wikiDisplayLanguage(locale);
   if (!['en', 'ko'].includes(language)) {
+    if (memory.displaySummary) return stripVisibleMemoryIds(memory.displaySummary).trim();
     const generic = localizedGenericText(locale, memory.memoryRole || memory.type);
     const topic = stripVisibleMemoryIds(memory.topic || '').trim();
     return [generic || wd(locale, 'memoryNote'), topic && !hasHangul(topic) ? `(${topic})` : ''].filter(Boolean).join(' ');
@@ -4947,6 +5098,8 @@ function memoryDisplaySummary(memory, locale = 'en-US') {
 }
 
 function memoryDisplayField(memory, field, locale = 'en-US', fallback = '') {
+  if (field === 'rule' && memory.displayRule) return stripVisibleMemoryIds(memory.displayRule).trim();
+  if (field === 'preventionRule' && memory.displayRule) return stripVisibleMemoryIds(memory.displayRule).trim();
   return localizeWikiDisplayText(memory[field] || fallback, locale);
 }
 
@@ -5009,107 +5162,12 @@ function memoryCategoryFolder(memory, locale = 'en-US') {
   return safeWikiPageName(pageTitle(localizedDocFileName(memoryCategoryDocKey(memory), locale)));
 }
 
-const SHORT_MEMORY_TITLES = {
-  language_user_generated_content: {
-    en: 'AI-generated narrative follows user language',
-    ko: 'AI 생성 설명문은 사용자 언어를 따른다',
-    ja: 'AI生成説明文はユーザー言語に従う',
-    'zh-CN': 'AI生成说明遵循用户语言',
-    'zh-TW': 'AI生成說明遵循使用者語言',
-    ar: 'وصف AI يتبع لغة المستخدم'
-  },
-  design_export_source_notes: {
-    en: 'Check source notes before DESIGN export',
-    ko: 'DESIGN export 전 source notes 확인',
-    ja: 'DESIGN export前にsource notesを確認',
-    'zh-CN': 'DESIGN导出前检查source notes',
-    'zh-TW': 'DESIGN匯出前檢查source notes',
-    ar: 'تحقق من source notes قبل DESIGN export'
-  },
-  ai_mapping_blocks_export: {
-    en: 'Pause DESIGN export for AI organization',
-    ko: 'AI 정리 요청 시 DESIGN export 보류',
-    ja: 'AI整理依頼時はDESIGN exportを保留',
-    'zh-CN': 'AI整理请求时暂停DESIGN导出',
-    'zh-TW': 'AI整理請求時暫停DESIGN匯出',
-    ar: 'أوقف DESIGN export عند طلب تنظيم AI'
-  },
-  same_role_consistency: {
-    en: 'Keep same-role elements consistent',
-    ko: '같은 역할의 요소를 일관되게 유지',
-    ja: '同じ役割の要素を一貫させる',
-    'zh-CN': '保持同角色元素一致',
-    'zh-TW': '保持同角色元素一致',
-    ar: 'حافظ على اتساق العناصر ذات الدور نفسه'
-  }
-};
-
-function shortMemoryTitle(locale, key) {
-  const language = wikiDisplayLanguage(locale);
-  return SHORT_MEMORY_TITLES[key]?.[language] || SHORT_MEMORY_TITLES[key]?.en || '';
-}
-
 function memoryNoteTitle(memory, locale = 'en-US') {
-  const rawDisplay = memoryDisplaySummary(memory, locale);
-  const isPrevention = memory.type === 'prevention_rule'
-    || /^Do not repeat this failed approach:/iu.test(rawDisplay)
-    || /^\uBC18\uBCF5 \uAE08\uC9C0:/u.test(rawDisplay);
-  const display = rawDisplay
-    .replace(/\.$/u, '')
-    .replace(/^AI \uC131\uACF5 \uC811\uADFC:\s*/u, '')
-    .replace(/^\uBA85\uB839 \uC2E4\uD589 \uC2E4\uD328:\s*/u, '')
-    .replace(/^\uBC18\uBCF5 \uAE08\uC9C0:\s*/u, '')
-    .replace(/^AI successful approach:\s*/iu, '')
-    .replace(/^Command failed:\s*/iu, '')
-    .replace(/^Do not repeat:\s*/iu, '')
-    .trim();
-  const normalized = normalizeText(display);
-  const lowerDisplay = display.toLowerCase();
-  const rawMemoryText = [
-    memory.summary,
-    memory.rule,
-    memory.details,
-    memory.preventionRule,
-    memory.topic,
-    ...(memory.tags || [])
-  ].filter(Boolean).join('\n');
-  const rawNormalized = semanticNormalize(rawMemoryText);
-  if (semanticHasAny(rawNormalized, ['generated content', 'ai-generated', 'userlanguage', '사용자 언어', '설명문', 'design intent', 'source notes', 'spec narrative'])) {
-    return shortMemoryTitle(locale, 'language_user_generated_content');
-  }
-  if (semanticHasAny(rawNormalized, ['unmapped source content', 'sourcenotes', 'source notes', 'design.md export', 'design export', '미적용', '보존'])) {
-    return shortMemoryTitle(locale, 'design_export_source_notes');
-  }
-  if (semanticHasAny(rawNormalized, ['ask ai to organize', 'ai organization request', 'ai 정리', 'export하지 않고', '보류'])) {
-    return shortMemoryTitle(locale, 'ai_mapping_blocks_export');
-  }
-  if (semanticHasAny(rawNormalized, ['same role', 'same-role', '같은 역할', '일관', 'consistent'])) {
-    return shortMemoryTitle(locale, 'same_role_consistency');
-  }
-  const language = wikiDisplayLanguage(locale);
-  if (language === 'ko') {
-    if (isPrevention && lowerDisplay.includes('npm test') && (lowerDisplay.includes('shim') || display.includes('\uC0AC\uC6A9 \uBD88\uAC00'))) return 'npm test shim \uC2E4\uD328 \uBC18\uBCF5 \uAE08\uC9C0';
-    if (lowerDisplay.includes('npm.cmd test') && lowerDisplay.includes('npm test')) return 'npm.cmd test\uB85C \uAC80\uC99D \uC131\uACF5';
-    if (lowerDisplay.includes('npm test') && (lowerDisplay.includes('shim') || display.includes('\uC0AC\uC6A9 \uBD88\uAC00'))) return 'npm test shim \uC2E4\uD328';
-    if (normalized.includes('\uad6c\ud604') && normalized.includes('\uac04\uacb0') && normalized.includes('\uacc4\ud68d')) return '\uAD6C\uD604 \uC804 \uAC04\uACB0\uD55C \uACC4\uD68D \uC218\uB9BD';
-    if (normalized.includes('\ucd5c\uc885') && normalized.includes('\ubcf4\uace0') && normalized.includes('\ubcc0\uacbd') && normalized.includes('\uac80\uc99d')) return '\uCD5C\uC885 \uBCF4\uACE0\uC5D0 \uBCC0\uACBD \uD30C\uC77C\uACFC \uAC80\uC99D \uACB0\uACFC \uD3EC\uD568';
-    return display
-      .replace(/^(사용자는|사용자가)\s*/u, '')
-      .replace(/(한다|한다\.|원한다|원한다\.)$/u, '')
-      .replace(/\s+/gu, ' ')
-      .trim()
-      .slice(0, 44) || memoryDisplayTitle(memory, locale);
-  }
-  if (isPrevention && lowerDisplay.includes('npm test') && lowerDisplay.includes('shim')) return 'Do not repeat npm test shim failure';
-  if (lowerDisplay.includes('npm.cmd test') && lowerDisplay.includes('npm test')) return 'Validate successfully with npm.cmd test';
-  if (lowerDisplay.includes('npm test') && lowerDisplay.includes('shim')) return 'npm test shim failure';
-  if (normalized.includes('before coding') && normalized.includes('concise plan')) return 'Create a concise plan before implementation';
-  if (normalized.includes('final report') && normalized.includes('changed files') && normalized.includes('validation result')) return 'Include changed files and validation result';
-  return display
-    .replace(/^(the user|user)\s+/iu, '')
+  const display = stripVisibleMemoryIds(memory.displayTitle || memory.title || memory.displaySummary || memory.summary || memory.topic || memoryDisplayTitle(memory, locale))
     .replace(/\s+/gu, ' ')
     .trim()
     .slice(0, 56) || memoryDisplayTitle(memory, locale);
+  return display.replace(/\.$/u, '');
 }
 
 function buildMemoryNotePathMap(memories, locale = 'en-US') {
@@ -6108,36 +6166,20 @@ function hasExecutionFailureSignal(input = {}, event = {}) {
     ]);
 }
 
-async function demoteRejectedSuccessMemories(root, event = {}, input = {}) {
-  if (!(event.userAcceptance === 'rejected' || event.finalOutcome === 'technical_success_user_rejected')) return [];
-  const project = await resolveCurrentProjectIdentity(root);
-  const contextText = [
-    input.userRequest || input.request || event.userRequest || '',
-    input.aiActionSummary || input.summary || event.aiActionSummary || '',
-    event.userFeedback || input.userFeedback || input.feedback || '',
-    event.rejectionReason || '',
-    event.correctionDirection || ''
-  ].filter(Boolean).join('\n');
-  if (!contextText.trim()) return [];
-  const memoryIndexPath = vibeboxPath(root, 'index/global-memory-index.json');
-  const memoryIndex = await loadJson(memoryIndexPath, defaultMemoryIndex());
-  const demoted = (memoryIndex.memories || []).filter((memory) => (
-    memory.status === 'active'
-    && canDemoteRejectedSuccessMemory(memory, contextText, project)
-  ));
-  if (demoted.length === 0) return [];
-  const demotedIds = new Set(demoted.map((memory) => memory.id));
-  memoryIndex.memories = memoryIndex.memories.filter((memory) => !demotedIds.has(memory.id));
-  memoryIndex.updatedAt = nowIso();
-  await saveJson(memoryIndexPath, memoryIndex);
-  await rebuildIndexes(root);
-  await rebuildWiki(root);
-  return [...demotedIds];
-}
-
 export async function afterTask(root = process.cwd(), input = {}) {
   await initVibeBox(root);
   const userRequestText = input.userRequest || input.request || '';
+  const structuredCandidates = structuredCandidatesFromInput(input);
+  const hasStructuredCandidates = structuredCandidates.length > 0;
+  const hasRawActionSummary = Boolean(input.aiActionSummary || input.summary);
+  const failureEvidencePresent = hasExecutionFailureSignal(input, {});
+  const semanticExtractionWarning = hasStructuredCandidates
+    ? ''
+    : userRequestText.trim()
+      ? 'userRequest present but agent semantic candidates missing'
+      : hasRawActionSummary || failureEvidencePresent
+        ? 'agent semantic candidates missing; raw event preserved only'
+        : 'agent semantic candidates missing';
   const event = await captureEvent(root, {
     eventType: 'task_summary',
     userRequest: userRequestText,
@@ -6153,75 +6195,41 @@ export async function afterTask(root = process.cwd(), input = {}) {
     technicalOutcome: input.technicalOutcome || input.technical_outcome,
     userAcceptance: input.userAcceptance || input.user_acceptance,
     finalOutcome: input.finalOutcome || input.final_outcome,
+    semanticExtractionStatus: hasStructuredCandidates ? 'agent_candidates_provided' : 'missing_agent_candidates',
+    structuredCandidateCount: structuredCandidates.length,
+    semanticExtractionWarning,
     notes: input.notes || ''
   });
 
   const hasFailureWithoutRequest = hasExecutionFailureSignal(input, event);
-  if (!userRequestText.trim() && !hasFailureWithoutRequest) {
+  if (!hasStructuredCandidates) {
+    const warnings = [
+      userRequestText.trim()
+        ? 'Warning: userRequest present but agent semantic candidates missing; no active memory was created.'
+        : 'Warning: agent semantic candidates missing; no active memory was created.',
+      hasFailureWithoutRequest
+        ? 'Command/tool/environment failure evidence was preserved as raw event evidence; active AI failure memory requires an agent structured candidate.'
+        : '',
+      hasRawActionSummary && !userRequestText.trim()
+        ? 'AI action summary alone is raw evidence only and cannot create active memory.'
+        : '',
+      'Capture again with a Structured memory candidates JSON block when reusable memory should be stored.'
+    ].filter(Boolean);
     return {
       event,
       candidates: [],
       message: [
         `Captured blackbox event ${event.id}.`,
-        'Warning: userRequest is missing; active user model extraction was skipped.',
-        'Pass the original user request with --request to enable model extraction.',
+        ...warnings,
         'Use `vibebox review` only for manual debug or override workflows.'
       ].join('\n')
     };
   }
 
-  const wasRejected = event.userAcceptance === 'rejected' || event.finalOutcome === 'technical_success_user_rejected';
-  const wasAccepted = event.userAcceptance === 'accepted' || event.finalOutcome === 'accepted_success';
-  const actionSummaryText = input.aiActionSummary || input.summary || '';
-  const validationEvidenceText = [
-    actionSummaryText,
-    input.commandResult || '',
-    event.commandResult || '',
-    ...(input.commandResults || []),
-    ...(event.commandResults || [])
-  ].filter(Boolean).join('\n');
-  const canInferReusableSuccess = !wasRejected
-    && !wasAccepted
-    && hasTechnicalSuccessSignal(validationEvidenceText, event)
-    && hasReusableSuccessSignal(validationEvidenceText);
-  const demotedSuccessIds = wasRejected ? await demoteRejectedSuccessMemories(root, event, input) : [];
-  const correctionText = generatedSnippet(event.correctionDirection || event.userFeedback) || 'confirming the direction with the user before repeating it';
-  const recoveryText = cleanRecoverySnippet(actionSummaryText);
-  const errorSnippets = (input.errors || []).map((error) => generatedSnippet(error)).filter(Boolean);
-  const generatedExtractionText = [
-    ...errorSnippets,
-    ...errorSnippets.map((error) => `Do not repeat this failed approach: ${error}.`),
-    hasFailureWithoutRequest && errorSnippets.length === 0
-      ? `AI execution failure: ${generatedSnippet(primaryExecutionFailureText(input, event))}. Prevent this by checking the command, path, permission, or tool state before repeating the same attempt.`
-      : '',
-    hasFailureWithoutRequest && hasTechnicalSuccessSignal(validationEvidenceText, event) && actionSummaryText
-      ? `Agent succeeded by ${recoveryText} after the execution failure; reuse this recovery approach when the same failure appears: ${recoveryText}.`
-      : '',
-    wasRejected
-      ? [
-        `User rejected a technically completed result; avoid repeating this approach: ${generatedSnippet(input.aiActionSummary || input.summary)}; prefer ${correctionText}.`,
-        `When the user rejects a technically completed result, treat it as AI failure and follow this correction direction: ${event.correctionDirection || event.userFeedback}.`,
-        `AI failed because technical success did not match the user's success criteria. Prevent this by treating the user's latest correction as the success criteria before repeating the work.`,
-        `For ${correctionContextSnippet(event.userRequest)}, treat ${correctionText} as the latest user success criteria instead of the rejected direction.`,
-        `This task failed from the AI perspective: ${input.aiActionSummary || input.summary}. Failure reason: ${event.rejectionReason || event.userFeedback || 'user rejection'}. Prevent this by ${event.correctionDirection || 'confirming the direction with the user before repeating it'}.`
-      ].join('\n')
-      : '',
-    wasAccepted
-      ? `Accepted reusable approach: ${generatedSnippet(actionSummaryText)}; should be reused in similar tasks.`
-      : '',
-    canInferReusableSuccess
-      ? `${generatedSnippet(actionSummaryText)}. Reuse this approach in similar tasks after validation passes.`
-      : '',
-    event.finalOutcome === 'failed' || event.technicalOutcome === 'failure'
-      ? `This task failed: ${actionSummaryText}. Failure reason: ${(input.errors || []).join('; ') || input.commandResult || 'unknown'}.`
-      : '',
-    input.notes || ''
-  ].filter(Boolean).join('\n');
+  const demotedSuccessIds = [];
 
   const candidates = await extractMemoryCandidates(root, {
-    userRequest: userRequestText.trim() ? userRequestText : '',
-    userFeedback: event.userFeedback || '',
-    text: generatedExtractionText,
+    structuredMemoryCandidates: structuredCandidates,
     manualReview: input.manualReview || input.reviewOnly || input.debugReview,
     source: {
       kind: 'aftertask',
@@ -6251,9 +6259,6 @@ export async function afterTask(root = process.cwd(), input = {}) {
       `Captured blackbox event ${event.id}.`,
       demotedSuccessIds.length > 0 ? `Demoted rejected AI success memor${demotedSuccessIds.length === 1 ? 'y' : 'ies'}: ${demotedSuccessIds.join(', ')}.` : '',
       summary,
-      !userRequestText.trim() && hasFailureWithoutRequest
-        ? 'Warning: userRequest is missing; user success criteria extraction was skipped, but AI failure memory extraction was allowed.'
-        : '',
       input.manualReview || input.reviewOnly || input.debugReview
         ? 'Review pending memory with `vibebox review`, then approve or reject candidate ids.'
         : 'Use `vibebox review` only for manual debug or override workflows.'
@@ -6457,51 +6462,6 @@ export async function restoreVibeBox(root = process.cwd(), options = {}) {
   return { restoredFrom: source, storeRoot: target };
 }
 
-const SEMANTIC_GLOSSARY = {
-  ko: [
-    [/before coding,?\s+create a concise plan\.?/giu, '\uAD6C\uD604 \uC804\uC5D0 \uAC04\uACB0\uD55C \uACC4\uD68D\uC744 \uC138\uC6B4\uB2E4.'],
-    [/final report should include changed files and validation result\.?/giu, '\uCD5C\uC885 \uBCF4\uACE0\uC5D0\uB294 \uBCC0\uACBD \uD30C\uC77C\uACFC \uAC80\uC99D \uACB0\uACFC\uB97C \uD3EC\uD568\uD55C\uB2E4.'],
-    [/do not modify package\.json unless explicitly requested\.?/giu, '\uBA85\uC2DC \uC694\uCCAD \uC5C6\uC774 package.json\uC744 \uC218\uC815\uD558\uC9C0 \uC54A\uB294\uB2E4.'],
-    [/when validating changes,?\s+report command results\.?/giu, '\uBCC0\uACBD \uC0AC\uD56D\uC744 \uAC80\uC99D\uD560 \uB54C \uBA85\uB839 \uACB0\uACFC\uB97C \uBCF4\uACE0\uD55C\uB2E4.'],
-    [/validation passed and the approach appears reusable for similar tasks\.?/giu, '\uAC80\uC99D\uC744 \uD1B5\uACFC\uD588\uACE0 \uC720\uC0AC \uC791\uC5C5\uC5D0 \uC7AC\uC0AC\uC6A9 \uAC00\uB2A5\uD55C \uC811\uADFC\uC73C\uB85C \uD310\uB2E8\uB41C\uB2E4.'],
-    [/validation or technical success suggests this approach is reusable\.?/giu, '\uAC80\uC99D \uB610\uB294 \uAE30\uC220\uC801 \uC131\uACF5\uC744 \uD1B5\uD574 \uC774 \uC811\uADFC\uC744 \uC7AC\uC0AC\uC6A9\uD560 \uC218 \uC788\uB2E4\uACE0 \uD310\uB2E8\uB41C\uB2E4.'],
-    [/reuse this approach in similar tasks after validation passes\.?/giu, '\uAC80\uC99D\uC744 \uD1B5\uACFC\uD55C \uACBD\uC6B0 \uC720\uC0AC \uC791\uC5C5\uC5D0 \uC774 \uC811\uADFC\uC744 \uC7AC\uC0AC\uC6A9\uD55C\uB2E4.'],
-    [/used wrapper-based table scrolling and kept dependencies unchanged; should be reused in similar tasks\.?/giu, '\uC758\uC874\uC131\uC744 \uBC14\uAFB8\uC9C0 \uC54A\uACE0 wrapper \uAE30\uBC18 \uD14C\uC774\uBE14 \uC2A4\uD06C\uB864\uC744 \uC801\uC6A9\uD55C \uBC29\uC2DD\uC740 \uC720\uC0AC \uC791\uC5C5\uC5D0 \uC7AC\uC0AC\uC6A9\uD560 \uC218 \uC788\uB2E4.'],
-    [/used wrapper-based implementation, validation passed, and this reusable approach should be reused\.?/giu, 'wrapper \uAE30\uBC18 \uAD6C\uD604\uC774 \uAC80\uC99D\uC744 \uD1B5\uACFC\uD588\uACE0 \uC720\uC0AC \uC791\uC5C5\uC5D0 \uC7AC\uC0AC\uC6A9\uD560 \uC218 \uC788\uB2E4.'],
-    [/plan before coding/giu, '코딩 전에 계획한다'],
-    [/validate after coding/giu, '코딩 후 검증한다'],
-    [/respect project type/giu, '프로젝트 유형을 기준으로 판단한다'],
-    [/do not blindly reuse previous project direction/giu, '이전 프로젝트 방향을 맹목적으로 재사용하지 않는다'],
-    [/changed files/giu, '변경 파일'],
-    [/validation result/giu, '검증 결과'],
-    [/remaining risks/giu, '남은 위험'],
-    [/device-test needs/giu, '기기 테스트 필요 사항']
-  ],
-  en: [
-    [/\uAD6C\uD604 \uC804\uC5D0 \uAC04\uACB0\uD55C \uACC4\uD68D\uC744 \uC138\uC6B4\uB2E4\.?/gu, 'Create a concise plan before implementation.'],
-    [/\uCD5C\uC885 \uBCF4\uACE0\uC5D0\uB294 \uBCC0\uACBD \uD30C\uC77C\uACFC \uAC80\uC99D \uACB0\uACFC\uB97C \uD3EC\uD568\uD55C\uB2E4\.?/gu, 'Include changed files and validation result in final report.'],
-    [/\uBA85\uB839 \uC2E4\uD589 \uC2E4\uD328:\s*npm test\uAC00 code (\d+)\uB85C \uC885\uB8CC\uB428 \(npm shim \uC0AC\uC6A9 \uBD88\uAC00\)\.?/gu, 'Command failed: npm test exited with code $1 because the npm shim was unavailable.'],
-    [/\uBC18\uBCF5 \uAE08\uC9C0:\s*\uBA85\uB839 \uC2E4\uD589 \uC2E4\uD328:\s*npm test\uAC00 code (\d+)\uB85C \uC885\uB8CC\uB428 \(npm shim \uC0AC\uC6A9 \uBD88\uAC00\)\.?/gu, 'Do not repeat this failed approach: Command failed: npm test exited with code $1 because the npm shim was unavailable.'],
-    [/AI \uC131\uACF5 \uC811\uADFC:\s*\uC2E4\uD589 \uC2E4\uD328 \uD6C4 npm test \uB300\uC2E0 npm\.cmd test \uC0AC\uC6A9\.\s*\uAC19\uC740 \uC2E4\uD328\uAC00 \uB098\uD0C0\uB098\uBA74 npm test \uB300\uC2E0 npm\.cmd test \uC0AC\uC6A9\uC744 \uC7AC\uC0AC\uC6A9\uD55C\uB2E4\.?/gu, 'Agent succeeded by using npm.cmd test instead of npm test after the execution failure; reuse this recovery approach when the same failure appears: using npm.cmd test instead of npm test.'],
-    [/코딩 전에 계획한다/gu, 'plan before coding'],
-    [/코딩 후 검증한다/gu, 'validate after coding'],
-    [/프로젝트 유형을 기준으로 판단한다/gu, 'respect project type'],
-    [/이전 프로젝트 방향을 맹목적으로 재사용하지 않는다/gu, 'do not blindly reuse previous project direction'],
-    [/변경 파일/gu, 'changed files'],
-    [/검증 결과/gu, 'validation result'],
-    [/남은 위험/gu, 'remaining risks'],
-    [/기기 테스트 필요 사항/gu, 'device-test needs']
-  ]
-};
-
-function normalizeUserFacingTextForLanguage(text, targetLanguage) {
-  let result = String(text || '');
-  for (const [pattern, replacement] of SEMANTIC_GLOSSARY[targetLanguage] || []) {
-    result = result.replace(pattern, replacement);
-  }
-  return result;
-}
-
 function normalizeMemoryLanguage(memory, targetLanguage, locale) {
   const normalized = { ...memory };
   normalized.docKey = normalized.docKey || docKeyForType(normalized.type);
@@ -6543,13 +6503,90 @@ function isManagedOnlyWikiText(text) {
   });
 }
 
+function localizedDisplayCandidatesFromOptions(options = {}) {
+  return parseStructuredCandidateInput(
+    options.localizedCandidates
+      ?? options.localizedDisplayCandidates
+      ?? options.displayCandidates
+      ?? options.displayCandidateMap,
+    'localized display candidates'
+  );
+}
+
+function memoryIdFromLocalizedCandidate(candidate = {}) {
+  return String(candidate.memoryId || candidate.id || candidate.candidateId || '').trim();
+}
+
+async function applyLocalizedDisplayCandidates(root, targetLocale, localizedCandidates = []) {
+  const memoryIndexPath = vibeboxPath(root, 'index/global-memory-index.json');
+  const memoryIndex = await loadJson(memoryIndexPath, defaultMemoryIndex());
+  const activeMemoriesToRender = (memoryIndex.memories || []).filter((memory) => memory.status === 'active' && shouldWriteMemoryNote(memory));
+  if (activeMemoriesToRender.length > 0 && localizedCandidates.length === 0) {
+    throw new Error('convert-lang requires agent-provided localized display candidates for every active rendered memory. No files were changed.');
+  }
+  const localizedById = new Map();
+  for (const raw of localizedCandidates) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new Error('localized display candidates must be JSON objects.');
+    }
+    const id = memoryIdFromLocalizedCandidate(raw);
+    if (!id) throw new Error('localized display candidate is missing memoryId/id.');
+    const displayLanguage = assertSupportedMemoryLanguageTag(raw.displayLanguage || targetLocale, 'localized displayLanguage');
+    if (displayLanguage !== targetLocale) {
+      throw new Error(`localized display candidate ${id} uses ${displayLanguage}, expected ${targetLocale}.`);
+    }
+    if (!(raw.displayTitle || raw.displaySummary || raw.displayRule || raw.fileTitle)) {
+      throw new Error(`localized display candidate ${id} must include displayTitle, displaySummary, displayRule, or fileTitle.`);
+    }
+    localizedById.set(id, raw);
+  }
+  const missing = activeMemoriesToRender
+    .filter((memory) => !localizedById.has(memory.id))
+    .map((memory) => memory.id);
+  if (missing.length > 0) {
+    throw new Error(`convert-lang is missing localized display candidates for active rendered memories: ${missing.join(', ')}. No files were changed.`);
+  }
+  memoryIndex.memories = (memoryIndex.memories || []).map((memory) => {
+    const localized = localizedById.get(memory.id);
+    if (!localized) return memory;
+    return {
+      ...memory,
+      displayTitle: localized.displayTitle || localized.fileTitle || memory.displayTitle || '',
+      displaySummary: localized.displaySummary || memory.displaySummary || '',
+      displayRule: localized.displayRule || memory.displayRule || '',
+      displayLanguage: targetLocale,
+      updatedAt: nowIso()
+    };
+  });
+  memoryIndex.updatedAt = nowIso();
+  await saveJson(memoryIndexPath, memoryIndex);
+  return { updated: localizedById.size, required: activeMemoriesToRender.length };
+}
+
+function parseAgentSemanticData(value) {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') {
+    throw new Error('agent semantic data must be a JSON object.');
+  }
+  const text = stripJsonFence(value);
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new Error(`agent semantic data must be valid JSON: ${error.message}`);
+  }
+}
+
 export async function convertLanguage(root = process.cwd(), options = {}) {
   requireAgentRuntime('convert-lang');
   if (options.from) {
     assertSupportedMemoryLanguageTag(options.from, 'source language');
   }
   const targetLocale = assertSupportedMemoryLanguageTag(options.to || options.language || options.target || '', 'target language');
-  await initVibeBox(root);
+  await ensureStoreForRead(root);
+  const localizedCandidates = localizedDisplayCandidatesFromOptions(options);
+  const localizationResult = await applyLocalizedDisplayCandidates(root, targetLocale, localizedCandidates);
   const targetLanguage = languageFromLocale(targetLocale);
   const configPath = vibeboxPath(root, 'config.json');
   const config = await loadJson(configPath, defaultConfig());
@@ -6569,19 +6606,39 @@ export async function convertLanguage(root = process.cwd(), options = {}) {
   await rebuildIndexes(root);
   await rebuildWiki(root);
   await cleanupStaleLocalizedWikiDocs(root, targetLocale);
-  return { language: targetLocale, primaryLanguage: targetLanguage, locale: targetLocale, storeRoot: vibeboxPath(root) };
+  return { language: targetLocale, primaryLanguage: targetLanguage, locale: targetLocale, storeRoot: vibeboxPath(root), localizedCandidates: localizationResult };
 }
 
 export async function rebuildVibeBox(root = process.cwd(), options = {}) {
   const semantic = options.semantic !== false && !options.indexOnly;
   if (semantic) {
     requireAgentRuntime('rebuild');
+    const agentSemanticData = parseAgentSemanticData(options.agentSemanticData || null);
+    const structuredCandidates = structuredCandidatesFromInput(options);
+    const localizedCandidates = localizedDisplayCandidatesFromOptions(options);
+    const hasSemanticData = Boolean(agentSemanticData)
+      || structuredCandidates.length > 0
+      || localizedCandidates.length > 0;
+    if (!hasSemanticData) {
+      throw new Error('semantic rebuild requires agent-provided semantic data. Use --index-only for structural rebuilds. No files were changed.');
+    }
     const configPath = vibeboxPath(root, 'config.json');
     if (await exists(configPath)) {
       const existingConfig = await loadJson(configPath, {});
       configuredMemoryLocale(existingConfig);
     }
     await initVibeBox(root);
+    const config = await loadJson(configPath, defaultConfig());
+    const locale = configuredMemoryLocale(config);
+    if (localizedCandidates.length > 0) {
+      await applyLocalizedDisplayCandidates(root, locale, localizedCandidates);
+    }
+    if (structuredCandidates.length > 0) {
+      await extractMemoryCandidates(root, {
+        structuredMemoryCandidates: structuredCandidates,
+        source: { kind: 'semantic_rebuild', sourceType: 'agent_semantic_extraction' }
+      });
+    }
   } else {
     await ensureDir(vibeboxPath(root, 'index'));
   }

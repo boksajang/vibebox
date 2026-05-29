@@ -3,9 +3,9 @@
 VibeBox separates active memory from inactive diagnostic and manual-debug states.
 
 - A blackbox event is captured.
-- User requests and user feedback are interpreted first; AI action summaries are auxiliary evidence.
-- Memory candidates are extracted into User Model, Domain Model, Project Model, Task Context, AI Failure Memory, AI Successful Approach, or Discarded Detail.
-- The Auto Curator decides active, replace, discard, or quarantine.
+- The AI agent interprets user requests, user feedback, failures, recoveries, categories, replacements, relations, and localized display text.
+- The agent submits structured memory candidates as User Model, Domain Model, Project Model, Task Context, AI Failure Memory, AI Successful Approach, or Discarded Detail.
+- Core validates schema and BCP 47 fields, preserves raw evidence, dedupes, applies replacement safety, indexes, and renders the wiki.
 - Context and pretask output use active memory first.
 - Legacy/manual pending candidates may appear only in debug review flows.
 - Replaced, discarded, quarantined, rejected, and pending memory is not part of normal retrieval, Context Packs, Pre-Task Briefs, the active wiki, or the active relation graph.
@@ -63,7 +63,11 @@ Task Context and Discarded Detail do not become normal active guidance. Current 
 
 User instructions and corrections can become active success criteria before any result exists. User dissatisfaction does not mean the user failed; it means the AI result missed the user's criteria and should become AI failure memory, correction guidance, or a more precise active success criteria.
 
-Structured user requests are decomposed before ordinary sentence-level extraction. Headings, bullets, reference/baseline statements, consistency requirements, validation or preservation requirements, scope limits, and target lists are interpreted as meaning units. Durable meaning units can become project, user, domain, validation, prevention, or task-context candidates from the same pipeline; task-only details are still discarded by the Auto Curator.
+Structured user requests are decomposed by the AI agent, not by Core. Headings, bullets, reference/baseline statements, consistency requirements, validation or preservation requirements, scope limits, and target lists may inform the agent's structured candidates, but Core does not infer meaning from those shapes. If `userRequest` exists without structured candidates, Core emits a missing semantic-candidate warning and creates no active user memory.
+
+`aiActionSummary` is raw evidence only unless the AI agent submits a structured `ai_successful_approach` or other candidate. Command, permission, environment, path, API, browser, and tool failure evidence is preserved in raw events, but active `ai_failure_memory` requires an agent-provided candidate.
+
+Candidate source types include `agent_semantic_extraction`, `technical_failure_detection`, `manual_override`, and `legacy_import`. User-request-based active memory normally uses `agent_semantic_extraction`.
 
 AI Failure Memory includes `preference_mismatch`, `instruction_misread`, `overgeneralization_failure`, `example_overfit_failure`, `technical_failure`, `environment_failure`, `permission_failure`, and `tool_failure`. AI Successful Approach records reusable implementation, validation, command, recovery, or workaround methods that helped satisfy the user's criteria.
 

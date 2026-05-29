@@ -79,10 +79,10 @@ vibebox init --language ko-KR
 
 ## `vibebox extract`
 
-- Purpose: Convert raw text or current-project event context into memory candidates, then run the Auto Curator.
-- Typical usage: Create active guidance, replacements, discarded noise, or quarantined candidates from a task summary or direct user statement.
-- Example: `vibebox extract --text "Do not modify package.json unless explicitly requested."`
-- Notes: Supports `--text`, `--file`, `--event`, `--last-event`, and `--manual-review`. Normal extraction auto-curates candidates; `--manual-review` keeps candidates pending for debug or override workflows.
+- Purpose: Ingest AI-agent structured memory candidates, then run validation, dedupe, replacement safety, indexes, and wiki rendering.
+- Typical usage: Debug or manually ingest candidate JSON created by the agent.
+- Example: `vibebox extract --candidates '[{"candidateId":"mem_demo","memoryRole":"user_success_criteria","type":"avoid_rule","modelClass":"user_model","scope":"global","primaryCategory":"global_avoid_rules","title":"Package guardrail","summary":"Do not modify package.json unless explicitly requested.","confidence":"high","sourceType":"agent_semantic_extraction"}]'`
+- Notes: Raw `--text`, `--file`, `--event`, or `--last-event` can be raw evidence inputs for adapters, but Core does not semantically extract active memory from them without structured candidates. `--manual-review` keeps candidates pending for debug or override workflows.
 
 ## `vibebox review`
 
@@ -130,11 +130,11 @@ vibebox init --language ko-KR
 
 ## `vibebox aftertask`
 
-- Purpose: Write/capture task completion details, extract memory candidates, and run Auto Curator.
+- Purpose: Write/capture task completion details and ingest AI-agent structured memory candidates.
 - Typical usage: Run after meaningful coding or design work. Always pass the original user request, or a faithful semantic summary of it, with `--request`.
-- Windows/Codex example: `vibebox.cmd aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling" --files "src/table.mjs" --commands "npm.cmd test" --technical-outcome success --user-acceptance accepted`
-- Cross-platform example: `vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling" --files "src/table.mjs" --commands "npm.cmd test" --technical-outcome success --user-acceptance accepted`
-- Notes: Supports `--request`, `--summary`, `--files`, `--commands`, `--command-results`, `--errors`, `--feedback`, `--outcome`, `--technical-outcome`, `--user-acceptance`, `--final-outcome`, `--notes`, `--from-file`, and `--manual-review`. `--from-file` may include `User request:` and `Summary:` sections. This is a global store write/capture operation and may need approved write access in sandboxed hosts. Without a user request, VibeBox records the event but skips active user model extraction for success criteria; clear command/tool/environment failures can still become AI failure memory. User-accepted outcomes can become confirmed AI successful approaches, validated reusable outcomes with no rejection can become inferred successful approaches, and user-rejected outcomes become AI failure/correction/prevention guidance plus updated success criteria instead of `success_pattern`.
+- Windows/Codex example: `vibebox.cmd aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling" --candidates "<agent-candidate-json>" --files "src/table.mjs" --commands "npm.cmd test" --technical-outcome success --user-acceptance accepted`
+- Cross-platform example: `vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling" --candidates "<agent-candidate-json>" --files "src/table.mjs" --commands "npm.cmd test" --technical-outcome success --user-acceptance accepted`
+- Notes: Supports `--request`, `--summary`, `--files`, `--commands`, `--command-results`, `--errors`, `--feedback`, `--outcome`, `--technical-outcome`, `--user-acceptance`, `--final-outcome`, `--notes`, `--from-file`, `--candidates`, `--candidates-file`, `--structured-candidates-file`, and `--manual-review`. `--from-file` may include `User request:`, `AI action summary:`, `Changed files:`, `Commands:`, `Errors:`, and `Structured memory candidates:` sections. This is a global store write/capture operation and may need approved write access in sandboxed hosts. Without structured candidates, Core records raw evidence and warns instead of creating active memory. User-request-based memory normally uses `sourceType: agent_semantic_extraction`; active technical failure memory also requires an agent candidate.
 
 ## `vibebox report`
 
@@ -176,10 +176,10 @@ vibebox init --language ko-KR
 - Purpose: Convert the Obsidian wiki display layer to another configured memory language.
 - Typical usage: `vibebox convert-lang ko-KR en-US`
 - Alias: `vibebox language convert ko-KR en-US`
-- Notes: Requires an AI agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`. Without it, the command exits before changing files. Markdown filenames, category folders, headings, aliases, links, Recent Active Memory, memory notes, and `registry/wiki-docs.json` are regenerated for the target language. Raw logs and internal JSON field names, enum values, relation types, and command names stay English/canonical.
+- Notes: Requires an AI agent runtime marker such as `VIBEBOX_AGENT_RUNTIME` and agent-provided localized display candidates. Without them, the command exits before changing files. Core applies BCP 47 validation, Markdown filename changes, category folders, headings, aliases, links, Recent Active Memory, memory notes, and `registry/wiki-docs.json`; it does not translate meaning. Raw logs and internal JSON field names, enum values, relation types, and command names stay English/canonical.
 
 ## `vibebox rebuild`
 
 - Purpose: Rebuild active indexes, relation graph, namespace files, localized wiki files, category-based memory notes, and doc registry from active memory.
 - Typical usage: `vibebox rebuild`
-- Notes: Semantic rebuild requires an AI agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`. Use `vibebox rebuild --index-only` for the non-semantic index repair path.
+- Notes: Semantic rebuild requires an AI agent runtime marker such as `VIBEBOX_AGENT_RUNTIME` and agent-provided semantic data. Use `vibebox rebuild --index-only` for the non-semantic index repair path. Core rebuilds files and integrity indexes; it does not reclassify categories, relations, titles, or summaries by reading raw requests.

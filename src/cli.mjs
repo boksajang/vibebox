@@ -112,6 +112,10 @@ function parseAfterTaskFile(text = '') {
     ['feedback', 'feedback'],
     ['\uC0AC\uC6A9\uC790 \uD53C\uB4DC\uBC31', 'feedback'],
     ['\uD53C\uB4DC\uBC31', 'feedback'],
+    ['structured memory candidates', 'structuredMemoryCandidates'],
+    ['memory candidates', 'structuredMemoryCandidates'],
+    ['structured candidates', 'structuredMemoryCandidates'],
+    ['agent memory candidates', 'structuredMemoryCandidates'],
     ['notes', 'notes']
   ]);
   for (const line of String(text || '').split(/\r?\n/u)) {
@@ -127,6 +131,19 @@ function parseAfterTaskFile(text = '') {
     }
   }
   return Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, value.trim()]));
+}
+
+async function readCandidateInput(flags = {}, fallback = '') {
+  if (flags['candidates-file'] || flags.candidatesFile) {
+    return readFile(flags['candidates-file'] || flags.candidatesFile, 'utf8');
+  }
+  if (flags['structured-candidates-file'] || flags.structuredCandidatesFile) {
+    return readFile(flags['structured-candidates-file'] || flags.structuredCandidatesFile, 'utf8');
+  }
+  if (flags.candidates || flags.structuredCandidates || flags.structuredMemoryCandidates) {
+    return flags.candidates || flags.structuredCandidates || flags.structuredMemoryCandidates;
+  }
+  return fallback;
 }
 
 function isPermissionDeniedError(error) {
@@ -257,7 +274,7 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
         text = await readStdin();
       }
       const candidates = await extractMemoryCandidates(root, {
-        text,
+        structuredMemoryCandidates: await readCandidateInput(flags, ''),
         eventId: flags.event,
         fromLastEvent: flags['last-event'] || false,
         manualReview: flags['manual-review'] || flags.review || false,
@@ -314,6 +331,7 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
         commands: parseList(flags.commands || flags.command || fileFields.commands),
         commandResults: parseList(flags['command-results'] || flags['command-result'] || flags.commandResult || fileFields.commandResults),
         errors: parseList(flags.errors || flags.error || fileFields.errors),
+        structuredMemoryCandidates: await readCandidateInput(flags, fileFields.structuredMemoryCandidates || ''),
         userFeedback: flags.feedback || flags.userFeedback || fileFields.feedback || '',
         technicalOutcome: flags['technical-outcome'] || flags.technicalOutcome,
         userAcceptance: flags['user-acceptance'] || flags.userAcceptance,
@@ -367,7 +385,7 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
       const from = args[0] || flags.from || '';
       const to = args[1] || flags.to || flags.language || flags.target || '';
       if (!to) throw new Error('convert-lang requires source and target BCP 47 language tags, for example: vibebox convert-lang ko-KR en-US');
-      const result = await convertLanguage(root, { from, to });
+      const result = await convertLanguage(root, { from, to, localizedCandidates: await readCandidateInput(flags, '') });
       return `VibeBox language converted to ${result.language} (${result.locale}). Raw logs were not changed.`;
     }
 
@@ -379,16 +397,19 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
       if (!to) throw new Error('language convert requires source and target BCP 47 language tags, for example: vibebox language convert ko-KR en-US');
       const result = await convertLanguage(root, {
         from: args[1] || flags.from || '',
-        to
+        to,
+        localizedCandidates: await readCandidateInput(flags, '')
       });
       return `VibeBox language converted to ${result.language} (${result.locale}). Raw logs were not changed.`;
     }
 
     case 'rebuild': {
+      const semanticData = await readCandidateInput(flags, '');
       const result = await rebuildVibeBox(root, {
         indexOnly: Boolean(flags['index-only']),
         semantic: !flags['index-only'],
-        cleanup: flags.cleanup !== false
+        cleanup: flags.cleanup !== false,
+        agentSemanticData: flags['semantic-data'] || flags.semanticData || semanticData
       });
       return `VibeBox rebuild complete. semantic=${result.semantic}`;
     }

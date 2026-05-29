@@ -85,12 +85,12 @@ Codex should read and apply the `User Success Criteria`, `AI Failure Avoidance`,
 After meaningful work:
 
 ```bash
-vibebox.cmd aftertask --request "<original user request or faithful summary>" --summary "..." --technical-outcome success --user-acceptance accepted
+vibebox.cmd aftertask --request "<original user request or faithful summary>" --summary "..." --candidates "<agent-candidate-json>" --technical-outcome success --user-acceptance accepted
 ```
 
-`aftertask` is a global store write/capture operation. The `--request` value is required for active user model extraction. If the request is long, pass a faithful semantic summary with `--request` or include `User request:` in a `--from-file` payload. If VibeBox guidance could not be retrieved before work, include that fact in `--errors` or `--notes`. If sandbox permissions block aftertask, request global VibeBox store write access for aftertask capture; if approval is denied, report that capture was unavailable.
+`aftertask` is a global store write/capture operation. The `--request` value preserves the user's success criteria source, and `--candidates` or a `Structured memory candidates:` file section carries Codex's semantic judgment. If the request is long, pass a faithful semantic summary with `--request` or include `User request:` in a `--from-file` payload. If VibeBox guidance could not be retrieved before work, include that fact in `--errors` or `--notes`. If sandbox permissions block aftertask, request global VibeBox store write access for aftertask capture; if approval is denied, report that capture was unavailable.
 
-VibeBox extracts candidates and runs Auto Curator by default. The user's request is success criteria, user corrections update those criteria, and user dissatisfaction is an AI failure signal. Structured requests are decomposed into project criteria, user/domain patterns, validation and preservation rules, scope limits, AI failure-prevention rules, and task context before AI action summaries are used as supporting evidence. Confirmed and inferred AI successful approaches can become active without memory approval; inferred success must not be described as user-confirmed. Capture command, permission, environment, and tool failures as AI failure memory. Use review commands only for debugging, audits, or manual override:
+Codex is the semantic authority. It must decompose structured requests into project criteria, user/domain patterns, validation and preservation rules, scope limits, AI failure-prevention rules, task context, categories, relations, replacements, and localized display text before capture. VibeBox Core validates, stores, dedupes, safely replaces, indexes, and renders those candidates. The user's request is success criteria, user corrections update those criteria, and user dissatisfaction is an AI failure signal. Confirmed and inferred AI successful approaches can become active without memory approval when Codex submits them; inferred success must not be described as user-confirmed. Preserve command, permission, environment, and tool failure evidence, and submit active AI failure memory only when Codex has made that structured candidate. Use review commands only for debugging, audits, or manual override:
 
 ```bash
 vibebox review
@@ -106,5 +106,5 @@ vibebox reject <candidate-id>
 - VibeBox uses one global user store at `~/.vibebox` by default, overrideable with `VIBEBOX_HOME`.
 - VibeBox does not create project-local `.vibebox` folders, workspace-local snapshots, copied memory stores, pointer files, or hidden metadata in work projects.
 - `backup` and `restore` are ordinary CLI maintenance commands; restore is destructive replace and requires confirmation.
-- `convert-lang` and semantic `rebuild` require an agent runtime marker such as `VIBEBOX_AGENT_RUNTIME`.
+- `convert-lang` and semantic `rebuild` require an agent runtime marker such as `VIBEBOX_AGENT_RUNTIME` and Codex-provided localized/semantic data; Core applies files and integrity checks but does not translate or reclassify meaning.
 - Obsidian filenames, category folders, headings, aliases, links, Recent Active Memory, and category-based memory notes follow the configured memory language through stable `docKey` identity; internal JSON fields, enum values, relation types, command names, file paths, and raw logs stay canonical. Visible note names are meaning-based; `mem_...` ids stay in frontmatter. A memory has one canonical note under its primary category and can be linked from multiple related category pages plus the source project page.

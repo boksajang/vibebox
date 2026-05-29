@@ -2,6 +2,12 @@
 
 VibeBox memory is auto-curated local context for AI coding work. It is not a replacement for the current user request or the repository's actual state.
 
+## Semantic Authority
+
+The AI agent is the semantic authority. It decides user intent, success criteria, corrections, AI failure signals, technical failure meaning, successful approaches, task-only details, model class, scope, categories, relations, replacement/refinement/exception meaning, and localized display text. VibeBox Core validates and manages the resulting structured candidates; it does not infer meaning from raw `userRequest`, headings, bullets, keywords, fixture terms, or `aiActionSummary`.
+
+If a `userRequest` is captured without structured memory candidates, Core records the raw event and warns that agent semantic candidates are missing. It creates no active user memory. If only `aiActionSummary` is provided, Core preserves raw evidence but creates no active memory. Command, permission, environment, path, API, browser, and tool failures become active `ai_failure_memory` only when the agent submits a structured candidate.
+
 ## Memory Types
 
 - `user_preference`
@@ -86,7 +92,7 @@ VibeBox maintains the latest optimized active graph, not a pile of competing rul
 
 User instructions are success criteria. User corrections are more precise success criteria. User dissatisfaction is an AI failure signal, not user failure. User patterns may describe question style, response preference, process habits, validation requirements, design philosophy, decision style, communication style, correction patterns, agent failure patterns, agent success patterns, and handoff style. A single vague statement should be discarded, quarantined, or marked low confidence; explicit or repeated behavior can become active through auto-curation or manual override.
 
-Structured user requests should be analyzed as meaning units before AI action summaries are considered. Reference baselines, consistency requirements, target lists, validation or preservation conditions, scope limits, workflow requirements, and AI failure-prevention signals can produce separate candidates from the same request. A single durable memory can have one `primaryCategory` and multiple `relatedCategories`; related category pages should link to the same canonical note instead of duplicating it.
+Structured user requests should be analyzed by the AI agent as meaning units before AI action summaries are considered. Reference baselines, consistency requirements, target lists, validation or preservation conditions, scope limits, workflow requirements, and AI failure-prevention signals can produce separate agent candidates from the same request. A single durable memory can have one `primaryCategory` and multiple `relatedCategories`; related category pages should link to the same canonical note instead of duplicating it.
 
 Failure memory must include prevention guidance when possible. Success patterns should describe when to reuse the successful approach and whether the evidence is confirmed by the user or inferred from validation.
 Pretask/context retrieval should consider relevant failure and success nodes together, not only one side.
@@ -118,9 +124,8 @@ New memory candidates are never authority by default. The normal flow is:
 
 ```text
 event captured
--> userRequest and userFeedback analyzed first
--> candidates extracted
--> Auto Curator decides active / replace / discard / quarantine
+-> agent structured candidates supplied
+-> Core validates / dedupes / replaces safely / indexes / renders
 -> active graph, wiki, and context updated
 ```
 

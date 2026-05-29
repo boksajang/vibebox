@@ -2,7 +2,7 @@
 
 VibeBox is a local-first active user model, active graph, and blackbox memory middleware for AI coding agents.
 
-It is not a chat transcript archive, a passive history store, an action-summary recorder, or a remote memory service. VibeBox interprets user requests, user corrections, user feedback, project context, command outcomes, and prior active memory into normalized reusable guidance. User instructions are success criteria. User corrections are more precise success criteria. User dissatisfaction is an AI failure signal, not user failure. VibeBox stores compact development memory in one user-level global store, then keeps only the latest active guidance in retrieval, Context Packs, Pre-Task Briefs, the active relation graph, and the Obsidian-compatible wiki.
+It is not a chat transcript archive, a passive history store, an action-summary recorder, a semantic extraction engine, or a remote memory service. The AI agent interprets user requests, user corrections, user feedback, project context, command outcomes, and prior active memory into structured reusable memory candidates. VibeBox Core validates, stores, dedupes, safely replaces, indexes, links, and renders those candidates. User instructions are success criteria. User corrections are more precise success criteria. User dissatisfaction is an AI failure signal, not user failure. VibeBox stores compact development memory in one user-level global store, then keeps only the latest active guidance in retrieval, Context Packs, Pre-Task Briefs, the active relation graph, and the Obsidian-compatible wiki.
 
 ## The Problem
 
@@ -28,8 +28,8 @@ User task
 -> AI coding agent works
 -> vibebox aftertask
 -> Blackbox Event
--> userRequest/userFeedback-first meaning extraction
--> Auto Curator decides active / replace / discard / quarantine
+-> AI-agent structured memory candidates
+-> Core validation, dedupe, replacement safety, indexing, and rendering
 -> active graph, wiki, and context updated for future tasks
 ```
 
@@ -58,10 +58,11 @@ The current VibeBox implementation is a Node.js CLI with:
 - active replacement of outdated memory
 - situation-aware retrieval for implementation, debugging, architecture, documentation, verification, packaging, and handoff work
 - after-task blackbox event capture
-- Auto Curator promotion, replacement, discard, and quarantine decisions
+- structured memory candidate ingestion from the AI agent
+- schema validation, BCP 47 validation, dedupe, replacement safety, indexing, and wiki rendering
 - User Model, Domain Model, Project Model, Task Context, and Discarded Detail classification
-- userRequest/userFeedback-first extraction with `aiActionSummary` as auxiliary evidence
-- structured userRequest decomposition into project criteria, user/domain patterns, validation and preservation rules, AI failure-prevention rules, and task context
+- missing-candidate warnings when a `userRequest` is captured without agent semantic candidates
+- raw blackbox evidence preservation without promoting action summaries or technical failures to active memory by itself
 - manual `review`, `approve`, and `reject` commands for debug and override
 - user pattern memory for validation style, process habits, design philosophy, response preference, correction patterns, and agent failure/success patterns
 - localized Obsidian doc registry with stable internal `docKey` and configured-language filenames
@@ -74,7 +75,7 @@ The adapter documents are packaging guides. The Codex adapter can be exposed thr
 
 ## Auto-Curated Memory
 
-VibeBox's normal workflow is automatic curation, not per-task user review. After an event is captured, VibeBox extracts candidates and the Auto Curator decides whether each candidate should become active, replace older active memory, be discarded, or be quarantined for manual inspection.
+VibeBox's normal workflow is automatic curation, not per-task user review. After an event is captured, the AI agent supplies structured memory candidates for any reusable meaning. Core validates those candidates and decides whether they can become active, replace older active memory, be discarded, or be quarantined for manual inspection. If `userRequest` is present without structured candidates, Core records the raw event and warns instead of inventing active memory.
 
 `review`, `approve`, and `reject` remain available for debugging, audits, and manual override. Pending memory is legacy/manual debug state; it is not normal workflow guidance.
 

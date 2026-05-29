@@ -12,7 +12,7 @@ VibeBox Core is a local CLI and memory engine. This skill tells an AI coding age
 
 Past memory is context, not authority. Pending memory must not be treated as active memory.
 VibeBox is not a passive archive or a review-first memory manager: active memory is the latest optimized guidance set chosen by the Auto Curator or a manual override. Replaced, corrected, discarded, quarantined, rejected, or legacy pending memory must not be treated as current guidance.
-VibeBox is not an AI action summary recorder. Treat the user's request and user feedback as the strongest memory signals; use AI summaries, changed files, and command output only as supporting evidence. Treat structured user requests as meaning graphs: extract reusable success criteria, preservation rules, validation expectations, scope limits, user/domain/project patterns, and AI failure-prevention signals before relying on AI action summaries.
+VibeBox is not an AI action summary recorder and Core is not the semantic authority. The AI agent must interpret the user's request, feedback, correction, failure signals, successful approaches, model class, scope, categories, relations, replacements, and localized display text. Use AI summaries, changed files, command output, and errors only as evidence for the structured candidates you provide. Treat structured user requests as meaning graphs yourself: extract reusable success criteria, preservation rules, validation expectations, scope limits, user/domain/project patterns, and AI failure-prevention signals before capture.
 
 For details, load these references only when needed:
 
@@ -43,7 +43,7 @@ Use VibeBox to reduce repeated explanation and repeated mistakes:
 - Apply both relevant failure memory and relevant success patterns; failure memory is prevention guidance and success memory is reusable approach guidance.
 - Prefer project-specific memory before global memory.
 - Capture meaningful task outcomes after work.
-- Let VibeBox auto-curate captured events into the active graph.
+- Provide structured memory candidates during capture so VibeBox can validate, store, dedupe, replace, index, and render them into the active graph.
 
 Do not let VibeBox memory override the user's current explicit request. If past memory conflicts with the current request, mention the conflict and follow the current request.
 
@@ -97,6 +97,7 @@ During work:
 - Consider `avoid_rule`, `failure_memory`, and `agent_failure_pattern` as high-priority warnings.
 - Treat user dissatisfaction as an AI failure signal, not user failure.
 - Treat permission, path, command, browser, API, image generation, and plugin/tool failures as AI failure signals worth capturing.
+- Preserve technical failure evidence, but create active `ai_failure_memory` only by submitting an explicit structured candidate.
 - Let `validation_pattern`, `process_pattern`, and `design_philosophy` shape how you verify, sequence, and design the work.
 - Preserve existing behavior unless the user asks for a change.
 - If the task touches an area with known failure memory, explicitly account for it.
@@ -113,14 +114,16 @@ After meaningful coding or design work:
 4. List commands run and results.
 5. Summarize errors or failed attempts.
 6. Summarize user feedback if available.
-7. Run after-task capture when appropriate; `aftertask` is a global store write/capture operation, unlike repository read-only `pretask` and `context`.
-8. If sandbox permissions block aftertask, request approved global VibeBox store write access for aftertask capture or report that capture was unavailable. Do not create a copied memory store as a fallback.
-9. On Windows/Codex, prefer direct `vibebox.cmd aftertask --request "..." ...`; outside Windows, prefer `vibebox aftertask ...`.
-10. If direct installed commands fail inside the VibeBox repository, use `node bin/vibebox.mjs aftertask --request "..." ...`.
-11. Let VibeBox extract candidates and run Auto Curator handling.
-12. Treat user acceptance and technical success as separate signals.
-13. Show review instructions only when debugging or manual override is useful.
-14. Do not store secrets as memory.
+7. Create structured memory candidates for any durable meaning: `user_success_criteria`, `ai_failure_memory`, `ai_successful_approach`, `task_context`, or `discarded_detail`.
+8. Include candidate fields such as `memoryRole`, `type`, `modelClass`, `scope`, `primaryCategory`, `relatedCategories`, `displayTitle`, `displaySummary`, `displayRule`, `displayLanguage`, `evidence`, `confidence`, `sourceType`, `relationCandidates`, and `replaces` when relevant.
+9. Run after-task capture when appropriate; `aftertask` is a global store write/capture operation, unlike repository read-only `pretask` and `context`.
+10. If sandbox permissions block aftertask, request approved global VibeBox store write access for aftertask capture or report that capture was unavailable. Do not create a copied memory store as a fallback.
+11. On Windows/Codex, prefer direct `vibebox.cmd aftertask --request "..." --candidates "<json>" ...`; outside Windows, prefer `vibebox aftertask ...`.
+12. If direct installed commands fail inside the VibeBox repository, use `node bin/vibebox.mjs aftertask --request "..." --candidates "<json>" ...`.
+13. Let VibeBox validate, dedupe, apply replacement safety, index, and render the candidates.
+14. Treat user acceptance and technical success as separate signals.
+15. Show review instructions only when debugging or manual override is useful.
+16. Do not store secrets as memory.
 
 ## Auto-Curated Memory Policy
 
@@ -128,8 +131,8 @@ The normal flow is:
 
 ```text
 event captured
--> candidates extracted
--> Auto Curator decides active / replace / discard / quarantine
+-> agent structured candidates supplied
+-> Core validates / dedupes / replaces safely / indexes / renders
 -> active graph, wiki, and context updated
 ```
 
@@ -142,9 +145,9 @@ Active memory is the only memory that should guide normal pre-task context.
 - Use `vibebox review`, `vibebox approve <candidate-id>`, `vibebox approve --safe`, and `vibebox reject <candidate-id>` only for debugging, audits, and manual override.
 - If the user rejects an outcome, do not let it become `success_pattern` even when commands passed.
 - If the user corrects the direction, treat the correction as the latest success criteria and let VibeBox replace/refine older criteria in the same scope.
-- If a command, tool, permission, or environment failure occurred, capture it as AI failure memory; if a workaround succeeded, capture the recovery as an AI successful approach.
-- If validation passes and the approach is reusable with no rejection signal, VibeBox may record inferred success automatically, but do not describe it as confirmed by the user.
-- Do not run aftertask with only `--summary` or only `--from-file`; without `--request`, active user model extraction is skipped. For long records, either pass `--request "..."` separately or include a `User request:` section in the file.
+- If a command, tool, permission, or environment failure occurred, preserve the evidence and submit an explicit failure candidate when it is reusable AI failure memory; if a workaround succeeded, submit a recovery/successful-approach candidate.
+- If validation passes and the approach is reusable with no rejection signal, you may submit an inferred AI successful approach, but do not describe it as confirmed by the user.
+- Do not run aftertask with only `--summary` or only `--from-file`; without structured candidates, active memory is not created. For long records, include `User request:` and `Structured memory candidates:` sections in the file.
 
 ## Consumption Evidence Policy
 

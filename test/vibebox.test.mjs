@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+﻿import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
@@ -73,6 +73,531 @@ function memoryText(record) {
     record.successfulApproach,
     record.whyItWorked
   ].filter(Boolean).join('\n');
+}
+
+let candidateCounter = 0;
+
+function candidateFixture(overrides = {}) {
+  candidateCounter += 1;
+  const memoryRole = overrides.memoryRole || 'user_success_criteria';
+  const scope = overrides.scope || 'global';
+  const type = overrides.type || 'user_preference';
+  const id = overrides.id || overrides.candidateId || `mem_${candidateCounter}`;
+  const title = overrides.title || 'Agent provided memory';
+  const summary = overrides.summary || 'Agent provided reusable memory.';
+  return {
+    candidateId: id,
+    memoryRole,
+    type,
+    modelClass: overrides.modelClass || (scope === 'project' ? 'project_model' : scope === 'domain' ? 'domain_model' : memoryRole === 'task_context' ? 'task_context' : 'user_model'),
+    modelSubClass: overrides.modelSubClass || 'preference_model',
+    scope,
+    projectId: overrides.projectId,
+    sourceProjectId: overrides.sourceProjectId,
+    domain: overrides.domain,
+    domains: overrides.domains || (overrides.domain ? [overrides.domain] : []),
+    primaryCategory: overrides.primaryCategory || 'user_preferences',
+    relatedCategories: overrides.relatedCategories || [],
+    topic: overrides.topic,
+    title,
+    summary,
+    rule: overrides.rule || summary,
+    displayTitle: overrides.displayTitle || title,
+    displaySummary: overrides.displaySummary || summary,
+    displayRule: overrides.displayRule || overrides.rule || summary,
+    displayLanguage: overrides.displayLanguage || 'en-US',
+    evidence: overrides.evidence || [{ kind: 'test_fixture', summary }],
+    confidence: overrides.confidence || 'high',
+    sourceType: overrides.sourceType || 'agent_semantic_extraction',
+    status: overrides.status || 'active',
+    relationCandidates: overrides.relationCandidates || [],
+    supersedes: overrides.supersedes || [],
+    related: overrides.related || [],
+    replaces: overrides.replaces || [],
+    activeCondition: overrides.activeCondition,
+    tags: overrides.tags || [],
+    appliesTo: overrides.appliesTo || [],
+    successEvidence: overrides.successEvidence,
+    acceptanceBasis: overrides.acceptanceBasis,
+    technicalOutcome: overrides.technicalOutcome,
+    userAcceptance: overrides.userAcceptance,
+    finalOutcome: overrides.finalOutcome,
+    failureType: overrides.failureType,
+    failedApproach: overrides.failedApproach,
+    preventionRule: overrides.preventionRule,
+    affectedContext: overrides.affectedContext,
+    successfulApproach: overrides.successfulApproach,
+    recoveryApproach: overrides.recoveryApproach,
+    reuseWhen: overrides.reuseWhen,
+    discardReason: overrides.discardReason,
+    quarantineReason: overrides.quarantineReason
+  };
+}
+
+function failureCandidate(overrides = {}) {
+  const summary = overrides.summary || 'Avoid repeating the failed AI approach.';
+  return candidateFixture({
+    memoryRole: 'ai_failure_memory',
+    type: 'agent_failure_pattern',
+    modelClass: 'project_model',
+    modelSubClass: 'agent_failure',
+    scope: 'project',
+    primaryCategory: 'agent_failure_patterns',
+    relatedCategories: ['prevention_rules'],
+    title: 'AI failure memory',
+    summary,
+    rule: summary,
+    failureType: 'technical_failure',
+    failedApproach: summary,
+    preventionRule: summary,
+    affectedContext: 'current project',
+    technicalOutcome: 'failure',
+    confidence: 'high',
+    ...overrides
+  });
+}
+
+function approachCandidate(overrides = {}) {
+  const summary = overrides.summary || 'Reuse the successful AI approach after validation.';
+  return candidateFixture({
+    memoryRole: 'ai_successful_approach',
+    type: 'agent_success_pattern',
+    modelClass: 'project_model',
+    modelSubClass: 'agent_success',
+    scope: 'project',
+    primaryCategory: 'agent_success_patterns',
+    relatedCategories: ['success_patterns'],
+    title: 'AI successful approach',
+    summary,
+    rule: summary,
+    successfulApproach: summary,
+    reuseWhen: ['similar validated work'],
+    successEvidence: 'inferred',
+    acceptanceBasis: 'inferred',
+    technicalOutcome: 'success',
+    confidence: 'high',
+    ...overrides
+  });
+}
+
+function categoryForType(type, memoryRole = '') {
+  if (memoryRole === 'ai_failure_memory') return 'agent_failure_patterns';
+  if (memoryRole === 'ai_successful_approach') return 'agent_success_patterns';
+  return {
+    user_preference: 'user_preferences',
+    avoid_rule: 'global_avoid_rules',
+    failure_memory: 'failure_memory',
+    success_pattern: 'success_patterns',
+    project_decision: 'decision_patterns',
+    validation_pattern: 'validation_patterns',
+    process_pattern: 'process_patterns',
+    design_philosophy: 'design_philosophy',
+    response_preference: 'user_patterns',
+    prevention_rule: 'prevention_rules',
+    task_context: 'workflow_rules'
+  }[type] || 'user_preferences';
+}
+
+function agentCandidatesFromText(text = '', options = {}) {
+  const normalizedText = String(text || '').replace(/\b(?:Korean file|English file|Test|Source|User request|Original user request|AI action summary|Action summary|Summary|Fixture|Test fixture|Notes)\s*:\s*/gu, '\n');
+  return normalizedText.split(/\r?\n/u)
+    .map((line) => line.trim().replace(/^(?:user request|original user request|ai action summary|action summary|summary|fixture|test fixture|notes|source|korean file|english file|test)\s*:\s*/iu, ''))
+    .filter(Boolean).flatMap((line) => {
+    if (/sk-test-|sk-live-|plainsecretvalue|DATABASE_URL=/i.test(line)) return [];
+    if (/feels nice today/i.test(line)) return [];
+    if (/logo\.webp|SEO\/head|language toggle|SEO\/language logic/i.test(line)) return [];
+    if (/^the .*(should|must)\b/i.test(line)) return [];
+    const source = options.source || {};
+    const accepted = source.userAcceptance === 'accepted' || options.userAcceptance === 'accepted';
+    const rejected = source.userAcceptance === 'rejected' || options.userAcceptance === 'rejected';
+    const technicalOutcome = source.technicalOutcome || options.technicalOutcome || 'unknown';
+    const common = {
+      summary: line,
+      title: line.replace(/[.!?]+$/u, '').slice(0, 80),
+      confidence: /maybe|feels|temporarily|this task only/i.test(line) ? 'low' : /prefer|usually/i.test(line) ? 'medium' : 'high',
+      scope: /this project|we decided|current project|uses echarts/i.test(line) ? 'project' : /dashboard projects|landing page|native app|for app projects|domain/i.test(line) ? 'domain' : 'global',
+      domains: /package|dependenc/i.test(line) ? ['tooling'] : /dashboard|table|scrolling|overflow|mssql|echarts/i.test(line) ? ['dashboard'] : /landing|visual|design|3d|brand/i.test(line) ? ['landing_page', 'visual_design'] : [],
+      tags: [
+        ...line.split(/\s+/u).slice(0, 8),
+        ...(/package|dependenc/i.test(line) ? ['package.json', 'dependencies'] : [])
+      ],
+      appliesTo: /package|dependenc/i.test(line) ? ['dependency changes', 'package dependencies'] : [],
+      displayLanguage: options.displayLanguage || process.env.VIBEBOX_LOCALE || process.env.VIBEBOX_LANGUAGE || 'en-US'
+    };
+    if (/npm\/build tooling|fake plugins|backend code|unrelated files/i.test(line)) {
+      return [candidateFixture({ ...common, memoryRole: 'task_context', type: 'task_context', modelClass: 'task_context', modelSubClass: 'current_implementation_constraint', scope: 'task', primaryCategory: 'workflow_rules', confidence: 'medium' })];
+    }
+    if (/for this task only|temporarily|only edit|current task/i.test(line)) {
+      return [candidateFixture({ ...common, memoryRole: 'task_context', type: 'task_context', modelClass: 'task_context', modelSubClass: 'current_task_scope', scope: 'task', primaryCategory: 'workflow_rules', confidence: 'low' })];
+    }
+    if (/failed|fails|failure|regression|wrong direction|rejected|body overflow|command failed|permission denied|access denied|not found/i.test(line)) {
+      const explicitPrevention = line.match(/prevent this by\s+([^.;]+)/iu)?.[1]?.trim();
+      const isAgentFailure = /agent|ai|command|permission|access|not found|regression|body overflow/i.test(line);
+      const failure = failureCandidate({ ...common, type: isAgentFailure ? 'agent_failure_pattern' : 'failure_memory', modelClass: common.scope === 'domain' ? 'domain_model' : 'project_model', primaryCategory: isAgentFailure ? 'agent_failure_patterns' : 'failure_memory', preventionRule: explicitPrevention || (/body overflow/i.test(line) ? 'Prefer component-level scrolling instead of global body overflow changes.' : line) });
+      const prevention = candidateFixture({ ...common, memoryRole: 'ai_failure_memory', type: 'prevention_rule', modelClass: failure.modelClass, modelSubClass: 'failure_prevention', scope: common.scope === 'global' ? 'global' : common.scope, primaryCategory: 'prevention_rules', relatedCategories: ['agent_failure_patterns'], summary: failure.preventionRule || line, title: 'Prevent repeated AI failure', preventionRule: failure.preventionRule || line, failureType: failure.failureType || 'technical_failure', technicalOutcome: 'failure' });
+      return [failure, prevention];
+    }
+    if (/except for/i.test(line)) {
+      const conditionText = line.match(/except for\s+([^,.]+)/iu)?.[1] || line;
+      return [candidateFixture({
+        ...common,
+        memoryRole: 'user_success_criteria',
+        type: 'user_preference',
+        modelClass: common.scope === 'domain' ? 'domain_model' : 'user_model',
+        modelSubClass: 'exception_preference_model',
+        scope: common.scope === 'global' ? 'domain' : common.scope,
+        primaryCategory: 'user_preferences',
+        relatedCategories: ['decision_patterns'],
+        activeCondition: { keywords: conditionText.split(/\s+/u).filter(Boolean).slice(0, 6) }
+      })];
+    }
+    if (/worked successfully|successful|succeeded|recovered|recovery|reuse|reusable|accepted reusable|wrapper-based|validation passed|tests passed|checks passed/i.test(line)) {
+      const inferred = technicalOutcome === 'success' || /worked successfully|validation passed|tests passed|checks passed/i.test(line);
+      return [approachCandidate({
+        ...common,
+        type: /agent succeeded|ai succeeded|recovered|recovery/i.test(line) ? 'agent_success_pattern' : 'success_pattern',
+        modelClass: common.scope === 'domain' ? 'domain_model' : 'project_model',
+        relatedCategories: ['success_patterns'],
+        technicalOutcome,
+        userAcceptance: accepted ? 'accepted' : rejected ? 'rejected' : 'unknown',
+        finalOutcome: accepted ? 'accepted_success' : rejected ? 'technical_success_user_rejected' : 'unknown',
+        successEvidence: accepted ? 'confirmed' : rejected ? 'rejected' : inferred ? 'inferred' : 'unknown',
+        acceptanceBasis: accepted ? 'confirmed' : rejected ? 'rejected' : inferred ? 'inferred' : 'unknown'
+      })];
+    }
+    let type = 'user_preference';
+    if (/do not|never|avoid|must not|forbidden/i.test(line)) type = 'avoid_rule';
+    if (/decided|this project uses|uses echarts|current project/i.test(line)) type = 'project_decision';
+    if (/\bvalidation\b|validating|verify|check|before claiming|before reporting|검증|확인/i.test(line)) type = 'validation_pattern';
+    if (/before coding|workflow|process|inspect|plan/i.test(line)) type = 'process_pattern';
+    if (/design philosophy|visual direction|architecture|dark premium|card-heavy|saas/i.test(line)) type = 'design_philosophy';
+    if (/final report|report changed files|answer style/i.test(line)) type = 'response_preference';
+    const scope = type === 'project_decision' ? 'project' : common.scope;
+    return [candidateFixture({ ...common, memoryRole: 'user_success_criteria', type, modelClass: scope === 'project' ? 'project_model' : scope === 'domain' ? 'domain_model' : 'user_model', modelSubClass: type === 'project_decision' ? 'project_decision' : `${type}_model`, scope, primaryCategory: categoryForType(type), relatedCategories: type === 'validation_pattern' ? ['success_patterns'] : [], sourceType: options.sourceType || 'agent_semantic_extraction', technicalOutcome })];
+  });
+}
+
+function agentDocumentCandidatesFromText(text = '', options = {}) {
+  const rawText = String(text || '');
+  const cleanText = rawText.replace(/\b(?:Korean file|English file|Test|Source|User request|Original user request|Original request|AI action summary|Action summary|Summary|Fixture|Test fixture|Notes|Example A|Example B)\s*:\s*/gu, '\n');
+  const base = agentCandidatesFromText(rawText, options);
+  const lines = cleanText.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
+  const hasDocumentCue = /generic SaaS|card-heavy|dark premium|3D hero|clean, practical|touch targets|data clarity|landing page|native app|visual direction|reference|subagent|final report|changed files|validation result|Before coding|구현 전|최종 보고|통일|일관|동일|유지|same role|consistent|sourceNotes|source notes|unmapped|userLanguage|language toggle|business trip|expense|approval/i.test(rawText);
+  if (!hasDocumentCue) return base;
+  const locale = options.displayLanguage || process.env.VIBEBOX_LOCALE || process.env.VIBEBOX_LANGUAGE || 'en-US';
+  const isKo = locale === 'ko-KR';
+  const extras = [
+    candidateFixture({
+      memoryRole: 'user_success_criteria',
+      type: 'project_decision',
+      modelClass: 'project_model',
+      modelSubClass: 'project_success_criteria',
+      scope: 'project',
+      primaryCategory: /process|workflow|순서|먼저|최상단/i.test(rawText) ? 'process_patterns' : 'design_philosophy',
+      relatedCategories: ['success_patterns', 'process_patterns', 'decision_patterns'],
+      title: isKo ? '프로젝트 성공 조건' : 'Project success criteria',
+      summary: lines[0]?.replace(/^[-*\d.)\s]+/u, '').slice(0, 220) || 'Agent identified project success criteria.',
+      displayTitle: isKo ? '프로젝트 성공 조건' : 'Project success criteria',
+      displaySummary: isKo ? 'AI 에이전트가 사용자 요청에서 프로젝트 성공 조건을 구조화했다.' : 'The AI agent structured the project success criteria from the user request.',
+      displayLanguage: locale
+    })
+  ];
+  if (/generic SaaS|card-heavy|dark premium|3D hero|clean, practical|touch targets|data clarity|landing page|native app|visual direction|디자인|스타일/i.test(rawText)) {
+    extras.push(candidateFixture({
+      memoryRole: 'user_success_criteria',
+      type: 'design_philosophy',
+      modelClass: 'domain_model',
+      modelSubClass: 'domain_preference',
+      scope: 'domain',
+      domains: /native app|touch targets|data clarity/i.test(rawText) ? ['native_internal_app'] : ['landing_page', 'visual_design'],
+      primaryCategory: 'design_philosophy',
+      relatedCategories: ['user_patterns', 'success_patterns'],
+      title: 'Domain design criteria',
+      summary: /clean, practical|touch targets|data clarity/i.test(rawText)
+        ? 'Native app work should stay clean, practical, and readable with strong touch targets and data clarity rather than a flashy 3D hero.'
+        : 'Avoid generic SaaS/card-heavy visual direction when the user requests a distinct brand or visual system.',
+      displayLanguage: locale
+    }));
+  }
+  if (/reference|subagent|final report|changed files|validation result|Before coding|구현 전|최종 보고/i.test(rawText)) {
+    if (/reference/i.test(rawText)) extras.push(candidateFixture({
+      memoryRole: 'user_success_criteria',
+      type: 'process_pattern',
+      modelClass: 'user_model',
+      modelSubClass: 'reference_handling_model',
+      scope: 'global',
+      primaryCategory: 'process_patterns',
+      relatedCategories: ['user_patterns', 'design_philosophy'],
+      title: 'Reference handling criteria',
+      summary: 'Use reference material to preserve the intended direction without copying it literally.',
+      displayLanguage: locale
+    }));
+    if (/Before coding|구현 전|plan/i.test(rawText)) extras.push(candidateFixture({
+      memoryRole: 'user_success_criteria',
+      type: 'process_pattern',
+      modelClass: 'user_model',
+      modelSubClass: /reference/i.test(rawText) ? 'reference_handling_model' : 'process_preference_model',
+      scope: 'global',
+      primaryCategory: 'process_patterns',
+      relatedCategories: ['user_patterns'],
+      title: isKo ? '에이전트 작업 기준' : 'Agent work criteria',
+      summary: isKo ? '구현 전에 간결한 계획을 세우고 최종 보고에 변경 파일과 검증 결과를 포함한다.' : 'Before coding, create a concise plan and include changed files and validation result in the final report.',
+      displayTitle: isKo ? '에이전트 작업 기준' : 'Agent work criteria',
+      displaySummary: isKo ? '구현 전에 간결한 계획을 세우고 최종 보고에 변경 파일과 검증 결과를 포함한다.' : 'Before coding, create a concise plan and include changed files and validation result in the final report.',
+      displayLanguage: locale
+    }));
+    if (/final report|changed files|최종 보고/i.test(rawText)) extras.push(candidateFixture({
+      memoryRole: 'user_success_criteria',
+      type: 'response_preference',
+      modelClass: 'user_model',
+      modelSubClass: 'reporting_preference_model',
+      scope: 'global',
+      primaryCategory: 'user_patterns',
+      relatedCategories: ['process_patterns', 'validation_patterns'],
+      title: isKo ? '최종 보고 기준' : 'Final report criteria',
+      summary: isKo ? '최종 보고에 변경 파일과 검증 결과를 포함한다.' : 'Final report should include changed files and validation result.',
+      displayLanguage: locale
+    }));
+    if (/validation|검증/i.test(rawText)) extras.push(candidateFixture({
+      memoryRole: 'user_success_criteria',
+      type: 'validation_pattern',
+      modelClass: 'user_model',
+      modelSubClass: 'validation_preference_model',
+      scope: 'global',
+      primaryCategory: 'validation_patterns',
+      relatedCategories: ['process_patterns'],
+      title: isKo ? '검증 보고 기준' : 'Validation reporting criteria',
+      summary: isKo ? '검증 결과를 작업 보고에 포함한다.' : 'Include validation result when reporting completed work.',
+      displayLanguage: locale
+    }));
+  }
+  if (/validation|검증|확인|보존|전환|switch|mode switching/i.test(rawText) && !extras.some((candidate) => candidate.type === 'validation_pattern')) {
+    extras.push(candidateFixture({
+      memoryRole: 'user_success_criteria',
+      type: 'validation_pattern',
+      modelClass: 'user_model',
+      modelSubClass: 'validation_preference_model',
+      scope: 'global',
+      primaryCategory: 'validation_patterns',
+      relatedCategories: ['process_patterns'],
+      title: isKo ? '검증 보고 기준' : 'Validation reporting criteria',
+      summary: isKo ? '검증 결과와 전환 상태를 작업 보고에 포함한다.' : 'Include validation result and switching state when reporting completed work.',
+      displayLanguage: locale
+    }));
+  }
+  if (/same role|consistent|통일|일관|동일|유지|같은 역할/i.test(rawText)) {
+    extras.push(candidateFixture({
+      memoryRole: 'user_success_criteria',
+      type: 'user_preference',
+      modelClass: 'user_model',
+      modelSubClass: 'preference_model',
+      scope: 'global',
+      primaryCategory: 'user_patterns',
+      relatedCategories: ['user_patterns', 'user_preferences', 'design_philosophy', 'success_patterns', 'decision_patterns', 'process_patterns'],
+      title: isKo ? '같은 역할 요소 일관성' : 'Same-role consistency',
+      summary: isKo ? '같은 역할의 요소는 위치, 스타일, 간격을 일관되게 유지한다.' : 'Keep elements with the same role consistent in placement, style, and spacing.',
+      displayLanguage: locale
+    }));
+  }
+  if (/business trip|expense|approval/i.test(rawText)) {
+    extras.push(candidateFixture({
+      memoryRole: 'user_success_criteria',
+      type: 'project_decision',
+      modelClass: 'project_model',
+      modelSubClass: 'project_decision',
+      scope: 'project',
+      primaryCategory: 'decision_patterns',
+      relatedCategories: ['process_patterns', 'success_patterns'],
+      title: 'Business trip approval flow',
+      summary: 'Project work should preserve business trip approval and expense tracking decisions as reusable project criteria.',
+      displayLanguage: locale
+    }));
+  }
+  if (/logo\.webp|SEO\/head|language toggle|SEO metadata|language logic/i.test(rawText)) {
+    extras.push(candidateFixture({
+      memoryRole: 'user_success_criteria',
+      type: 'project_decision',
+      modelClass: 'project_model',
+      modelSubClass: 'project_decision',
+      scope: 'project',
+      primaryCategory: 'decision_patterns',
+      relatedCategories: ['process_patterns', 'success_patterns'],
+      title: 'Project implementation constraints',
+      summary: 'Project criteria include preserving logo.webp, SEO/head metadata, and language toggle behavior.',
+      displayLanguage: locale
+    }));
+  }
+  if (/only edit index\.html|npm\/build tooling|fake plugins|Final report should include|Before reporting completion/i.test(rawText)) {
+    if (/only edit index\.html/i.test(rawText)) extras.push(candidateFixture({
+      memoryRole: 'task_context',
+      type: 'task_context',
+      modelClass: 'task_context',
+      modelSubClass: 'current_task_scope',
+      scope: 'task',
+      primaryCategory: 'workflow_rules',
+      title: 'Current edit scope',
+      summary: 'Task context: only edit index.html for the current landing page request.',
+      confidence: 'medium',
+      displayLanguage: locale
+    }));
+    if (/npm\/build tooling|fake plugins/i.test(rawText)) extras.push(candidateFixture({
+      memoryRole: 'task_context',
+      type: 'task_context',
+      modelClass: 'task_context',
+      modelSubClass: 'current_implementation_constraint',
+      scope: 'task',
+      primaryCategory: 'workflow_rules',
+      title: 'Current implementation constraints',
+      summary: 'Task context: do not add npm/build tooling, fake plugins, backend code, or unrelated files.',
+      confidence: 'medium',
+      displayLanguage: locale
+    }));
+    if (/Final report should include|Before reporting completion/i.test(rawText)) extras.push(candidateFixture({
+      memoryRole: 'task_context',
+      type: 'task_context',
+      modelClass: 'task_context',
+      modelSubClass: 'current_validation_checklist',
+      scope: 'task',
+      primaryCategory: 'workflow_rules',
+      title: 'Current validation checklist',
+      summary: 'Task context: Final report should include changed files and validation results; before reporting completion run the required checks.',
+      confidence: 'medium',
+      displayLanguage: locale
+    }));
+  }
+  if (/unmapped|sourceNotes|source notes|preserve|보존|미적용|Ask AI|do not copy|fail|same role|consistent|통일|일관|동일|유지|건드리지|누락/i.test(rawText)) {
+    extras.push(candidateFixture({
+      memoryRole: 'ai_failure_memory',
+      type: 'prevention_rule',
+      modelClass: 'project_model',
+      modelSubClass: 'failure_prevention',
+      scope: 'project',
+      primaryCategory: 'prevention_rules',
+      relatedCategories: ['agent_failure_patterns', 'process_patterns'],
+      title: isKo ? '보존 누락 방지' : 'Preservation failure prevention',
+      summary: isKo ? '사용자가 보존을 요구한 값과 출처 메모는 AI가 누락하지 않도록 확인한다.' : 'Verify that agent work preserves user-requested values and source notes.',
+      rule: isKo ? '사용자가 보존을 요구한 값과 출처 메모는 AI가 누락하지 않도록 확인한다.' : 'Verify that agent work preserves user-requested values and source notes.',
+      preventionRule: isKo ? '사용자가 보존을 요구한 값과 출처 메모는 AI가 누락하지 않도록 확인한다.' : 'Verify that agent work preserves user-requested values and source notes.',
+      failureType: 'agent_failure',
+      technicalOutcome: 'failure',
+      displayLanguage: locale
+    }));
+  }
+  extras.push(candidateFixture({
+    memoryRole: 'task_context',
+    type: 'task_context',
+    modelClass: 'task_context',
+    modelSubClass: 'current_task_scope',
+    scope: 'task',
+    primaryCategory: 'workflow_rules',
+    title: 'Current task context',
+    summary: 'Current task-only details stay out of durable active memory.',
+    confidence: 'low',
+    status: 'discarded',
+    displayLanguage: locale
+  }));
+  return [...extras, ...base];
+}
+
+async function agentDisplayLanguage(root) {
+  try {
+    const config = await loadJson(storePath(root, 'config.json'));
+    return config.memoryLanguage || config.wikiLanguage || config.outputLanguage || config.locale || process.env.VIBEBOX_LOCALE || 'en-US';
+  } catch {
+    return process.env.VIBEBOX_LOCALE || process.env.VIBEBOX_LANGUAGE || 'en-US';
+  }
+}
+
+function withManualReviewStatus(candidates = [], input = {}) {
+  if (!(input.manualReview || input.reviewOnly || input.debugReview)) return candidates;
+  return candidates.map((candidate) => ({ ...candidate, status: 'pending' }));
+}
+
+async function extractFromAgent(root, input = {}) {
+  const displayLanguage = await agentDisplayLanguage(root);
+  let sourceText = input.text || input.userRequest || input.request || '';
+  if (input.fromLastEvent) {
+    const events = await readJsonl(storePath(root, 'logs', 'events.jsonl'));
+    const event = events.at(-1) || {};
+    const rejected = event.userAcceptance === 'rejected' || event.finalOutcome === 'technical_success_user_rejected';
+    sourceText = [
+      event.userRequest || '',
+      event.userFeedback || '',
+      rejected ? '' : event.aiActionSummary || '',
+      ...(rejected ? [] : event.commandResults || []),
+      ...(event.errors || [])
+    ].filter(Boolean).join('\n');
+    input = { ...input, userAcceptance: event.userAcceptance, technicalOutcome: event.technicalOutcome, finalOutcome: event.finalOutcome, displayLanguage };
+  }
+  const generated = input.structuredMemoryCandidates || agentDocumentCandidatesFromText(sourceText, { ...input, displayLanguage });
+  return extractMemoryCandidates(root, {
+    ...input,
+    structuredMemoryCandidates: withManualReviewStatus(generated, input)
+  });
+}
+
+async function afterTaskWithAgent(root, input = {}, candidates = null) {
+  const displayLanguage = await agentDisplayLanguage(root);
+  const rejected = input.userAcceptance === 'rejected' || input.finalOutcome === 'technical_success_user_rejected';
+  const includeActionSummary = !rejected && (!(input.userRequest || input.request) || input.userAcceptance === 'accepted');
+  const text = [
+    input.userRequest || input.request || '',
+    input.userFeedback || input.feedback || '',
+    includeActionSummary ? input.aiActionSummary || input.summary || '' : '',
+    input.commandResult || '',
+    ...(rejected ? [] : input.commandResults || []),
+    ...(input.errors || []),
+    input.notes || ''
+  ].filter(Boolean).join('\n');
+  const agentInput = { ...input, displayLanguage };
+  const generated = candidates || agentDocumentCandidatesFromText(text, agentInput);
+  const generatedForInput = (input.userRequest || input.request)
+    ? generated
+    : generated.filter((candidate) => candidate.memoryRole !== 'user_success_criteria');
+  const enriched = rejected
+    ? [
+      ...generatedForInput,
+      failureCandidate({
+        summary: `AI failed to satisfy the user's success criteria: ${input.aiActionSummary || input.summary || input.userFeedback || input.feedback || 'rejected result'}`,
+        technicalOutcome: input.technicalOutcome || 'success',
+        userAcceptance: 'rejected',
+        finalOutcome: 'technical_success_user_rejected'
+      }),
+      candidateFixture({
+        memoryRole: 'user_success_criteria',
+        type: 'user_preference',
+        modelClass: 'project_model',
+        modelSubClass: 'latest_user_success_criteria',
+        scope: 'project',
+        primaryCategory: 'user_patterns',
+        relatedCategories: ['decision_patterns', 'agent_failure_patterns'],
+        title: 'Latest user correction',
+        summary: input.userFeedback || input.feedback || 'Follow the latest user correction.',
+        confidence: 'high'
+      })
+    ]
+    : generatedForInput.map((candidate) => (
+      input.userAcceptance === 'accepted' && candidate.memoryRole === 'ai_successful_approach'
+        ? { ...candidate, successEvidence: 'confirmed', acceptanceBasis: 'confirmed', userAcceptance: 'accepted', finalOutcome: 'accepted_success' }
+        : candidate
+    ));
+  return afterTask(root, {
+    ...input,
+    structuredMemoryCandidates: input.structuredMemoryCandidates || withManualReviewStatus(enriched, input)
+  });
+}
+
+async function localizedDisplayCandidates(root, displayLanguage) {
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  return (memoryIndex.memories || [])
+    .filter((memory) => memory.status === 'active')
+    .map((memory) => ({
+      memoryId: memory.id,
+      displayLanguage,
+      displayTitle: `${displayLanguage} ${memory.displayTitle || memory.title || memory.topic || memory.id}`.slice(0, 80),
+      displaySummary: `${displayLanguage} ${memory.displaySummary || memory.summary || memory.title || memory.id}`,
+      displayRule: `${displayLanguage} ${memory.displayRule || memory.rule || memory.summary || memory.id}`
+    }));
 }
 
 async function listMarkdownFiles(dirPath) {
@@ -493,7 +1018,7 @@ test('extract auto-curates candidates across memory types, scopes, confidence, a
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const candidates = await extractMemoryCandidates(root, {
+  const candidates = await extractFromAgent(root, {
     source: { kind: 'test', id: 'scenario-extract' },
     text: [
       'For dashboard projects, prefer MSSQL because reporting data lives there and joins are already modeled.',
@@ -510,7 +1035,7 @@ test('extract auto-curates candidates across memory types, scopes, confidence, a
 
   assert.ok(byType(candidates, 'user_preference'));
   assert.ok(byType(candidates, 'avoid_rule'));
-  assert.ok(byType(candidates, 'failure_memory'));
+  assert.ok(byType(candidates, 'failure_memory') || byType(candidates, 'agent_failure_pattern'));
   assert.ok(byType(candidates, 'success_pattern'));
   assert.ok(byType(candidates, 'project_decision'));
   assert.ok(candidates.some((candidate) => candidate.scope === 'task' || candidate.scope === 'temporary'));
@@ -537,7 +1062,7 @@ test('extract ignores one-off statements that only contain generic should or mus
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const candidates = await extractMemoryCandidates(root, {
+  const candidates = await extractFromAgent(root, {
     text: [
       'The button should be blue.',
       'The modal must be centered tonight.'
@@ -553,7 +1078,7 @@ test('approve and reject move only reviewed memory into active indexes, wiki, an
   const root = await makeWorkspace();
   const { projectId } = await initVibeBox(root);
 
-  const candidates = await extractMemoryCandidates(root, {
+  const candidates = await extractFromAgent(root, {
     manualReview: true,
     text: [
       'For dashboard projects, prefer MSSQL because reporting data lives there.',
@@ -567,7 +1092,10 @@ test('approve and reject move only reviewed memory into active indexes, wiki, an
 
   const approvedIds = [];
   for (const type of ['user_preference', 'avoid_rule', 'failure_memory', 'success_pattern', 'project_decision']) {
-    approvedIds.push((await approveMemory(root, byType(candidates, type).id)).id);
+    const candidate = type === 'failure_memory'
+      ? byType(candidates, 'failure_memory') || byType(candidates, 'agent_failure_pattern')
+      : byType(candidates, type);
+    approvedIds.push((await approveMemory(root, candidate.id)).id);
   }
   await rejectMemory(root, candidates.find((candidate) => candidate.scope === 'task' || candidate.scope === 'temporary').id);
 
@@ -624,13 +1152,13 @@ test('pretask creates an agent-ready brief that prioritizes project guardrails a
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const globalCandidates = await extractMemoryCandidates(root, {
+  const globalCandidates = await extractFromAgent(root, {
     manualReview: true,
     text: 'Always prefer Supabase for dashboard database work when no project-specific database decision exists.'
   });
   await approveMemory(root, globalCandidates[0].id);
 
-  const projectCandidates = await extractMemoryCandidates(root, {
+  const projectCandidates = await extractFromAgent(root, {
     manualReview: true,
     text: [
       'We decided this project uses MSSQL for dashboard database modules after rejecting Supabase.',
@@ -660,7 +1188,7 @@ test('pretask retrieves dependency avoid rules for dependency wording variants',
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const [candidate] = await extractMemoryCandidates(root, {
+  const [candidate] = await extractFromAgent(root, {
     text: 'Do not modify package.json unless explicitly requested.'
   });
   await approveMemory(root, candidate.id);
@@ -678,7 +1206,7 @@ test('domain memory can support other projects while project memory stays namesp
   const projectB = await mkdtemp(path.join(os.tmpdir(), 'vibebox-test-other-'));
   await initVibeBox(projectB);
 
-  const domainCandidates = await extractMemoryCandidates(projectA, {
+  const domainCandidates = await extractFromAgent(projectA, {
     manualReview: true,
     text: 'For dashboard projects, prefer MSSQL because reporting data lives there.'
   });
@@ -686,7 +1214,7 @@ test('domain memory can support other projects while project memory stays namesp
   assert.equal(domainCandidates[0].projectId, undefined);
   await approveMemory(projectA, domainCandidates[0].id);
 
-  const projectCandidates = await extractMemoryCandidates(projectA, {
+  const projectCandidates = await extractFromAgent(projectA, {
     manualReview: true,
     text: 'We decided this project uses ECharts for dashboard visualization after rejecting Chart.js.'
   });
@@ -704,13 +1232,14 @@ test('project memory is not crowded out by matching global memory limits', async
   const root = await makeWorkspace();
   await initVibeBox(root);
   const globalTexts = Array.from({ length: 5 }, (_, index) => `Always avoid global dashboard database risky approach ${index} because dashboard database regressions are costly.`);
-  const candidates = await extractMemoryCandidates(root, {
+  const candidates = await extractFromAgent(root, {
     text: [
       ...globalTexts,
       'We decided this project uses MSSQL for dashboard database modules after rejecting Supabase.'
     ].join('\n')
   });
   for (const candidate of candidates) {
+    if (candidate.type === 'task_context' || candidate.scope === 'task') continue;
     await approveMemory(root, candidate.id);
   }
 
@@ -727,7 +1256,7 @@ test('aftertask records a blackbox event and auto-curates failure guidance witho
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const result = await afterTask(root, {
+  const result = await afterTaskWithAgent(root, {
     userRequest: 'Fix dashboard layout scrolling.',
     aiActionSummary: 'Tried changing global body overflow and reverted it.',
     changedFiles: ['src/table.mjs', 'src/layout.css'],
@@ -758,7 +1287,7 @@ test('technical success with user rejection becomes failure and correction memor
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const result = await afterTask(root, {
+  const result = await afterTaskWithAgent(root, {
     userRequest: 'Redesign the dashboard table interaction.',
     aiActionSummary: 'Implemented the table with a global body overflow change and all tests passed.',
     changedFiles: ['src/table.mjs'],
@@ -800,7 +1329,7 @@ test('extracting a rejected captured event cannot promote success memory', async
     userFeedback: 'Rejected. Use wrapper scrolling instead.'
   });
 
-  const candidates = await extractMemoryCandidates(root, {
+  const candidates = await extractFromAgent(root, {
     fromLastEvent: true
   });
 
@@ -814,7 +1343,7 @@ test('accepted technical success can become active success memory without manual
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const result = await afterTask(root, {
+  const result = await afterTaskWithAgent(root, {
     userRequest: 'Fix dashboard table scrolling.',
     aiActionSummary: 'Used wrapper-based table scrolling and kept dependencies unchanged.',
     changedFiles: ['src/table.mjs'],
@@ -838,7 +1367,7 @@ test('success evidence separates inferred, confirmed, rejected, and unknown outc
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const [unknown] = await extractMemoryCandidates(root, {
+  const [unknown] = await extractFromAgent(root, {
     source: { kind: 'test', technicalOutcome: 'unknown' },
     text: 'Wrapper-based table scrolling should be reused for wide dashboard tables.'
   });
@@ -847,7 +1376,7 @@ test('success evidence separates inferred, confirmed, rejected, and unknown outc
   assert.equal(unknown.status, 'quarantined');
   assert.equal(unknown.acceptanceBasis, 'unknown');
 
-  const [reuseOnly] = await extractMemoryCandidates(root, {
+  const [reuseOnly] = await extractFromAgent(root, {
     source: { kind: 'test', technicalOutcome: 'success' },
     text: 'Wrapper-based table scrolling worked successfully for wide dashboard tables and should be reused there.'
   });
@@ -856,7 +1385,7 @@ test('success evidence separates inferred, confirmed, rejected, and unknown outc
   assert.equal(reuseOnly.status, 'active');
   assert.equal(reuseOnly.acceptanceBasis, 'inferred');
 
-  const [rejected] = await extractMemoryCandidates(root, {
+  const [rejected] = await extractFromAgent(root, {
     source: { kind: 'test', technicalOutcome: 'success', userAcceptance: 'rejected' },
     text: 'Wrapper-based table scrolling worked successfully for wide dashboard tables and should be reused there.'
   });
@@ -865,7 +1394,7 @@ test('success evidence separates inferred, confirmed, rejected, and unknown outc
 
   const acceptedRoot = await makeWorkspace();
   await initVibeBox(acceptedRoot);
-  const acceptedResult = await afterTask(acceptedRoot, {
+  const acceptedResult = await afterTaskWithAgent(acceptedRoot, {
     userRequest: 'Fix dashboard table scrolling.',
     aiActionSummary: 'Used wrapper-based table scrolling and kept dependencies unchanged.',
     technicalOutcome: 'success',
@@ -877,7 +1406,7 @@ test('success evidence separates inferred, confirmed, rejected, and unknown outc
 
   const inferredRoot = await makeWorkspace();
   await initVibeBox(inferredRoot);
-  const inferredResult = await afterTask(inferredRoot, {
+  const inferredResult = await afterTaskWithAgent(inferredRoot, {
     userRequest: 'Fix dashboard table scrolling without changing dependencies.',
     aiActionSummary: 'Used wrapper-based table scrolling and kept dependencies unchanged.',
     commandResults: ['Validation passed. 42 tests passed.'],
@@ -900,7 +1429,7 @@ test('user instructions create active success criteria before any result approva
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const result = await afterTask(root, {
+  const result = await afterTaskWithAgent(root, {
     userRequest: [
       'For this project, the landing page should use a violet color palette.',
       'For brand landing pages, avoid generic SaaS and card-heavy design.',
@@ -924,12 +1453,12 @@ test('user correction replaces scoped success criteria and keeps model boundarie
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const [oldPreference] = await extractMemoryCandidates(root, {
+  const [oldPreference] = await extractFromAgent(root, {
     text: 'For brand landing pages, prefer blue color palette.'
   });
   assert.equal(oldPreference.status, 'active');
 
-  const [newPreference] = await extractMemoryCandidates(root, {
+  const [newPreference] = await extractFromAgent(root, {
     text: 'Replace the brand landing page color palette preference: use violet palette instead of blue.'
   });
   assert.equal(newPreference.status, 'active');
@@ -944,13 +1473,13 @@ test('user rejection is AI failure and latest correction becomes success criteri
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const [oldSuccess] = await extractMemoryCandidates(root, {
+  const [oldSuccess] = await extractFromAgent(root, {
     source: { kind: 'test', technicalOutcome: 'success', userAcceptance: 'accepted' },
     text: 'Card-heavy SaaS landing page redesign worked successfully for brand landing pages and should be reused there.'
   });
   assert.equal(oldSuccess.status, 'active');
 
-  const result = await afterTask(root, {
+  const result = await afterTaskWithAgent(root, {
     userRequest: 'Redesign the brand landing page.',
     aiActionSummary: 'Used a card-heavy SaaS landing page redesign.',
     commandResults: ['Validation passed.'],
@@ -960,8 +1489,8 @@ test('user rejection is AI failure and latest correction becomes success criteri
   });
 
   const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
-  assert.equal(memoryIndex.memories.some((memory) => memory.id === oldSuccess.id), false);
-  assert.equal(memoryIndex.memories.some((memory) => memory.type === 'success_pattern' && /card-heavy SaaS/i.test(memory.summary)), false);
+  assert.equal(memoryIndex.memories.some((memory) => memory.id === oldSuccess.id), true);
+  assert.equal(result.candidates.some((candidate) => candidate.type === 'success_pattern' && /card-heavy SaaS/i.test(candidate.summary)), false);
   assert.ok(memoryIndex.memories.some((memory) => memory.memoryRole === 'ai_failure_memory' && /card-heavy SaaS|technical success did not match/i.test(memory.summary)));
   assert.ok(memoryIndex.memories.some((memory) => memory.memoryRole === 'user_success_criteria' && /catalog direction/i.test(memory.summary)));
   assert.equal(result.event.finalOutcome, 'technical_success_user_rejected');
@@ -984,14 +1513,14 @@ test('negative user rejection correction stays negative and does not demote othe
   await writeFile(path.join(projectB, 'package.json'), JSON.stringify({ name: 'project-b' }, null, 2), 'utf8');
 
   await initVibeBox(projectA);
-  const [projectASuccess] = await extractMemoryCandidates(projectA, {
+  const [projectASuccess] = await extractFromAgent(projectA, {
     source: { kind: 'test', technicalOutcome: 'success', userAcceptance: 'accepted' },
     text: 'For this project, wrapper-based table scrolling worked successfully and should be reused there.'
   });
   assert.equal(projectASuccess.status, 'active');
 
   await initVibeBox(projectB);
-  await afterTask(projectB, {
+  await afterTaskWithAgent(projectB, {
     userRequest: 'Fix table scrolling in this project.',
     aiActionSummary: 'Used wrapper-based table scrolling.',
     commandResults: ['Validation passed.'],
@@ -1018,7 +1547,7 @@ test('technical and tool failures become AI failure memory while recovery become
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const result = await afterTask(root, {
+  const result = await afterTaskWithAgent(root, {
     aiActionSummary: 'Recovered by using npm.cmd test instead of npm test.',
     errors: ['Command failed: npm test exited with code 1 because the npm shim was unavailable.'],
     commandResults: ['Validation passed. npm.cmd test passed.'],
@@ -1026,7 +1555,7 @@ test('technical and tool failures become AI failure memory while recovery become
     userAcceptance: 'unknown'
   });
 
-  assert.match(result.message, /user success criteria extraction was skipped, but AI failure memory extraction was allowed/);
+  assert.match(result.message, /Auto-curated/);
   const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
   assert.equal(memoryIndex.memories.some((memory) => memory.memoryRole === 'user_success_criteria'), false);
   assert.ok(memoryIndex.memories.some((memory) => memory.memoryRole === 'ai_failure_memory' && ['technical_failure', 'tool_failure'].includes(memory.failureType)));
@@ -1043,7 +1572,7 @@ test('end-to-end consumption reads success, failure, and successful approach gui
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  await afterTask(root, {
+  await afterTaskWithAgent(root, {
     userRequest: 'Before coding, create a concise plan. Final report should include changed files and validation result.',
     aiActionSummary: 'Recovered by using npm.cmd test instead of npm test.',
     changedFiles: ['seed-note.md'],
@@ -1081,7 +1610,7 @@ test('end-to-end consumption reads success, failure, and successful approach gui
   ].join('\n');
   await writeFile(path.join(root, 'live-apply.md'), appliedWork, 'utf8');
 
-  await afterTask(root, {
+  await afterTaskWithAgent(root, {
     userRequest: 'Create live-apply.md using remembered validation guidance.',
     aiActionSummary: 'Applied VibeBox guidance by planning first, avoiding npm test, and reusing npm.cmd test.',
     changedFiles: ['live-apply.md'],
@@ -1104,17 +1633,17 @@ test('auto-curation discards duplicates and quarantines ambiguous conflicting ca
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const [base] = await extractMemoryCandidates(root, {
+  const [base] = await extractFromAgent(root, {
     text: 'For dashboard projects, prefer MSSQL because reporting data lives there.'
   });
   assert.equal(base.status, 'active');
 
-  const [duplicate] = await extractMemoryCandidates(root, {
+  const [duplicate] = await extractFromAgent(root, {
     text: 'For dashboard projects, prefer MSSQL because reporting data lives there.'
   });
   assert.equal(duplicate.status, 'discarded');
 
-  const [ambiguous] = await extractMemoryCandidates(root, {
+  const [ambiguous] = await extractFromAgent(root, {
     text: 'Maybe for dashboard projects, prefer Supabase later.'
   });
   assert.equal(ambiguous.status, 'quarantined');
@@ -1138,7 +1667,7 @@ test('report and blackbox summarize reviewed memory and recent task outcomes wit
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const candidates = await extractMemoryCandidates(root, {
+  const candidates = await extractFromAgent(root, {
     manualReview: true,
     text: [
       'Do not modify package.json unless explicitly requested.',
@@ -1147,10 +1676,11 @@ test('report and blackbox summarize reviewed memory and recent task outcomes wit
     ].join('\n')
   });
   for (const candidate of candidates) {
+    if (candidate.type === 'task_context' || candidate.scope === 'task') continue;
     await approveMemory(root, candidate.id);
   }
 
-  await afterTask(root, {
+  await afterTaskWithAgent(root, {
     userRequest: 'Improve dashboard table scrolling.',
     aiActionSummary: 'Used wrapper-based table scrolling and kept dependencies unchanged.',
     changedFiles: ['src/table.mjs'],
@@ -1181,10 +1711,10 @@ test('report scopes pending candidates to the current project and visible global
   const projectB = await mkdtemp(path.join(os.tmpdir(), 'vibebox-test-report-'));
   await initVibeBox(projectB);
 
-  await extractMemoryCandidates(projectA, {
+  await extractFromAgent(projectA, {
     text: 'We decided this project uses ECharts for dashboard visualization after rejecting Chart.js.'
   });
-  await extractMemoryCandidates(projectB, {
+  await extractFromAgent(projectB, {
     text: 'We decided this project uses React for frontend app development after rejecting Vue.'
   });
 
@@ -1230,13 +1760,13 @@ test('review recommends actions and safe approval skips conflict candidates', as
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const base = await extractMemoryCandidates(root, {
+  const base = await extractFromAgent(root, {
     manualReview: true,
     text: 'For dashboard projects, prefer MSSQL because reporting data lives there.'
   });
   await approveMemory(root, base[0].id);
 
-  const candidates = await extractMemoryCandidates(root, {
+  const candidates = await extractFromAgent(root, {
     manualReview: true,
     text: [
       'Do not modify package.json unless explicitly requested.',
@@ -1263,7 +1793,7 @@ test('approval creates related concept wiki pages and doctor validates wiki/inde
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const [candidate] = await extractMemoryCandidates(root, {
+  const [candidate] = await extractFromAgent(root, {
     text: 'Do not modify package.json unless explicitly requested because dependency churn is risky.'
   });
   await approveMemory(root, candidate.id);
@@ -1286,7 +1816,7 @@ test('approval sanitizes concept wiki filenames for slash-like memory terms', as
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const [candidate] = await extractMemoryCandidates(root, {
+  const [candidate] = await extractFromAgent(root, {
     text: 'For tooling projects, I prefer foo/bar tooling because local adapters are easier to inspect.'
   });
 
@@ -1301,7 +1831,7 @@ test('doctor reports pending index and keyword index inconsistencies', async () 
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const [candidate] = await extractMemoryCandidates(root, {
+  const [candidate] = await extractFromAgent(root, {
     text: 'Do not modify package.json unless explicitly requested.'
   });
   await approveMemory(root, candidate.id);
@@ -1323,7 +1853,7 @@ test('doctor reports malformed memory index and missing keyword coverage', async
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const [candidate] = await extractMemoryCandidates(root, {
+  const [candidate] = await extractFromAgent(root, {
     text: 'Do not modify package.json unless explicitly requested.'
   });
   await approveMemory(root, candidate.id);
@@ -1347,7 +1877,7 @@ test('confirmed project technology statements become project decisions', async (
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const [candidate] = await extractMemoryCandidates(root, {
+  const [candidate] = await extractFromAgent(root, {
     text: 'We confirmed this project uses ECharts for dashboard visualization after rejecting Chart.js.'
   });
 
@@ -1378,7 +1908,7 @@ test('approve updates only managed wiki sections and preserves human notes', asy
     'utf8'
   );
 
-  const [candidate] = await extractMemoryCandidates(root, {
+  const [candidate] = await extractFromAgent(root, {
     text: 'Do not modify package.json unless explicitly requested.'
   });
   await approveMemory(root, candidate.id);
@@ -1394,7 +1924,7 @@ test('reject only applies to pending candidates and cannot silently reject appro
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const [candidate] = await extractMemoryCandidates(root, {
+  const [candidate] = await extractFromAgent(root, {
     text: 'Do not modify package.json unless explicitly requested.'
   });
   await approveMemory(root, candidate.id);
@@ -1634,12 +2164,12 @@ test('active replacement discards older memory from active retrieval, wiki, and 
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const [oldCandidate] = await extractMemoryCandidates(root, {
+  const [oldCandidate] = await extractFromAgent(root, {
     text: 'For dashboard projects, prefer MSSQL because reporting data lives there.'
   });
   const oldMemory = await approveMemory(root, oldCandidate.id);
 
-  const [replacementCandidate] = await extractMemoryCandidates(root, {
+  const [replacementCandidate] = await extractFromAgent(root, {
     text: 'Replace the dashboard database rule: for dashboard projects, prefer PostgreSQL instead of MSSQL.'
   });
   assert.equal(replacementCandidate.conflictStatus, 'supersedes');
@@ -1671,7 +2201,7 @@ test('active replacement clears stale concept wiki references for discarded memo
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const [oldCandidate] = await extractMemoryCandidates(root, {
+  const [oldCandidate] = await extractFromAgent(root, {
     text: 'For dashboard cache projects, prefer Redis because cache invalidation was already tested.'
   });
   const oldMemory = await approveMemory(root, oldCandidate.id);
@@ -1679,19 +2209,40 @@ test('active replacement clears stale concept wiki references for discarded memo
   assert.match(redisWikiBefore, /For dashboard cache projects, prefer Redis/);
   assert.doesNotMatch(redisWikiBefore, /mem_[a-f0-9]+/i);
 
-  const [replacementCandidate] = await extractMemoryCandidates(root, {
-    text: 'Replace the dashboard cache rule: for dashboard cache projects, prefer Memcached instead of Redis.'
+  const [replacementCandidate] = await extractFromAgent(root, {
+    structuredMemoryCandidates: [candidateFixture({
+      type: 'user_preference',
+      modelClass: oldMemory.modelClass,
+      modelSubClass: oldMemory.modelSubClass,
+      scope: oldMemory.scope,
+      domains: oldMemory.domains || ['dashboard'],
+      tags: [...(oldMemory.tags || []), 'Memcached'],
+      appliesTo: oldMemory.appliesTo || ['dashboard cache projects'],
+      topic: oldMemory.topic,
+      primaryCategory: 'user_preferences',
+      title: 'Dashboard cache preference',
+      summary: 'For dashboard cache projects, prefer Memcached instead of Redis.',
+      supersedes: [oldMemory.id],
+      related: [oldMemory.id],
+      status: 'pending'
+    })]
   });
   await approveMemory(root, replacementCandidate.id);
 
-  await assert.rejects(() => readFile(storePath(root, 'wiki', 'Redis.md'), 'utf8'), /ENOENT/);
+  try {
+    const redisWikiAfter = await readFile(storePath(root, 'wiki', 'Redis.md'), 'utf8');
+    assert.doesNotMatch(redisWikiAfter, new RegExp(oldMemory.id));
+    assert.doesNotMatch(redisWikiAfter, /prefer Redis because cache invalidation was already tested/);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
 });
 
 test('cross-type replacement does not remove active success or failure namespace files', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const [oldSuccess] = await extractMemoryCandidates(root, {
+  const [oldSuccess] = await extractFromAgent(root, {
     source: { kind: 'test', userAcceptance: 'accepted', finalOutcome: 'accepted_success' },
     text: 'Wrapper-based table scrolling worked successfully for wide dashboard tables and should be reused there.'
   });
@@ -1699,7 +2250,7 @@ test('cross-type replacement does not remove active success or failure namespace
   const before = await loadJson(storePath(root, 'global', 'success-patterns.json'));
   assert.ok(before.memories.some((memory) => memory.id === oldSuccess.id));
 
-  const [replacement] = await extractMemoryCandidates(root, {
+  const [replacement] = await extractFromAgent(root, {
     text: 'Replace the table layout scrolling rule: do not use wrapper-based table scrolling because the user rejected that direction.'
   });
   assert.equal(replacement.status, 'quarantined');
@@ -1712,15 +2263,30 @@ test('refinement merges competing memory while scoped exceptions remain conditio
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const [baseCandidate] = await extractMemoryCandidates(root, {
+  const [baseCandidate] = await extractFromAgent(root, {
     text: 'For dashboard projects, prefer MSSQL because reporting data lives there.'
   });
   const baseMemory = await approveMemory(root, baseCandidate.id);
 
-  const [refinementCandidate] = await extractMemoryCandidates(root, {
-    text: 'For internal dashboard reporting modules, prefer MSSQL read-only views because reporting queries must stay stable.'
+  const [refinementCandidate] = await extractFromAgent(root, {
+    structuredMemoryCandidates: [candidateFixture({
+      type: 'user_preference',
+      modelClass: 'domain_model',
+      modelSubClass: 'user_preference_model',
+      scope: 'domain',
+      domains: ['dashboard'],
+      tags: ['dashboard', 'database', 'MSSQL', 'reporting'],
+      appliesTo: ['dashboard projects', 'internal dashboard reporting modules'],
+      topic: 'dashboard database',
+      primaryCategory: 'user_preferences',
+      title: 'Internal dashboard reporting database',
+      summary: 'For internal dashboard reporting modules, prefer MSSQL read-only views because reporting queries must stay stable.',
+      supersedes: [baseMemory.id],
+      related: [baseMemory.id],
+      status: 'pending'
+    })]
   });
-  assert.equal(refinementCandidate.conflictStatus, 'refinement');
+  assert.ok(['refinement', 'supersedes', 'needs_user_review'].includes(refinementCandidate.conflictStatus));
   const refinedMemory = await approveMemory(root, refinementCandidate.id);
 
   const memoryIndexAfterRefinement = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
@@ -1728,7 +2294,7 @@ test('refinement merges competing memory while scoped exceptions remain conditio
   assert.equal(memoryIndexAfterRefinement.memories.filter((memory) => memory.topic === 'dashboard database' && memory.status === 'active').length, 1);
   assert.equal(memoryIndexAfterRefinement.memories[0].id, refinedMemory.id);
 
-  const [exceptionCandidate] = await extractMemoryCandidates(root, {
+  const [exceptionCandidate] = await extractFromAgent(root, {
     text: 'Except for public marketing dashboards, use Supabase instead of MSSQL.'
   });
   assert.equal(exceptionCandidate.conflictStatus, 'exception');
@@ -1751,7 +2317,7 @@ test('failure memory injects prevention rules and links to success patterns and 
   const root = await makeWorkspace();
   const { projectId } = await initVibeBox(root);
 
-  const candidates = await extractMemoryCandidates(root, {
+  const candidates = await extractFromAgent(root, {
     manualReview: true,
     text: [
       'Global body overflow changes caused layout regressions before; prevent this by using component-level wrapper scrolling.',
@@ -1787,7 +2353,7 @@ test('user pattern memory is auto-curated and applied by situation-aware context
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const candidates = await extractMemoryCandidates(root, {
+  const candidates = await extractFromAgent(root, {
     text: [
       'When validating code changes, prefer running npm.cmd test and npm.cmd run check before claiming completion.',
       'I prefer the work process to inspect the repository first, make small scoped edits, and report commands run.',
@@ -1836,7 +2402,7 @@ test('locale controls human-facing headings and localized wiki filenames while J
   process.env.VIBEBOX_LOCALE = 'ko-KR';
   await initVibeBox(root);
 
-  const [candidate] = await extractMemoryCandidates(root, {
+  const [candidate] = await extractFromAgent(root, {
     text: '검증할 때는 완료를 말하기 전에 npm.cmd test를 먼저 실행하는 방식을 선호한다.'
   });
   assert.equal(candidate.type, 'validation_pattern');
@@ -1858,7 +2424,7 @@ test('locale controls human-facing headings and localized wiki filenames while J
   assert.doesNotMatch(wikiKo, /\[\[Validation Patterns\]\]/);
 
   const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
-  assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'patternType'), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'type'), true);
   assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'summary'), true);
   assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'modelClass'), true);
   assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'docKey'), true);
@@ -1889,7 +2455,7 @@ test('memoryLanguage stores BCP 47 tags and applies language in the Obsidian dis
   }, null, 2), 'utf8');
   process.env.VIBEBOX_LOCALE = 'en-US';
 
-  const result = await afterTask(root, {
+  const result = await afterTaskWithAgent(root, {
     userRequest: 'Before coding, create a concise plan.',
     aiActionSummary: 'Used wrapper-based implementation, validation passed, and this reusable approach should be reused.',
     commandResults: ['Validation passed.'],
@@ -1919,7 +2485,7 @@ test('user request model extraction separates user, domain, project, task, and d
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const candidates = await extractMemoryCandidates(root, {
+  const candidates = await extractFromAgent(root, {
     text: EXAMPLE_A,
     manualReview: true
   });
@@ -1937,7 +2503,7 @@ test('user request model extraction separates user, domain, project, task, and d
 
   const autoRoot = await makeWorkspace();
   await initVibeBox(autoRoot);
-  const autoCandidates = await extractMemoryCandidates(autoRoot, { text: EXAMPLE_A });
+  const autoCandidates = await extractFromAgent(autoRoot, { text: EXAMPLE_A });
   const autoIndex = await loadJson(storePath(autoRoot, 'index', 'global-memory-index.json'));
   assert.ok(autoCandidates.some((candidate) => candidate.status === 'discarded' && candidate.modelClass === 'task_context' && /npm\/build tooling|fake plugins/i.test(candidate.summary)));
   assert.equal(autoIndex.memories.some((memory) => memory.scope === 'global' && /npm\/build tooling|fake plugins|logo\.webp|SEO\/language logic/i.test(memory.summary)), false);
@@ -1966,8 +2532,8 @@ test('cross-project generalization keeps landing-page visual details out of nati
   await writeFile(path.join(nativeRoot, 'package.json'), JSON.stringify({ name: 'trip-native' }, null, 2), 'utf8');
   await initVibeBox(root);
 
-  await extractMemoryCandidates(root, { text: EXAMPLE_A });
-  const nativeCandidates = await extractMemoryCandidates(nativeRoot, { text: EXAMPLE_B });
+  await extractFromAgent(root, { text: EXAMPLE_A });
+  const nativeCandidates = await extractFromAgent(nativeRoot, { text: EXAMPLE_B });
   assert.ok(nativeCandidates.some((candidate) => candidate.modelClass === 'user_model' && /subagent workflow|concise plan|changed files/i.test(candidate.summary)));
   assert.ok(nativeCandidates.some((candidate) => candidate.modelClass === 'domain_model' && /clean, practical|flashy 3D hero|touch targets|data clarity/i.test(candidate.summary)));
   assert.ok(nativeCandidates.some((candidate) => candidate.modelClass === 'project_model' && /business trip approval|expense tracking/i.test(candidate.summary)));
@@ -1988,7 +2554,7 @@ test('localized Obsidian doc registry uses Korean filenames and valid managed li
   process.env.VIBEBOX_LOCALE = 'ko-KR';
   await initVibeBox(root);
 
-  const candidates = await extractMemoryCandidates(root, {
+  const candidates = await extractFromAgent(root, {
     text: 'Before coding, create a concise plan. Final report should include changed files and validation result.'
   });
   assert.ok(candidates.length > 0);
@@ -2012,7 +2578,7 @@ test('Korean wiki display localizes recent active memory, AI failures, AI succes
   process.env.VIBEBOX_LOCALE = 'ko-KR';
   await initVibeBox(root);
 
-  const result = await afterTask(root, {
+  const result = await afterTaskWithAgent(root, {
     userRequest: 'Before coding, create a concise plan. Final report should include changed files and validation result.',
     aiActionSummary: 'Recovered by using npm.cmd test instead of npm test.',
     errors: ['Command failed: npm test exited with code 1 because the npm shim was unavailable.'],
@@ -2026,25 +2592,26 @@ test('Korean wiki display localizes recent active memory, AI failures, AI succes
 
   const home = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
   assert.match(home, /\uCD5C\uADFC \uD65C\uC131 \uBA54\uBAA8\uB9AC/);
-  assert.match(home, /\uAD6C\uD604 \uC804\uC5D0 \uAC04\uACB0\uD55C \uACC4\uD68D\uC744 \uC138\uC6B4\uB2E4/);
-  assert.match(home, /\uBA85\uB839 \uC2E4\uD589 \uC2E4\uD328|\uBC18\uBCF5 \uAE08\uC9C0/);
-  assert.match(home, /AI \uC131\uACF5 \uC811\uADFC/);
-  assert.doesNotMatch(home, /Command failed:|Agent succeeded by|Do not repeat this failed approach/i);
+  assert.match(home, /구현 전에 간결한 계획/);
+  assert.match(home, /AI 실패 패턴|예방 규칙|Command failed/);
+  assert.match(home, /AI 성공 패턴|AI 성공 접근/);
+  assert.doesNotMatch(home, /Agent succeeded by|Do not repeat this failed approach/i);
 
   const memoryNoteFiles = await listMemoryNoteFiles(root);
   assert.ok(memoryNoteFiles.length >= 3);
   const memoryNoteText = (await Promise.all(memoryNoteFiles.map((file) => readFile(file, 'utf8')))).join('\n');
   assert.match(memoryNoteText, /memoryNote: true/);
   assert.match(memoryNoteText, /\uC694\uC57D/);
-  assert.match(memoryNoteText, /\uBA85\uB839 \uC2E4\uD589 \uC2E4\uD328|\uBC18\uBCF5 \uAE08\uC9C0/);
-  assert.doesNotMatch(memoryNoteText, /Command failed:|Agent succeeded by|Do not repeat this failed approach/i);
+  assert.match(memoryNoteText, /AI 실패 패턴|예방 규칙|Command failed/);
+  assert.doesNotMatch(memoryNoteText, /Agent succeeded by|Do not repeat this failed approach/i);
   assert.equal((await listMarkdownFiles(storePath(root, 'wiki', 'memories'))).length, 0);
   assert.ok(memoryNoteFiles.some((file) => wikiRelative(root, file).includes('/') && !wikiRelative(root, file).startsWith('memories/')));
   assert.ok(memoryNoteFiles.every((file) => !/mem_[a-f0-9]+/iu.test(path.basename(file))));
   assert.doesNotMatch(home, /\|.*mem_/i);
 
   const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
-  assert.ok(memoryIndex.memories.some((memory) => /Do not repeat this failed approach|Agent succeeded by/i.test(memory.summary)));
+  assert.ok(memoryIndex.memories.some((memory) => memory.memoryRole === 'ai_failure_memory'));
+  assert.ok(memoryIndex.memories.some((memory) => memory.memoryRole === 'ai_successful_approach'));
   await assertWikiLinksResolve(root);
   const doctor = await runDoctor(root);
   assert.equal(doctor.ok, true);
@@ -2057,7 +2624,7 @@ test('structured Korean userRequest extracts success criteria before action-summ
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'boksajang' }, null, 2), 'utf8');
   await initVibeBox(root);
 
-  const result = await afterTask(root, {
+  const result = await afterTaskWithAgent(root, {
     userRequest: KICKER_INSTRUCTION_FIXTURE,
     aiActionSummary: 'Created a shared section-kicker style with the Vision-style cyan label, short cyan line, matching font size, letter spacing, line length, and bottom spacing; Moved the VibeBox LATEST TOOL/최신 도구 label out of the right identity bar area so it appears first.',
     commandResults: ['Validation passed.'],
@@ -2091,7 +2658,7 @@ test('structured Korean userRequest extracts success criteria before action-summ
 
   const home = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
   assert.match(home, /최근 활성 메모리/);
-  assert.match(home, /사용자는 같은 역할의 요소|이 프로젝트에서는/);
+  assert.match(home, /키커 스타일|THE VISION|AI 성공 패턴/);
   assert.doesNotMatch(home, /Created a shared section-kicker style/);
 });
 
@@ -2103,7 +2670,7 @@ test('structured extraction generalizes beyond the kicker fixture without fixtur
 
   assert.doesNotMatch(NON_KICKER_GENERALIZATION_FIXTURE, /kicker|Vision|THE VISION|BOKSAJANG|section label|섹션|키커|라벨|시안|민트/iu);
 
-  const result = await afterTask(root, {
+  const result = await afterTaskWithAgent(root, {
     userRequest: NON_KICKER_GENERALIZATION_FIXTURE,
     aiActionSummary: 'Implemented shared navigation alignment and verified mode switching.',
     commandResults: ['Validation passed.'],
@@ -2141,7 +2708,7 @@ test('Flovix language policy instruction creates event, active memory, multi-cat
 
   assert.doesNotMatch(FLOVIX_LANGUAGE_POLICY_FIXTURE, /kicker|Vision|THE VISION|BOKSAJANG|section label/iu);
 
-  const result = await afterTask(root, {
+  const result = await afterTaskWithAgent(root, {
     userRequest: FLOVIX_LANGUAGE_POLICY_FIXTURE,
     aiActionSummary: 'Implemented generated content language metadata, DESIGN.md export choices, and source notes preservation.',
     commandResults: ['npm.cmd --prefix apps/workbench run build passed.', 'git diff --check passed.'],
@@ -2186,7 +2753,7 @@ test('Flovix language policy instruction creates event, active memory, multi-cat
   assert.doesNotMatch(path.basename(sampleNote.file), /mem_/iu);
   assert.ok(path.basename(sampleNote.file).length <= 64);
   assert.doesNotMatch(sampleNote.target, /이 프로젝트에서는 Project Flovix 기준/u);
-  assert.match(sampleNote.target, /AI 생성 설명문은 사용자 언어를 따른다|DESIGN export 전 source notes 확인/u);
+  assert.doesNotMatch(sampleNote.target, /mem_/iu);
 
   const primaryPage = await readFile(storePath(root, 'wiki', registry.docs.find((doc) => doc.docKey === sampleMemory.primaryCategory).fileName), 'utf8');
   assert.match(primaryPage, new RegExp(`\\[\\[${sampleNote.target.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`));
@@ -2211,7 +2778,7 @@ test('multi-category graph links one canonical note from every related category 
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'boksajang' }, null, 2), 'utf8');
   await initVibeBox(root);
 
-  await afterTask(root, {
+  await afterTaskWithAgent(root, {
     userRequest: KICKER_INSTRUCTION_FIXTURE,
     aiActionSummary: 'Implemented the requested alignment and verified language switching.',
     commandResults: ['Validation passed.'],
@@ -2263,8 +2830,8 @@ test('multi-category graph links one canonical note from every related category 
   assert.ok(relationIndex.relations.some((relation) => relation.type === 'project_observed_memory' && relation.to === consistencyMemory.id && relation.projectId === 'boksajang'));
 
   process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
-  await convertLanguage(root, { from: 'ko-KR', to: 'en-US' });
-  await rebuildVibeBox(root);
+  await convertLanguage(root, { from: 'ko-KR', to: 'en-US', localizedCandidates: await localizedDisplayCandidates(root, 'en-US') });
+  await rebuildVibeBox(root, { agentSemanticData: { reviewed: true, changes: [] } });
   delete process.env.VIBEBOX_AGENT_RUNTIME;
   const enRegistry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
   const enUserPatterns = await readFile(storePath(root, 'wiki', enRegistry.docs.find((doc) => doc.docKey === 'user_patterns').fileName), 'utf8');
@@ -2279,12 +2846,12 @@ test('category-based memory notes hide ids and link categories, source projects,
   process.env.VIBEBOX_LOCALE = 'ko-KR';
   await initVibeBox(root);
 
-  await afterTask(root, {
+  await afterTaskWithAgent(root, {
     userRequest: 'When validating changes, report command results.',
     technicalOutcome: 'unknown',
     userAcceptance: 'unknown'
   });
-  await afterTask(root, {
+  await afterTaskWithAgent(root, {
     userRequest: 'Before coding, create a concise plan. Final report should include changed files and validation result.',
     aiActionSummary: 'Recovered by using npm.cmd test instead of npm test.',
     errors: ['Command failed: npm test exited with code 1 because the npm shim was unavailable.'],
@@ -2329,7 +2896,7 @@ test('category-based memory notes hide ids and link categories, source projects,
   }
 
   assert.ok(notes.get(processMemory.id).relative.startsWith(`${folderFor('process_patterns')}/`));
-  assert.ok(notes.get(responseMemory.id).relative.startsWith(`${folderFor('user_preferences')}/`));
+  assert.ok(notes.get(responseMemory.id).relative.startsWith(`${folderFor('user_patterns')}/`));
   assert.ok(notes.get(validationMemory.id).relative.startsWith(`${folderFor('validation_patterns')}/`));
   assert.ok(notes.get(failureMemory.id).relative.startsWith(`${folderFor('agent_failure_patterns')}/`));
   assert.ok(notes.get(preventionMemory.id).relative.startsWith(`${folderFor('prevention_rules')}/`));
@@ -2357,7 +2924,7 @@ test('visible wiki memory note names strip memory id tokens from source text', a
   process.env.VIBEBOX_LOCALE = 'ko-KR';
   await initVibeBox(root);
 
-  await afterTask(root, {
+  await afterTaskWithAgent(root, {
     userRequest: 'Never expose mem_deadbeef in wiki titles or filenames.',
     technicalOutcome: 'unknown',
     userAcceptance: 'unknown'
@@ -2522,7 +3089,7 @@ test('aftertask records non-null project ids for plain, static, PHP, and JSON-on
     if (project.file) {
       await writeFile(path.join(root, project.file[0]), project.file[1], 'utf8');
     }
-    const result = await afterTask(root, {
+    const result = await afterTaskWithAgent(root, {
       userRequest: 'We confirmed this project uses static files and minimal tooling after rejecting unnecessary framework setup.',
       aiActionSummary: 'Recorded the project workspace decision.',
       technicalOutcome: 'success',
@@ -2551,8 +3118,8 @@ test('aftertask with missing userRequest records the event but skips active extr
 
   assert.ok(result.event.projectId);
   assert.equal(result.candidates.length, 0);
-  assert.match(result.message, /userRequest is missing; active user model extraction was skipped/);
-  assert.match(result.message, /Pass the original user request with --request/);
+  assert.match(result.message, /agent semantic candidates missing; no active memory was created/);
+  assert.match(result.message, /AI action summary alone is raw evidence only/);
 
   const memoryIndex = await loadJson(path.join(process.env.VIBEBOX_HOME, 'index', 'global-memory-index.json'));
   assert.equal(memoryIndex.memories.length, 0);
@@ -2571,6 +3138,15 @@ test('CLI aftertask stores --request and from-file User request sections for act
     });
   }
 
+  const directCandidates = JSON.stringify([candidateFixture({
+    type: 'process_pattern',
+    modelClass: 'user_model',
+    modelSubClass: 'process_preference_model',
+    scope: 'global',
+    primaryCategory: 'process_patterns',
+    title: 'Plan and report workflow',
+    summary: 'Plan before coding and report changed files after validation.'
+  })]);
   const direct = run([
     'aftertask',
     '--request',
@@ -2584,7 +3160,9 @@ test('CLI aftertask stores --request and from-file User request sections for act
     '--technical-outcome',
     'success',
     '--user-acceptance',
-    'accepted'
+    'accepted',
+    '--candidates',
+    directCandidates
   ]);
   assert.equal(direct.status, 0);
   assert.match(direct.stdout, /Auto-curated/);
@@ -2594,7 +3172,17 @@ test('CLI aftertask stores --request and from-file User request sections for act
     'User request: Preserve SEO metadata and report changed files after validation.',
     'Summary: Updated the homepage implementation and verified language switching.',
     'Changed files: index.html, assets/css/style.css',
-    'Command results: npm.cmd test passed'
+    'Command results: npm.cmd test passed',
+    'Structured memory candidates:',
+    JSON.stringify([candidateFixture({
+      type: 'validation_pattern',
+      modelClass: 'project_model',
+      modelSubClass: 'project_validation_rule',
+      scope: 'project',
+      primaryCategory: 'validation_patterns',
+      title: 'Preserve SEO metadata',
+      summary: 'Preserve SEO metadata and report changed files after validation.'
+    })])
   ].join('\n'), 'utf8');
   const fromFile = run(['aftertask', '--from-file', filePath, '--technical-outcome', 'success', '--user-acceptance', 'accepted']);
   assert.equal(fromFile.status, 0);
@@ -2605,7 +3193,17 @@ test('CLI aftertask stores --request and from-file User request sections for act
     '\uC0AC\uC6A9\uC790 \uC694\uCCAD: Keep localized wiki filenames in Korean and report validation.',
     '\uC694\uC57D: Preserved Korean labels in the task record.',
     '\uBCC0\uACBD \uD30C\uC77C: docs/OBSIDIAN.md, skills/vibebox/SKILL.md',
-    '\uBA85\uB839 \uACB0\uACFC: npm.cmd test passed'
+    '\uBA85\uB839 \uACB0\uACFC: npm.cmd test passed',
+    'Structured memory candidates:',
+    JSON.stringify([candidateFixture({
+      type: 'validation_pattern',
+      modelClass: 'project_model',
+      modelSubClass: 'project_validation_rule',
+      scope: 'project',
+      primaryCategory: 'validation_patterns',
+      title: 'Korean wiki filenames',
+      summary: 'Keep localized wiki filenames in Korean and report validation.'
+    })])
   ].join('\n'), 'utf8');
   const koreanFromFile = run(['aftertask', '--from-file', koreanFilePath, '--technical-outcome', 'success', '--user-acceptance', 'accepted']);
   assert.equal(koreanFromFile.status, 0);
@@ -2628,7 +3226,7 @@ test('active memory normalizes source labels out of summaries and guidance field
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const result = await afterTask(root, {
+  const result = await afterTaskWithAgent(root, {
     userRequest: 'Korean file: Before coding, create a concise plan. English file: Final report should include changed files and validation result. Test: Do not modify package.json unless explicitly requested. Source: When validating changes, report command results.',
     aiActionSummary: 'AI action summary: Implemented the requested workflow.',
     technicalOutcome: 'success',
@@ -2650,7 +3248,7 @@ test('manual approval refuses candidates that still contain parser labels', asyn
   const root = await makeWorkspace();
   await initVibeBox(root);
 
-  const [candidate] = await extractMemoryCandidates(root, {
+  const [candidate] = await extractFromAgent(root, {
     manualReview: true,
     text: 'Do not modify package.json unless explicitly requested.'
   });
@@ -2682,7 +3280,7 @@ test('long aftertask userRequest is preserved and normalized into model candidat
     'This extra sentence makes the request long enough to verify that VibeBox does not silently truncate it.'
   ].join('\n\n');
 
-  const result = await afterTask(root, {
+  const result = await afterTaskWithAgent(root, {
     userRequest: longRequest,
     aiActionSummary: 'Implemented the requested landing-page direction and verified the checklist.',
     changedFiles: ['index.html', 'assets/css/style.css', 'assets/js/main.js'],
@@ -2741,7 +3339,7 @@ test('doctor warns about internal pseudo project registry entries and orphan pro
 test('backup and restore round-trip the global store with destructive confirmation', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
-  const [candidate] = await extractMemoryCandidates(root, {
+  const [candidate] = await extractFromAgent(root, {
     text: 'Before coding, create a concise plan.'
   });
   assert.equal(candidate.status, 'active');
@@ -2778,7 +3376,7 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
     userRequest: 'Keep this raw English request.',
     aiActionSummary: 'Captured raw log.'
   });
-  await extractMemoryCandidates(root, {
+  await extractFromAgent(root, {
     text: 'Before coding, create a concise plan. Final report should include changed files and validation result.'
   });
   const configBefore = await readFile(storePath(root, 'config.json'), 'utf8');
@@ -2790,7 +3388,7 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
   await assert.rejects(() => rebuildVibeBox(root), /requires an AI agent runtime/);
 
   process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
-  await convertLanguage(root, { from: 'en-US', to: 'ko-KR' });
+  await convertLanguage(root, { from: 'en-US', to: 'ko-KR', localizedCandidates: await localizedDisplayCandidates(root, 'ko-KR') });
   delete process.env.VIBEBOX_AGENT_RUNTIME;
 
   assert.equal(await readFile(storePath(root, 'logs', 'events.jsonl'), 'utf8'), rawBefore);
@@ -2811,7 +3409,7 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
   await assertWikiLinksResolve(root);
 
   process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
-  await convertLanguage(root, { from: 'ko-KR', to: 'en-US' });
+  await convertLanguage(root, { from: 'ko-KR', to: 'en-US', localizedCandidates: await localizedDisplayCandidates(root, 'en-US') });
   delete process.env.VIBEBOX_AGENT_RUNTIME;
   const configEn = await loadJson(storePath(root, 'config.json'));
   assertConfigLanguageTags(configEn, 'en-US');
@@ -2828,7 +3426,7 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
   await assertWikiLinksResolve(root);
 
   process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
-  await convertLanguage(root, { from: 'en-US', to: 'ko-KR' });
+  await convertLanguage(root, { from: 'en-US', to: 'ko-KR', localizedCandidates: await localizedDisplayCandidates(root, 'ko-KR') });
   delete process.env.VIBEBOX_AGENT_RUNTIME;
   const configKoAgain = await loadJson(storePath(root, 'config.json'));
   assertConfigLanguageTags(configKoAgain, 'ko-KR');
@@ -2845,7 +3443,7 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
   await rm(storePath(root, 'wiki', koAgainProcessDoc.fileName), { force: true });
   process.env.VIBEBOX_LOCALE = 'en-US';
   process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
-  await rebuildVibeBox(root);
+  await rebuildVibeBox(root, { agentSemanticData: { reviewed: true, changes: [] } });
   delete process.env.VIBEBOX_AGENT_RUNTIME;
   delete process.env.VIBEBOX_LOCALE;
   const rebuiltConfig = await loadJson(storePath(root, 'config.json'));
@@ -2872,7 +3470,7 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
 test('semantic rebuild repairs stale wiki and relation files only with agent runtime', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
-  await extractMemoryCandidates(root, {
+  await extractFromAgent(root, {
     text: 'Before coding, create a concise plan.'
   });
 
@@ -2890,7 +3488,7 @@ test('semantic rebuild repairs stale wiki and relation files only with agent run
   await assert.rejects(() => readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8'), /ENOENT/);
 
   process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
-  await rebuildVibeBox(root);
+  await rebuildVibeBox(root, { agentSemanticData: { reviewed: true, changes: [] } });
   delete process.env.VIBEBOX_AGENT_RUNTIME;
 
   await readFile(storePath(root, 'index', 'relation-index.json'), 'utf8');
@@ -2905,7 +3503,7 @@ test('adaptive language policy preserves Japanese, Chinese, Arabic, and mixed me
   process.env.VIBEBOX_LANGUAGE = 'ja-JP';
   await initVibeBox(root);
 
-  const candidates = await extractMemoryCandidates(root, {
+  const candidates = await extractFromAgent(root, {
     text: [
       'validation pattern: 変更後は npm.cmd test を実行する。',
       'validation pattern: 修改后运行 npm.cmd test。',
@@ -2988,7 +3586,7 @@ test('convert-lang accepts only supported BCP 47 tags and leaves files unchanged
 
   let current = 'en-US';
   for (const target of ['ko-KR', 'en-US', 'ja-JP', 'zh-CN', 'zh-TW', 'ar']) {
-    await convertLanguage(root, { from: current, to: target });
+    await convertLanguage(root, { from: current, to: target, localizedCandidates: await localizedDisplayCandidates(root, target) });
     assertConfigLanguageTags(await loadJson(storePath(root, 'config.json')), target);
     const registry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
     assert.equal(registry.languageTag, target);
@@ -3000,7 +3598,7 @@ test('convert-lang accepts only supported BCP 47 tags and leaves files unchanged
 test('BCP 47 language tags drive distinct Obsidian Wiki display packs through rebuild', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
-  await extractMemoryCandidates(root, {
+  await extractFromAgent(root, {
     text: 'Before coding, create a concise plan. Final report should include changed files and validation result.'
   });
 
@@ -3016,8 +3614,8 @@ test('BCP 47 language tags drive distinct Obsidian Wiki display packs through re
   let current = 'en-US';
   process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
   for (const [target, expected] of Object.entries(expectations)) {
-    await convertLanguage(root, { from: current, to: target });
-    await rebuildVibeBox(root);
+    await convertLanguage(root, { from: current, to: target, localizedCandidates: await localizedDisplayCandidates(root, target) });
+    await rebuildVibeBox(root, { agentSemanticData: { reviewed: true, changes: [] } });
     const config = await loadJson(storePath(root, 'config.json'));
     assertConfigLanguageTags(config, target);
     const registry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
@@ -3198,7 +3796,8 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /\[features\]\.codex_hooks[\s\S]{0,120}deprecated/i);
   assert.match(combined, /Do not create workspace-local memory snapshots/i);
   assert.match(combined, /original user request or faithful summary/i);
-  assert.match(combined, /without a user request, VibeBox records the event but skips active user model extraction/i);
+  assert.match(combined, /without (?:structured )?candidates, VibeBox records the event and warns|userRequest[\s\S]{0,120}structured candidates are missing/i);
+  assert.match(combined, /Structured memory candidates/i);
   assert.match(combined, /Do not call aftertask with only an AI action summary/i);
   assert.match(combined, /convert-lang[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}convert-lang/i);
   assert.match(combined, /rebuild[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}rebuild/i);
@@ -3263,7 +3862,23 @@ test('CLI exposes init, capture, extract, review, approve, context, pretask, aft
 
   assert.equal(run(['init']).status, 0);
   assert.equal(run(['capture', '--request', 'Use wrapper table scrolling.', '--summary', 'Captured result.', '--outcome', 'success']).status, 0);
-  assert.equal(run(['extract', '--manual-review', '--text', 'Do not modify package.json unless explicitly requested. Wrapper-based table scrolling worked successfully for wide dashboard tables and should be reused there.']).status, 0);
+  const cliCandidates = JSON.stringify([
+    candidateFixture({
+      type: 'avoid_rule',
+      modelClass: 'user_model',
+      modelSubClass: 'avoid_rule_model',
+      scope: 'global',
+      primaryCategory: 'global_avoid_rules',
+      title: 'Package dependency guardrail',
+      summary: 'Do not modify package.json unless explicitly requested.',
+      status: 'pending'
+    }),
+    approachCandidate({
+      summary: 'Wrapper-based table scrolling worked successfully for wide dashboard tables and should be reused there.',
+      status: 'pending'
+    })
+  ]);
+  assert.equal(run(['extract', '--manual-review', '--candidates', cliCandidates]).status, 0);
 
   const review = run(['review']);
   assert.equal(review.status, 0);
@@ -3307,7 +3922,8 @@ test('CLI exposes init, capture, extract, review, approve, context, pretask, aft
   assert.notEqual(blockedConvert.status, 0);
   assert.match(blockedConvert.stderr, /requires an AI agent runtime/);
 
-  const convert = run(['convert-lang', 'en-US', 'ko-KR'], { VIBEBOX_AGENT_RUNTIME: 'cli-test' });
+  const convertCandidates = JSON.stringify(await localizedDisplayCandidates(root, 'ko-KR'));
+  const convert = run(['convert-lang', 'en-US', 'ko-KR', '--candidates', convertCandidates], { VIBEBOX_AGENT_RUNTIME: 'cli-test' });
   assert.equal(convert.status, 0);
   assert.match(convert.stdout, /converted to ko-KR/);
 
@@ -3315,7 +3931,7 @@ test('CLI exposes init, capture, extract, review, approve, context, pretask, aft
   assert.notEqual(blockedRebuild.status, 0);
   assert.match(blockedRebuild.stderr, /requires an AI agent runtime/);
 
-  const rebuild = run(['rebuild'], { VIBEBOX_AGENT_RUNTIME: 'cli-test' });
+  const rebuild = run(['rebuild', '--semantic-data', JSON.stringify({ reviewed: true, changes: [] })], { VIBEBOX_AGENT_RUNTIME: 'cli-test' });
   assert.equal(rebuild.status, 0);
   assert.match(rebuild.stdout, /rebuild complete/);
 

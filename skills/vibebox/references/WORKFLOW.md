@@ -11,8 +11,8 @@ VibeBox is agent-neutral. Any AI coding agent that can read files and run shell 
 5. Read `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`.
 6. Use the Pre-Task Brief to reduce wrong assumptions, apply current user patterns, avoid repeated failures, and reuse relevant successful approaches.
 7. Perform the task within the current user request.
-8. After meaningful work, capture the result with `aftertask --request "<original user request or faithful summary>"` unless the user opted out.
-9. Let VibeBox extract userRequest/userFeedback-first candidates and let the Auto Curator decide active, replace, discard, or quarantine.
+8. After meaningful work, capture the result with `aftertask --request "<original user request or faithful summary>" --candidates "<agent-candidate-json>"` unless the user opted out.
+9. Let VibeBox validate the agent's structured candidates, dedupe, apply replacement safety, index, and render active memory.
 10. Treat active memory as the latest optimized pattern graph, not as a permanent history list.
 
 This is an auto-intervention policy, not a hardcoded trigger list. The agent should consider repository context, change risk, prior memory value, and user preference before deciding whether VibeBox should intervene.
@@ -23,8 +23,8 @@ This is an auto-intervention policy, not a hardcoded trigger list. The agent sho
 2. Run read-only `pretask` before memory-relevant repository work, using direct `vibebox.cmd` on Windows/Codex.
 3. Read the Pre-Task Brief and inspect the repository.
 4. Perform the requested coding, design, or review work.
-5. Run `vibebox aftertask --request "<original user request or faithful summary>" ...` after meaningful work unless the user opted out.
-6. Allow the Auto Curator to update active memory, replace outdated memory, discard noise, or quarantine risky candidates.
+5. Run `vibebox aftertask --request "<original user request or faithful summary>" --candidates "<agent-candidate-json>" ...` after meaningful work unless the user opted out.
+6. Allow Core to validate and apply the agent's structured candidates: active memory, replacement, discard, quarantine, indexes, relations, and wiki rendering.
 7. Use `vibebox review`, `vibebox approve <candidate-id>`, `vibebox approve --safe`, or `vibebox reject <candidate-id>` only for debugging, audits, or manual override.
 8. Inspect project health with `vibebox report`, `vibebox blackbox`, and `vibebox doctor`.
 
@@ -76,9 +76,9 @@ For longer records, keep the original request explicit:
 vibebox aftertask --request "Fix dashboard table scrolling" --from-file task-result.txt
 ```
 
-Alternatively, the file may contain a `User request:` section and a `Summary:` section. Do not use `--summary` or `--from-file` alone for success criteria extraction; without a user request, VibeBox records the event and skips user success criteria extraction. Clear command/tool/environment failures can still become AI failure memory.
+Alternatively, the file may contain `User request:`, `AI action summary:`, `Changed files:`, `Commands:`, `Errors:`, and `Structured memory candidates:` sections. Do not use `--summary` or `--from-file` alone for active memory. Without structured candidates, VibeBox records the event and warns; it does not create active user success criteria, active successful approaches, or active AI failure memory by itself.
 
-Aftertask is a global store write/capture operation: it writes a blackbox event, extracts memory candidates, and lets the Auto Curator decide whether to activate, replace, discard, or quarantine each candidate. Structured user requests are decomposed into reusable success criteria, project rules, user/domain patterns, validation/preservation expectations, scope limits, AI failure-prevention rules, and task context before AI action summaries are used as supporting evidence. If sandbox permissions block aftertask, request global VibeBox store write access for aftertask capture or report that capture was unavailable. Skip capture when the user explicitly opts out.
+Aftertask is a global store write/capture operation: it writes a blackbox event and ingests AI-agent structured candidates. The agent is responsible for decomposing structured user requests into reusable success criteria, project rules, user/domain patterns, validation/preservation expectations, scope limits, AI failure-prevention rules, and task context before capture. Core validates schema and BCP 47 fields, preserves raw evidence, dedupes, applies replacement safety, builds relation/category/project indexes, and renders the wiki. If sandbox permissions block aftertask, request global VibeBox store write access for aftertask capture or report that capture was unavailable. Skip capture when the user explicitly opts out.
 
 ## Manual Review And Override Workflow
 

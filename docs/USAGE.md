@@ -110,9 +110,22 @@ For longer notes:
 vibebox aftertask --from-file task-result.txt
 ```
 
-`aftertask` writes a blackbox event, extracts candidates, and lets the Auto Curator decide whether each candidate becomes active, replaces older active memory, is discarded, or is quarantined. Users do not need to review memory after every task. The user's request can create active success criteria before a result exists. Technical success and user acceptance are separate; user acceptance is the user's reaction to the work result, not memory approval. Passing validation with no rejection can become an inferred AI successful approach. Rejected user feedback means the AI missed the user's criteria, so it becomes AI failure/correction/prevention guidance and updated success criteria, not user failure.
+`aftertask` writes a blackbox event and accepts AI-agent structured memory candidates. The AI agent, not Core, decides reusable success criteria, failures, successful approaches, model class, scope, categories, replacements, relations, and localized display text. Core validates the candidate schema, applies BCP 47 checks, stores raw evidence, dedupes, applies replacement safety, indexes, and renders the wiki.
 
-Do not call `aftertask` with only an AI action summary. Use `--request` or include a `User request:` section in a `--from-file` payload. If `userRequest` is missing, VibeBox records the event but skips active user success criteria extraction; clear command/tool/environment failures can still become AI failure memory.
+Do not call `aftertask` with only an AI action summary. Use `--request` or include a `User request:` section in a `--from-file` payload, and include `Structured memory candidates:` when the event should create active memory. If `userRequest` is present but candidates are missing, VibeBox records the event, warns, and creates no active user memory. If only `aiActionSummary` is present, Core preserves raw evidence but creates no active memory. Clear command/tool/environment failures can be preserved as raw evidence, but active AI failure memory requires an agent candidate.
+
+Long `--from-file` payloads can use these wrapper sections:
+
+```text
+User request:
+AI action summary:
+Changed files:
+Commands:
+Errors:
+Structured memory candidates:
+```
+
+The wrapper section names do not create memory by themselves; the JSON or structured block under `Structured memory candidates:` is the semantic contract.
 
 ## End-To-End Consumption Routine
 
@@ -124,7 +137,7 @@ A complete VibeBox cycle is:
 4. Perform the work.
 5. Run real validation when available.
 6. Report changed files and validation results when the user's criteria require it.
-7. Run `aftertask` with the original user request or faithful summary so the active graph can update.
+7. Run `aftertask` with the original user request or faithful summary and the agent's structured memory candidates so the active graph can update.
 
 This is the expected practical behavior for agents using the VibeBox skill or adapters.
 
@@ -136,10 +149,10 @@ This is the expected practical behavior for agents using the VibeBox skill or ad
 vibebox capture --request "..." --summary "..." --outcome partial
 ```
 
-`extract` turns text or event context into memory candidates for Auto Curator handling:
+`extract` ingests agent structured candidates for validation, dedupe, replacement safety, indexes, and wiki rendering:
 
 ```bash
-vibebox extract --text "Do not modify package.json unless explicitly requested."
+vibebox extract --candidates '<agent-structured-candidate-json>'
 ```
 
 ## Manual Review And Override
@@ -225,7 +238,7 @@ VIBEBOX_AGENT_RUNTIME=adapter vibebox language convert ko-KR en-US
 VIBEBOX_AGENT_RUNTIME=adapter vibebox rebuild
 ```
 
-Without `VIBEBOX_AGENT_RUNTIME` or an adapter-provided runtime marker, `convert-lang` and semantic `rebuild` exit before changing files. `convert-lang` updates the Obsidian display layer: Markdown filenames, category folders, headings, aliases, managed links, Recent Active Memory, category pages, project pages, memory notes, and the wiki-doc registry. Raw logs are not rewritten, and internal JSON field names, enum values, relation types, and command names stay English.
+Without `VIBEBOX_AGENT_RUNTIME` or an adapter-provided runtime marker, `convert-lang` and semantic `rebuild` exit before changing files. `convert-lang` also requires agent-provided localized display candidates; Core does not translate or rewrite meaning. Core updates Markdown filenames, category folders, headings, aliases, managed links, Recent Active Memory, category pages, project pages, memory notes, and the wiki-doc registry, then runs integrity checks. Raw logs are not rewritten, and internal JSON field names, enum values, relation types, and command names stay English.
 
 ## External Project Workflow
 

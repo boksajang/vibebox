@@ -11,10 +11,21 @@ VibeBox watches the AI coding workflow around a project:
 1. Before work, the agent reads VibeBox guidance.
 2. During work, the agent applies the guidance as constraints and warnings.
 3. After work, the agent records the original user request, result, commands, files, failures, and feedback.
-4. VibeBox interprets that event into active memory.
-5. The next agent receives updated success criteria, failure avoidance, and successful approaches.
+4. The AI agent supplies structured memory candidates that express the reusable meaning.
+5. VibeBox validates, stores, dedupes, connects, indexes, and renders those candidates.
+6. The next agent receives updated success criteria, failure avoidance, and successful approaches.
 
-VibeBox is not a prompt log. It does not keep the user's words as reusable instructions. It normalizes them into short guidance that an AI agent can use before the next task.
+VibeBox is not a prompt log and it is not a semantic interpreter. The AI agent analyzes user intent, success criteria, corrections, failures, categories, relations, and localized wiki display text. VibeBox Core manages memory storage, schema validation, BCP 47 validation, dedupe, replacement safety, indexes, relation graph, raw evidence, wiki rendering, doctor, and file operations.
+
+## Semantic Authority Contract
+
+- Meaning belongs to the AI agent, not VibeBox Core.
+- `aftertask` and file-based capture can include `Structured memory candidates:` with `memoryRole`, `type`, `modelClass`, `scope`, category, display, evidence, replacement, and relation fields.
+- If a `userRequest` is present but structured candidates are missing, Core records the raw event, emits a warning, and creates no active user memory.
+- An AI action summary alone never creates active user success criteria or successful approach memory.
+- Command, tool, permission, path, and environment failure evidence can be preserved as raw event evidence, but active `ai_failure_memory` requires an agent-provided structured candidate.
+- Core does not use fixture-specific branches, keywords, headings, bullets, or raw request text to decide memory role, type, model class, category, title, or localized summary.
+- `convert-lang` and semantic `rebuild` require an AI agent runtime and agent-provided localized/semantic data; Core only applies filenames, links, registry updates, and integrity checks.
 
 ## Core Philosophy
 
@@ -68,15 +79,16 @@ vibebox aftertask \
   --files "src/table.mjs" \
   --commands "npm.cmd test" \
   --command-results "tests passed" \
+  --candidates "<agent-structured-candidate-json>" \
   --technical-outcome success \
   --user-acceptance unknown
 ```
 
-Always pass the original user request, or a faithful semantic summary, with `--request`. Without a user request, VibeBox records the event but skips active user success criteria extraction. Clear command/tool/environment failures can still become AI failure memory.
+Always pass the original user request, or a faithful semantic summary, with `--request`, and pass agent structured candidates when active memory should be created. Without candidates, VibeBox records the event and warns instead of creating active memory. Clear command/tool/environment failures are preserved as raw evidence; active AI failure memory requires an agent candidate.
 
 ## Auto Curation
 
-After `aftertask`, VibeBox automatically decides whether extracted meaning should become:
+After `aftertask`, VibeBox validates the agent's structured candidates and decides whether each safe candidate should become:
 
 - `active`
 - `replace`
