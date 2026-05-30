@@ -83,7 +83,7 @@ Direct conflicts, supersedes, exceptions, duplicate records, and unclear candida
 VibeBox maintains the latest optimized active graph, not a pile of competing rules.
 
 - Replacement or correction: activating the new memory removes the older same-subject memory from active retrieval, active wiki sections, namespace files, and active relations.
-- Refinement: if the new memory is the latest better expression of the same subject and scope, keep the refined memory and remove the competing older memory.
+- Refinement: when the agent marks the new memory as a refinement and replacement-safety checks pass for the same subject and scope, keep the refined memory and remove the explicitly related older memory.
 - Exception: keep the broader memory only when the exception has a clear `activeCondition`.
 - Ambiguous candidates are quarantined or left in legacy/manual debug pending state.
 - Raw logs can preserve diagnostic events, but raw logs are not normal retrieval context.
@@ -93,6 +93,10 @@ VibeBox maintains the latest optimized active graph, not a pile of competing rul
 User instructions are success criteria. User corrections are more precise success criteria. User dissatisfaction is an AI failure signal, not user failure. User patterns may describe question style, response preference, process habits, validation requirements, design philosophy, decision style, communication style, correction patterns, agent failure patterns, agent success patterns, and handoff style. A single vague statement should be discarded, quarantined, or marked low confidence; explicit or repeated behavior can become active through auto-curation or manual override.
 
 Structured user requests should be analyzed by the AI agent as meaning units before AI action summaries are considered. Reference baselines, consistency requirements, target lists, validation or preservation conditions, scope limits, workflow requirements, and AI failure-prevention signals can produce separate agent candidates from the same request. Core does not infer any of that from headings, bullets, keywords, or summary text. Each active candidate should carry explicit role/type/class/scope/category fields plus localized `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage`. A single durable memory can have one `primaryCategory` and multiple `relatedCategories`; related category pages should link to the same canonical note instead of duplicating it.
+
+The agent should review every meaningful task against these candidate roles and pattern kinds: `user_success_criteria`, `ai_failure_memory`, `ai_successful_approach`, `task_context`, `discarded_detail`, user model, domain model, project model, validation pattern, response preference, process pattern, design philosophy, decision pattern, prevention/avoid rule, and no-reusable-memory diagnostic. Not every lane must produce a memory, but every lane should be considered. If a complex request yields only one candidate, the agent must include `whyOnlyOneCandidate`; if nothing reusable exists, include `no_reusable_memory_candidate` with `noCandidateReason`.
+
+Wiki display text is not Core translation. The agent must provide `displayTitle`, `displaySummary`, and `displayRule` in the configured `memoryLanguage` such as `ko-KR`. If a display field is missing, Core may render a display-text-missing diagnostic rather than promoting canonical English summary text as user-facing Wiki prose.
 
 Failure memory must include prevention guidance when possible. Success patterns should describe when to reuse the successful approach and whether the evidence is confirmed by the user or inferred from validation.
 Pretask/context retrieval should consider relevant failure and success nodes together, not only one side.

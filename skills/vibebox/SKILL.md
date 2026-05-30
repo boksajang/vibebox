@@ -13,7 +13,7 @@ VibeBox Core is a local CLI and memory engine. This skill tells an AI coding age
 Past memory is context, not authority. Pending memory must not be treated as active memory.
 VibeBox is not a passive archive or a review-first memory manager: active memory is the latest optimized guidance set chosen by the Auto Curator or a manual override. Replaced, corrected, discarded, quarantined, rejected, or legacy pending memory must not be treated as current guidance.
 VibeBox is not an AI action summary recorder and Core is not the semantic authority. The AI agent must interpret the user's request, feedback, correction, failure signals, successful approaches, model class, scope, categories, relations, replacements, and localized display text. Use AI summaries, changed files, command output, and errors only as evidence for the structured candidates you provide. Treat structured user requests as meaning graphs yourself: extract reusable success criteria, preservation rules, validation expectations, scope limits, user/domain/project patterns, and AI failure-prevention signals before capture.
-Meaningful work is not fully captured by reading `pretask` or by sending a summary. After meaningful work, the AI agent must provide the original `userRequest` plus structured memory candidates, or explicitly explain in `notes`/a discarded diagnostic candidate why no reusable memory exists. VibeBox Core will not infer active memory from `userRequest`, headings, bullets, keywords, action summaries, command output, or fixture terms.
+Meaningful work is not fully captured by reading `pretask` or by sending a summary. After meaningful work, the AI agent must provide the original `userRequest` plus structured memory candidates, or explicitly submit a `no_reusable_memory_candidate` item with `noCandidateReason`. VibeBox Core will not infer active memory from `userRequest`, headings, bullets, keywords, action summaries, command output, or fixture terms.
 
 For details, load these references only when needed:
 
@@ -116,15 +116,19 @@ After meaningful coding or design work:
 5. Summarize errors or failed attempts.
 6. Summarize user feedback if available.
 7. Create structured memory candidates after reviewing every applicable role: `user_success_criteria`, `ai_failure_memory`, `ai_successful_approach`, `task_context`, and `discarded_detail`.
-8. Include candidate fields such as `memoryRole`, `type`, `modelClass`, `modelSubClass`, `scope`, `primaryCategory`, `relatedCategories`, `title`, `summary`, `rule`, `displayTitle`, `displaySummary`, `displayRule`, `displayLanguage`, `evidence`, `confidence`, `sourceType`, `relationCandidates`, and `replaces`.
-9. Run after-task capture when appropriate; `aftertask` is a global store write/capture operation, unlike repository read-only `pretask` and `context`.
-10. If sandbox permissions block aftertask, request approved global VibeBox store write access for aftertask capture or report that capture was unavailable. Do not create a copied memory store as a fallback.
-11. On Windows/Codex, prefer direct `vibebox.cmd aftertask --request "..." --candidates "<json>" ...`; outside Windows, prefer `vibebox aftertask ...`.
-12. If direct installed commands fail inside the VibeBox repository, use `node bin/vibebox.mjs aftertask --request "..." --candidates "<json>" ...`.
-13. Let VibeBox validate, dedupe, apply replacement safety, index, and render the candidates. If VibeBox warns that structured candidates are missing, rewrite and rerun the capture with candidates; do not assume Core will interpret the request later.
-14. Treat user acceptance and technical success as separate signals.
-15. Show review instructions only when debugging or manual override is useful.
-16. Do not store secrets as memory.
+8. Decompose the request into meaning units before capture: success criteria, user preference, project rule, domain rule, validation requirement, reporting preference, failure-avoidance rule, successful approach, task-only context, and discarded detail.
+9. Scan each meaning unit across the category axis: user preferences, user patterns, design philosophy, validation patterns, process patterns, decision patterns, workflow rules, prevention rules, global avoid rules, tooling/technology preferences, AI failure patterns, AI success patterns, success patterns, and failure memory.
+10. Include candidate fields such as `memoryRole`, `type`, `modelClass`, `modelSubClass`, `scope`, `primaryCategory`, `relatedCategories`, `title`, `summary`, `rule`, `displayTitle`, `displaySummary`, `displayRule`, `displayLanguage`, `evidence`, `confidence`, `sourceType`, `relationCandidates`, and `replaces`.
+11. Write `displayTitle`, `displaySummary`, and `displayRule` in the configured `memoryLanguage`; for a `ko-KR` store, those display fields must be Korean. Canonical `summary` may stay English, but Wiki display text is the agent's responsibility.
+12. If only one candidate is produced for a user request with multiple constraints, include `whyOnlyOneCandidate`. If no reusable memory exists, include a `no_reusable_memory_candidate` item with `noCandidateReason`. Do not quietly skip capture or send only a summary.
+13. Run after-task capture when appropriate; `aftertask` is a global store write/capture operation, unlike repository read-only `pretask` and `context`.
+14. If sandbox permissions block aftertask, request approved global VibeBox store write access for aftertask capture or report that capture was unavailable. Do not create a copied memory store as a fallback.
+15. On Windows/Codex, prefer direct `vibebox.cmd aftertask --request "..." --candidates "<json>" ...`; outside Windows, prefer `vibebox aftertask ...`.
+16. If direct installed commands fail inside the VibeBox repository, use `node bin/vibebox.mjs aftertask --request "..." --candidates "<json>" ...`.
+17. Let VibeBox validate, dedupe, apply replacement safety, index, and render the candidates. If VibeBox warns that structured candidates are missing or that `whyOnlyOneCandidate` is missing for a one-candidate capture, rewrite and rerun the capture with richer candidates or the explicit contract field; do not assume Core will interpret the request later.
+18. Treat user acceptance and technical success as separate signals.
+19. Show review instructions only when debugging or manual override is useful.
+20. Do not store secrets as memory.
 
 ## Auto-Curated Memory Policy
 

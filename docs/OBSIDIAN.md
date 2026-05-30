@@ -16,7 +16,9 @@ The wiki is an inspection layer. Retrieval uses JSON indexes under `index/`; raw
 
 ## Agent-Provided Display Text
 
-The AI agent is responsible for user-facing semantic display text. When a structured candidate includes `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage`, the wiki uses those fields first. Core fallback display only combines existing structured fields and strips visible memory ids; it does not translate, summarize, infer categories, or rewrite raw `userRequest` / `aiActionSummary` text into a user-facing note.
+The AI agent is responsible for user-facing semantic display text. When a structured candidate includes `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage`, the wiki uses those fields first. Core fallback display only strips visible memory ids and uses structural labels; it does not translate, summarize, infer categories, or rewrite raw `userRequest` / `aiActionSummary` text into a user-facing note. If `displaySummary` or `displayRule` is missing, Core can render a display-text-missing diagnostic rather than presenting canonical English summary/rule text as localized prose.
+
+For a `ko-KR` store, the agent should write Korean display fields. Technical literals such as `npm.cmd test`, paths, package names, API names, and error codes may remain unchanged inside Korean sentences.
 
 `convert-lang` is a semantic language conversion operation. It requires an agent runtime marker and agent-provided localized display candidates for active memories. Core validates BCP 47 tags, renames files, rewrites links, updates `registry/wiki-docs.json`, and runs integrity checks; it does not perform translation itself.
 

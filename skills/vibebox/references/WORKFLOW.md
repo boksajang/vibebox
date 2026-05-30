@@ -80,6 +80,18 @@ The file must include `Structured memory candidates:` when reusable memory shoul
 
 Aftertask is a global store write/capture operation: it writes a blackbox event and ingests AI-agent structured candidates. The agent is responsible for decomposing structured user requests into reusable success criteria, project rules, user/domain patterns, validation/preservation expectations, scope limits, AI failure-prevention rules, and task context before capture. Core validates schema and BCP 47 fields, preserves raw evidence, dedupes, applies replacement safety, builds relation/category/project indexes, and renders the wiki. If sandbox permissions block aftertask, request global VibeBox store write access for aftertask capture or report that capture was unavailable. Skip capture when the user explicitly opts out.
 
+Before running `aftertask`, scan the user request and task outcome across these candidate lanes:
+
+- `user_success_criteria` for success conditions, style, scope limits, preservation rules, validation expectations, and reporting requirements.
+- `ai_failure_memory` for user dissatisfaction, missed instructions, technical/tool/environment failures, and explicit avoid rules.
+- `ai_successful_approach` for validated reusable approaches, workarounds, command sequences, or recovery methods.
+- `task_context` for task-only files, local state, and temporary scope details that should not become durable guidance.
+- `discarded_detail` or `no_reusable_memory_candidate` for details that were considered but should not become active memory, with a short reason.
+
+Also scan the category axis for each meaning unit: user preferences, user patterns, design philosophy, validation patterns, process patterns, decision patterns, workflow rules, global avoid rules, prevention rules, tooling/technology preferences, AI failure patterns, AI success patterns, success patterns, and failure memory. Do not collapse separate validation, reporting, style, and failure-avoidance meanings into one summary-shaped candidate. If only one candidate is truly enough, include `whyOnlyOneCandidate`. If no reusable memory exists, include `no_reusable_memory_candidate` with `noCandidateReason`.
+
+The agent must write Wiki display fields in the configured `memoryLanguage`. For example, in a `ko-KR` store, `displayTitle`, `displaySummary`, and `displayRule` should be Korean even if canonical `summary` remains English. Core does not translate missing display fields.
+
 ## Manual Review And Override Workflow
 
 Normal workflows are auto-curated. Use review commands for debugging, audits, or manual override:

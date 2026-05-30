@@ -25,6 +25,9 @@ VibeBox is not a prompt log and it is not a semantic interpreter. The AI agent a
 - An AI action summary alone never creates active user success criteria or successful approach memory.
 - Command, tool, permission, path, and environment failure evidence can be preserved as raw event evidence, but active `ai_failure_memory` requires an agent-provided structured candidate.
 - Core does not use fixture-specific branches, keywords, headings, bullets, or raw request text to decide memory role, type, model class, category, title, or localized summary.
+- Agents should split complex user requests into reusable meaning units instead of one summary-shaped candidate: success criteria, validation patterns, response preferences, project/domain rules, failure-prevention rules, successful approaches, task context, and discarded details.
+- If a complex request produces only one candidate, include `whyOnlyOneCandidate`; if no reusable memory exists, include a `no_reusable_memory_candidate` item with `noCandidateReason`.
+- Wiki display fields are agent-authored user-facing text. `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage` should follow configured `memoryLanguage`; Core does not translate missing display text.
 - `convert-lang` and semantic `rebuild` require an AI agent runtime and agent-provided localized/semantic data; Core only applies filenames, links, registry updates, and integrity checks.
 
 ## Core Philosophy
@@ -84,11 +87,11 @@ vibebox aftertask \
   --user-acceptance unknown
 ```
 
-Always pass the original user request, or a faithful semantic summary, with `--request`, and pass AI-agent structured candidates after meaningful work. If the agent concludes there is no reusable memory, record that reason in `--notes` or a discarded diagnostic candidate. Without candidates, VibeBox records the event and warns instead of creating active memory. Clear command/tool/environment failures are preserved as raw evidence; active AI failure memory requires an agent candidate.
+Always pass the original user request, or a faithful semantic summary, with `--request`, and pass AI-agent structured candidates after meaningful work. Review every meaningful task for user success criteria, validation pattern, response preference, process/design/decision pattern, prevention rule, AI failure memory, AI successful approach, task context, and discarded detail. If the agent concludes there is no reusable memory, record `no_reusable_memory_candidate` with `noCandidateReason`; if only one candidate is enough, include `whyOnlyOneCandidate`. Without candidates, VibeBox records the event and warns instead of creating active memory. Clear command/tool/environment failures are preserved as raw evidence; active AI failure memory requires an agent candidate.
 
 ## Auto Curation
 
-After `aftertask`, VibeBox validates the agent's structured candidates and decides whether each safe candidate should become:
+After `aftertask`, VibeBox validates the agent's structured candidates and applies explicit status, dedupe, replacement-safety, relation, index, and integrity checks before routing each candidate to:
 
 - `active`
 - `replace`

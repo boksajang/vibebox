@@ -75,7 +75,7 @@ The adapter documents are packaging guides. The Codex adapter can be exposed thr
 
 ## Auto-Curated Memory
 
-VibeBox's normal workflow is automatic curation, not per-task user review. After an event is captured, the AI agent supplies structured memory candidates for any reusable meaning. Core validates those candidates and decides whether they can become active, replace older active memory, be discarded, or be quarantined for manual inspection. If `userRequest` is present without structured candidates, Core records the raw event and warns instead of inventing active memory.
+VibeBox's normal workflow is automatic curation, not per-task user review. After an event is captured, the AI agent supplies structured memory candidates for any reusable meaning. Core validates those candidates and routes them through explicit status, dedupe, replacement-safety, relation, index, and integrity checks before activation, replacement, discard, or quarantine. If `userRequest` is present without structured candidates, Core records the raw event and warns instead of inventing active memory.
 
 `review`, `approve`, and `reject` remain available for debugging, audits, and manual override. Pending memory is legacy/manual debug state; it is not normal workflow guidance.
 
@@ -91,7 +91,11 @@ Technical success and user acceptance are separate signals. User acceptance is n
 
 User instructions can create success criteria before a result exists. User corrections can refine or replace older criteria in the same scope. Command, permission, environment, browser, API, plugin, and tool failures can become AI failure memory even when there is no new user preference to extract.
 
-For structured requests, the AI agent treats headings, bullet lists, reference baselines, consistency requirements, scope limits, preservation requirements, and validation conditions as possible meaning units and submits explicit structured candidates. VibeBox Core does not interpret those shapes itself. The user's requested success conditions must be represented by the agent before AI action summaries can become evidence, so a successful implementation summary cannot crowd out the criteria it was supposed to satisfy.
+For structured requests, the AI agent treats headings, bullet lists, reference baselines, consistency requirements, scope limits, preservation requirements, validation conditions, reporting rules, avoid rules, and task-only details as possible meaning units and submits explicit structured candidates. VibeBox Core does not interpret those shapes itself. The user's requested success conditions must be represented by the agent before AI action summaries can become evidence, so a successful implementation summary cannot crowd out the criteria it was supposed to satisfy.
+
+Candidate breadth is part of the agent contract. The agent should consider `user_success_criteria`, `ai_failure_memory`, `ai_successful_approach`, `task_context`, `discarded_detail`, validation patterns, response preferences, process patterns, design philosophy, decision patterns, and prevention/avoid rules. A complex request should not be compressed into one catch-all summary candidate. If one candidate is truly enough, the agent records `whyOnlyOneCandidate`; if nothing reusable exists, it records `no_reusable_memory_candidate` with `noCandidateReason`.
+
+Wiki language is also an agent-authored semantic artifact. `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage` should match the configured `memoryLanguage`; Core will not translate canonical summaries into user-facing prose.
 
 ## User Model Layers
 

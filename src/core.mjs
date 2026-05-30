@@ -654,6 +654,8 @@ const LOCALE_TEMPLATES = {
     activeMemory: 'Active Memory',
     pendingCandidates: 'Pending Candidates',
     recentBlackboxEvents: 'Recent Blackbox Events',
+    candidateDiagnostics: 'Candidate Diagnostics',
+    noReusableMemoryCandidate: 'No reusable memory candidate',
     taskTimeline: 'Task Timeline',
     failedApproaches: 'Failed Approaches',
     successfulApproaches: 'Successful Approaches',
@@ -1179,14 +1181,6 @@ async function detectProjectIdentity(root) {
     identity.techStackHints = dependencyNames
       .filter((name) => ['react', 'vue', 'svelte', 'next', 'vite', 'express', 'fastify', 'echarts', 'chart.js', 'typescript'].includes(name))
       .sort();
-    const searchable = `${packageData.name || ''} ${packageData.description || ''} ${dependencyNames.join(' ')}`;
-    if (textHasAny(searchable, ['dashboard', 'echarts', 'chart.js', 'reporting'])) {
-      identity.primaryDomain = 'dashboard';
-    } else if (textHasAny(searchable, ['api', 'express', 'fastify', 'backend'])) {
-      identity.primaryDomain = 'backend';
-    } else if (textHasAny(searchable, ['react', 'vue', 'svelte', 'frontend', 'ui'])) {
-      identity.primaryDomain = 'frontend';
-    }
   } catch {
     // package.json is optional for agent-neutral VibeBox workspaces.
   }
@@ -1652,26 +1646,15 @@ function normalizeEnum(value, allowed, fallback = 'unknown') {
   return allowed.has(normalized) ? normalized : fallback;
 }
 
-function inferUserFeedbackSignal(feedback = '') {
-  const text = normalizeText(feedback);
-  if (!text) return 'none';
-  if (textHasAny(text, ['reject', 'rejected', 'not the right direction', 'wrong direction', 'this is not', 'redo', 'start over', 'instead', '\uB9C8\uC74C\uC5D0 \uC548', '\uB2E4\uC2DC \uD574', '\uADF8\uAC70 \uC544\uB2C8', '\uBC29\uD5A5\uC774 \uD2C0'])) return 'rejection';
-  if (textHasAny(text, ['confirmed', 'accepted', 'approved', 'keep this', 'looks good', 'good direction', 'works for me', 'reuse this', 'go with this', 'this is right', '\uC88B\uB2E4', '\uC774\uB300\uB85C', '\uC720\uC9C0', '\uC774\uAC8C \uB9DE'])) return 'acceptance';
-  if (textHasAny(text, ['mixed', 'partly', 'partially', 'but', 'however'])) return 'mixed';
-  return 'comment';
-}
+const USER_FEEDBACK_SIGNAL_VALUES = new Set(['none', 'acceptance', 'rejection', 'mixed', 'comment']);
 
-function inferUserAcceptance(input = {}) {
+function normalizeExplicitUserAcceptance(input = {}) {
   const explicit = normalizeEnum(input.userAcceptance || input.user_acceptance, USER_ACCEPTANCE_VALUES, '');
   if (explicit) return explicit;
-  const signal = inferUserFeedbackSignal(input.userFeedback || input.feedback || '');
-  if (signal === 'rejection') return 'rejected';
-  if (signal === 'acceptance') return 'accepted';
-  if (signal === 'mixed') return 'mixed';
   return 'unknown';
 }
 
-function inferTechnicalOutcome(input = {}) {
+function normalizeExplicitTechnicalOutcome(input = {}) {
   const explicit = normalizeEnum(input.technicalOutcome || input.technical_outcome, TECHNICAL_OUTCOMES, '');
   if (explicit) return explicit;
   const legacy = normalizeEnum(input.outcome, new Set(['success', 'failure', 'partial', 'unknown']), '');
@@ -1696,44 +1679,15 @@ function legacyOutcomeFromFinal(finalOutcome) {
   return 'unknown';
 }
 
-function extractCorrectionDirection(feedback = '') {
-  const text = String(feedback || '').trim();
-  const negative = text.match(/\b(?:do not|don't|dont|never|avoid|must not|stop)\b\s+(.+)/iu);
-  if (negative) return summarizeStatement(`${negative[0]}`);
-  const match = text.match(/(?:^|[.;]\s*)\b(?:use|prefer)\b[:\s]+(.+)/iu)
-    || text.match(/\binstead\b[:,\s]+(?:use|prefer)\b[:\s]+(.+)/iu)
-    || text.match(/\binstead\b[:]\s+(.+)/iu);
-  return summarizeStatement(match?.[1] || text);
-}
-
 function deriveOutcomeFields(input = {}) {
-  const technicalOutcome = inferTechnicalOutcome(input);
-  const userAcceptance = inferUserAcceptance(input);
+  const technicalOutcome = normalizeExplicitTechnicalOutcome(input);
+  const userAcceptance = normalizeExplicitUserAcceptance(input);
   const finalOutcome = deriveFinalOutcome(technicalOutcome, userAcceptance, input.finalOutcome || input.final_outcome);
-  const userFeedbackSignal = inferUserFeedbackSignal(input.userFeedback || input.feedback || '');
-  const successEvidenceText = [
-    input.userFeedback || input.feedback || '',
-    input.aiActionSummary || input.summary || '',
-    input.commandResult || '',
-    ...(Array.isArray(input.commandResults) ? input.commandResults : []),
-    input.notes || ''
-  ].filter(Boolean).join('\n');
-  const successEvidence = normalizeEnum(input.successEvidence || input.acceptanceBasis, SUCCESS_EVIDENCE_VALUES, inferSuccessEvidence(successEvidenceText, {
-    ...input,
-    technicalOutcome,
-    userAcceptance,
-    finalOutcome,
-    userFeedbackSignal
-  }));
-  const rejectionReason = userAcceptance === 'rejected'
-    ? summarizeStatement(input.userFeedback || input.feedback || input.aiActionSummary || input.summary || '')
-    : '';
-  const correctionDirection = userAcceptance === 'rejected' || userAcceptance === 'mixed'
-    ? extractCorrectionDirection(input.userFeedback || input.feedback || input.notes || '')
-    : '';
-  const preventionRule = userAcceptance === 'rejected'
-    ? `Do not repeat the rejected direction without confirmation. ${correctionDirection ? `Prefer: ${correctionDirection}` : ''}`.trim()
-    : '';
+  const userFeedbackSignal = normalizeEnum(input.userFeedbackSignal || input.user_feedback_signal, USER_FEEDBACK_SIGNAL_VALUES, 'none');
+  const successEvidence = normalizeEnum(input.successEvidence || input.acceptanceBasis, SUCCESS_EVIDENCE_VALUES, 'unknown');
+  const rejectionReason = String(input.rejectionReason || input.rejection_reason || '').trim();
+  const correctionDirection = String(input.correctionDirection || input.correction_direction || '').trim();
+  const preventionRule = '';
   const legacyInputOutcome = normalizeEnum(input.outcome, new Set(['success', 'failure', 'partial', 'unknown']), '');
   return {
     technicalOutcome,
@@ -1782,6 +1736,11 @@ export async function captureEvent(root = process.cwd(), input = {}) {
     semanticExtractionStatus: input.semanticExtractionStatus || 'not_applicable',
     structuredCandidateCount: Number.isFinite(input.structuredCandidateCount) ? input.structuredCandidateCount : 0,
     semanticExtractionWarning: input.semanticExtractionWarning || '',
+    noCandidateReason: input.noCandidateReason || '',
+    noCandidateReasons: Array.isArray(input.noCandidateReasons) ? input.noCandidateReasons : [],
+    noCandidateReasonMissing: input.noCandidateReasonMissing === true,
+    whyOnlyOneCandidate: input.whyOnlyOneCandidate || '',
+    candidateContractWarning: input.candidateContractWarning || '',
     outcome: outcomeFields.outcome,
     notes: input.notes || '',
     createdAt: input.createdAt || timestamp
@@ -1904,57 +1863,7 @@ function extractTags(statement) {
   return [...tags];
 }
 
-function toTitle(type, topic) {
-  const label = type
-    .split('_')
-    .map((part) => part[0].toUpperCase() + part.slice(1))
-    .join(' ');
-  return `${label}: ${topic}`;
-}
-
-const METADATA_LABEL_PREFIX_PATTERN = /^(?:user request|original request|original user request|ai action summary|action summary|summary|notes|source|\uC0AC\uC6A9\uC790\s+\uC694\uCCAD|\uC6D0\s+\uC0AC\uC6A9\uC790\s+\uC694\uCCAD|\uC694\uCCAD|\uC694\uC57D)\s*[:\uFF1A]\s*/iu;
-const EMBEDDED_METADATA_LABEL_PATTERN = /(^|[.;]\s*)(?:user request|original request|original user request|ai action summary|action summary|summary|notes|source|\uC0AC\uC6A9\uC790\s+\uC694\uCCAD|\uC6D0\s+\uC0AC\uC6A9\uC790\s+\uC694\uCCAD|\uC694\uCCAD|\uC694\uC57D)\s*[:\uFF1A]\s*/giu;
-const GENERATED_STATEMENT_PREFIX_PATTERN = /^(?:accepted reusable approach|user accepted this approach|this approach was confirmed by the user and worked successfully|this task failed from the user's perspective|user rejected this direction|correction pattern|agent failure pattern|ai execution failure|agent success recovery approach|the approach failed|this task failed)\s*[:\uFF1A]\s*/iu;
 const MEMORY_METADATA_LABEL_PATTERN = /(?:^|\b)(?:user request|original request|ai action summary|action summary|source)\s*[:\uFF1A]/iu;
-
-function stripMemoryMetadataLabels(value) {
-  let text = String(value ?? '').replace(/\s+/gu, ' ').trim();
-  for (let index = 0; index < 6; index += 1) {
-    const before = text;
-    text = text
-      .replace(METADATA_LABEL_PREFIX_PATTERN, '')
-      .replace(GENERATED_STATEMENT_PREFIX_PATTERN, '')
-      .trim();
-    if (text === before) break;
-  }
-  return text
-    .replace(EMBEDDED_METADATA_LABEL_PATTERN, '$1')
-    .replace(/\s+/gu, ' ')
-    .replace(/\s+([,.;:])/gu, '$1')
-    .replace(/;+\s*\./gu, '.')
-    .replace(/\.{2,}/gu, '.')
-    .trim();
-}
-
-function normalizeStatementForMemory(statement) {
-  return stripMemoryMetadataLabels(redactSensitive(statement));
-}
-
-function generatedSnippet(value) {
-  return normalizeStatementForMemory(value)
-    .replace(/[.!?]+(?=\s|$)/gu, ';')
-    .replace(/;{2,}/gu, ';')
-    .replace(/\s+/gu, ' ')
-    .trim()
-    .replace(/;$/u, '');
-}
-
-function cleanRecoverySnippet(value) {
-  const text = generatedSnippet(value)
-    .replace(/^(?:recovered by|recovery approach|workaround|alternative command)\s*[:\s-]*/iu, '')
-    .trim();
-  return text || generatedSnippet(value);
-}
 
 function uniqueNonEmpty(values = []) {
   const seen = new Set();
@@ -1966,119 +1875,13 @@ function uniqueNonEmpty(values = []) {
   });
 }
 
-function correctionContextSnippet(value) {
-  const text = generatedSnippet(value)
-    .replace(/^(?:redesign|build|fix|update|implement|create)\s+/iu, '')
-    .replace(/[.;:]+$/u, '')
-    .trim();
-  return text || 'the current task';
-}
-
 function containsMemoryMetadataLabel(value) {
   const text = String(value ?? '');
   return MEMORY_METADATA_LABEL_PATTERN.test(text)
     || /confirmed by the user and worked successfully/iu.test(text);
 }
 
-function summarizeStatement(statement) {
-  const text = normalizeStatementForMemory(statement);
-  return text.length > 220 ? `${text.slice(0, 217)}...` : text;
-}
-
-function hasReusableSuccessSignal(statement = '') {
-  return textHasAny(statement, [
-    'should be reused',
-    'reuse when',
-    'reusable approach',
-    'reusable pattern',
-    'reuse this',
-    'kept dependencies unchanged',
-    'component-level wrapper',
-    'wrapper-based',
-    'focused tests',
-    'ran checks',
-    'verified'
-  ]);
-}
-
-function hasTechnicalSuccessSignal(statement = '', source = {}) {
-  if (normalizeEnum(source.technicalOutcome, TECHNICAL_OUTCOMES, 'unknown') === 'success') return true;
-  return textHasAny(statement, [
-    'worked successfully',
-    'validation passed',
-    'tests passed',
-    'checks passed',
-    'build passed',
-    'type checks passed',
-    'verified',
-    'ran checks',
-    'all tests passed'
-  ]);
-}
-
-function inferSuccessEvidence(statement = '', source = {}) {
-  const userAcceptance = normalizeEnum(source.userAcceptance, USER_ACCEPTANCE_VALUES, 'unknown');
-  const finalOutcome = normalizeEnum(source.finalOutcome, FINAL_OUTCOMES, 'unknown');
-  const feedbackSignal = source.userFeedbackSignal || 'none';
-  if (userAcceptance === 'rejected' || finalOutcome === 'technical_success_user_rejected' || feedbackSignal === 'rejection') return 'rejected';
-  if (userAcceptance === 'accepted' || finalOutcome === 'accepted_success' || feedbackSignal === 'acceptance') return 'confirmed';
-  if (
-    userAcceptance === 'unknown'
-    && finalOutcome !== 'failed'
-    && !textHasAny(statement, ['rejected', 'wrong direction', 'not the right direction', 'redo', 'start over'])
-    && hasTechnicalSuccessSignal(statement, source)
-    && hasReusableSuccessSignal(statement)
-  ) {
-    return 'inferred';
-  }
-  return 'unknown';
-}
-
-function inferModelClass(candidate) {
-  if (!candidate) return 'discarded_detail';
-  if (candidate.modelClass) return candidate.modelClass;
-  if (candidate.type === 'discarded_detail') return 'discarded_detail';
-  if (candidate.type === 'task_context' || ['task', 'temporary'].includes(candidate.scope)) return 'task_context';
-  if (candidate.scope === 'project' || candidate.projectId || candidate.type === 'project_decision') return 'project_model';
-  if (candidate.scope === 'domain') return 'domain_model';
-  return 'user_model';
-}
-
-function inferModelSubClass(candidate) {
-  if (!candidate) return 'discarded_detail';
-  if (candidate.modelSubClass) return candidate.modelSubClass;
-  if (candidate.type === 'discarded_detail') return 'discarded_detail';
-  if (candidate.type === 'task_context' || ['task', 'temporary'].includes(candidate.scope)) return 'task_context';
-  return candidate.type || 'unspecified';
-}
-
-function applyMemoryRoleFields(candidate, statement, source = {}) {
-  candidate.memoryRole = normalizeEnum(
-    candidate.memoryRole,
-    MEMORY_ROLE_VALUES,
-    'discarded_detail'
-  );
-  if (candidate.memoryRole === 'user_success_criteria') {
-    candidate.successCriterion = candidate.successCriterion || candidate.rule || candidate.summary;
-    candidate.successEvidence = candidate.successEvidence === 'rejected' ? 'unknown' : candidate.successEvidence;
-    candidate.acceptanceBasis = candidate.acceptanceBasis === 'rejected' ? 'unknown' : candidate.acceptanceBasis;
-    candidate.userAcceptance = candidate.userAcceptance === 'rejected' ? 'unknown' : candidate.userAcceptance;
-    candidate.finalOutcome = candidate.finalOutcome === 'technical_success_user_rejected' ? 'unknown' : candidate.finalOutcome;
-  }
-  if (candidate.memoryRole === 'ai_failure_memory') {
-    candidate.failureReason = candidate.failureReason || candidate.summary;
-    candidate.failureCategory = candidate.failureCategory || candidate.failureType || '';
-  }
-  if (candidate.memoryRole === 'ai_successful_approach') {
-    candidate.successfulApproach = candidate.successfulApproach || candidate.summary;
-    candidate.reuseWhen = candidate.reuseWhen || candidate.appliesTo;
-  }
-  return candidate;
-}
-
-function normalizeCandidateModel(candidate) {
-  candidate.modelClass = candidate.modelClass || inferModelClass(candidate);
-  candidate.modelSubClass = candidate.modelSubClass || inferModelSubClass(candidate);
+function normalizeCandidateStructure(candidate) {
   candidate.docKey = candidate.docKey || docKeyForType(candidate.type);
   return candidate;
 }
@@ -2125,6 +1928,80 @@ function structuredCandidatesFromInput(input = {}) {
   return parseStructuredCandidateInput(value);
 }
 
+function structuredCandidateInputValue(input = {}) {
+  return input.structuredMemoryCandidates
+    ?? input.memoryCandidates
+    ?? input.candidates
+    ?? input.agentMemoryCandidates
+    ?? input.agentCandidates;
+}
+
+function parsedStructuredCandidateEnvelope(input = {}) {
+  const value = structuredCandidateInputValue(input);
+  if (!value || Array.isArray(value)) return null;
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(stripJsonFence(value));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function isNoReusableMemoryDiagnostic(candidate = {}) {
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return false;
+  return candidate.no_reusable_memory_candidate === true
+    || candidate.noReusableMemoryCandidate === true
+    || candidate.type === 'no_reusable_memory_candidate'
+    || candidate.memoryRole === 'no_reusable_memory_candidate';
+}
+
+function candidateDiagnosticReason(candidate = {}) {
+  return [
+    candidate.noCandidateReason,
+    candidate.no_candidate_reason
+  ].find((value) => typeof value === 'string' && value.trim())?.trim() || '';
+}
+
+function splitCandidateDiagnostics(candidates = [], input = {}) {
+  const envelope = parsedStructuredCandidateEnvelope(input);
+  const noCandidateReasons = [];
+  const realCandidates = [];
+  let noCandidateReasonMissing = false;
+  let whyOnlyOneCandidate = typeof input.whyOnlyOneCandidate === 'string' ? input.whyOnlyOneCandidate.trim() : '';
+  if (envelope) {
+    const envelopeReason = candidateDiagnosticReason(envelope);
+    if (envelopeReason && (isNoReusableMemoryDiagnostic(envelope) || !Array.isArray(envelope.candidates) || envelope.candidates.length === 0)) {
+      noCandidateReasons.push(envelopeReason);
+    }
+    if (isNoReusableMemoryDiagnostic(envelope) && !envelopeReason) {
+      noCandidateReasonMissing = true;
+    }
+    if (!whyOnlyOneCandidate && typeof envelope.whyOnlyOneCandidate === 'string') {
+      whyOnlyOneCandidate = envelope.whyOnlyOneCandidate.trim();
+    }
+  }
+  for (const candidate of candidates) {
+    if (isNoReusableMemoryDiagnostic(candidate)) {
+      const reason = candidateDiagnosticReason(candidate);
+      if (reason) noCandidateReasons.push(reason);
+      else noCandidateReasonMissing = true;
+      continue;
+    }
+    if (!whyOnlyOneCandidate && typeof candidate?.whyOnlyOneCandidate === 'string') {
+      whyOnlyOneCandidate = candidate.whyOnlyOneCandidate.trim();
+    }
+    realCandidates.push(candidate);
+  }
+  return {
+    realCandidates,
+    noCandidateReasons: uniqueNonEmpty(noCandidateReasons),
+    noCandidateReasonMissing,
+    whyOnlyOneCandidate
+  };
+}
+
 function normalizeStringArray(value = []) {
   if (!value) return [];
   if (Array.isArray(value)) return uniqueNonEmpty(value.map((item) => String(item || '').trim()).filter(Boolean));
@@ -2137,6 +2014,27 @@ function requiredCandidateString(raw, fieldName, candidateLabel) {
     throw new Error(`Structured memory candidate ${candidateLabel} is missing required field ${fieldName}.`);
   }
   return value.trim();
+}
+
+function requiredCandidateStringAny(raw, fieldNames, candidateLabel) {
+  for (const fieldName of fieldNames) {
+    const value = raw?.[fieldName];
+    if (typeof value === 'string' && value.trim().length > 0) return value.trim();
+  }
+  throw new Error(`Structured memory candidate ${candidateLabel} is missing required field ${fieldNames.join(' or ')}.`);
+}
+
+function optionalCandidateString(raw, fieldName) {
+  const value = raw?.[fieldName];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function optionalCandidateStringAny(raw, fieldNames) {
+  for (const fieldName of fieldNames) {
+    const value = raw?.[fieldName];
+    if (typeof value === 'string' && value.trim().length > 0) return value.trim();
+  }
+  return '';
 }
 
 function requiredCandidateEnum(raw, fieldName, allowed, candidateLabel) {
@@ -2173,17 +2071,26 @@ function normalizeStructuredMemoryCandidate(rawCandidate, context = {}) {
   const scope = requiredCandidateEnum(raw, 'scope', CANDIDATE_SCOPE_VALUES, candidateLabel);
   const confidence = requiredCandidateEnum(raw, 'confidence', new Set(Object.keys(CONFIDENCE_PRIORITY)), candidateLabel);
   const sourceType = requiredCandidateEnum(raw, 'sourceType', CANDIDATE_SOURCE_TYPE_VALUES, candidateLabel);
-  const title = requiredCandidateString(raw, 'title', candidateLabel);
-  const summary = requiredCandidateString(raw, 'summary', candidateLabel);
-  const displayTitle = requiredCandidateString(raw, 'displayTitle', candidateLabel);
-  const displaySummary = requiredCandidateString(raw, 'displaySummary', candidateLabel);
-  const displayRule = requiredCandidateString(raw, 'displayRule', candidateLabel);
+  const title = requiredCandidateStringAny(raw, ['title', 'canonicalTitle'], candidateLabel);
+  const summary = requiredCandidateStringAny(raw, ['summary', 'canonicalSummary'], candidateLabel);
+  const displayTitle = optionalCandidateString(raw, 'displayTitle');
+  const displaySummary = optionalCandidateString(raw, 'displaySummary');
+  const displayRule = optionalCandidateString(raw, 'displayRule');
+  const displayTextDiagnostics = [
+    displayTitle ? '' : 'displayTitle missing; Wiki will show display text missing diagnostic instead of canonical title.',
+    displaySummary ? '' : 'displaySummary missing; Wiki will show display text missing diagnostic instead of canonical summary.',
+    displayRule ? '' : 'displayRule missing; Wiki will show display text missing diagnostic instead of canonical rule.'
+  ].filter(Boolean);
   const rawPrimaryCategory = requiredCandidateString(raw, 'primaryCategory', candidateLabel);
   const rawStatus = raw.status ? requiredCandidateEnum(raw, 'status', CANDIDATE_STATUS_VALUES, candidateLabel) : 'active';
   const displayLanguage = assertSupportedMemoryLanguageTag(
     requiredCandidateString(raw, 'displayLanguage', candidateLabel),
     'structured candidate displayLanguage'
   );
+  const configuredDisplayLanguage = context.locale ? assertSupportedMemoryLanguageTag(context.locale, 'configured memoryLanguage') : '';
+  const displayLanguageDiagnostics = configuredDisplayLanguage && displayLanguage !== configuredDisplayLanguage
+    ? [`displayLanguage ${displayLanguage} does not match configured memoryLanguage ${configuredDisplayLanguage}; AI Agent must provide display fields in ${configuredDisplayLanguage}.`]
+    : [];
   const primaryCategory = normalizeCategoryDocKeys([rawPrimaryCategory])[0];
   if (!primaryCategory) {
     throw new Error(`Structured memory candidate ${candidateLabel} has invalid primaryCategory: ${rawPrimaryCategory}.`);
@@ -2216,9 +2123,9 @@ function normalizeStructuredMemoryCandidate(rawCandidate, context = {}) {
     scope,
     topic: String(raw.topic || title).trim(),
     title,
-    rule: String(raw.rule || summary).trim(),
+    rule: optionalCandidateString(raw, 'rule'),
     summary,
-    details: String(raw.details || summary).trim(),
+    details: optionalCandidateString(raw, 'details'),
     tags: normalizeStringArray(raw.tags || []),
     domains,
     domain: raw.domain || domains[0] || '',
@@ -2241,7 +2148,7 @@ function normalizeStructuredMemoryCandidate(rawCandidate, context = {}) {
     finalOutcome: normalizeEnum(raw.finalOutcome || raw.final_outcome, FINAL_OUTCOMES, 'unknown'),
     rejectionReason: raw.rejectionReason || '',
     correctionDirection: raw.correctionDirection || '',
-    preventionRule: raw.preventionRule || raw.displayRule || '',
+    preventionRule: optionalCandidateString(raw, 'preventionRule'),
     confidence,
     status: 'pending',
     agentProposedStatus: rawStatus,
@@ -2263,6 +2170,9 @@ function normalizeStructuredMemoryCandidate(rawCandidate, context = {}) {
     displaySummary,
     displayRule,
     displayLanguage,
+    displayTextDiagnostics,
+    displayLanguageDiagnostics,
+    whyOnlyOneCandidate: raw.whyOnlyOneCandidate || '',
     sourceProjectId: raw.sourceProjectId || project.projectId || '',
     projectId: ['project', 'task', 'temporary'].includes(scope)
       ? raw.projectId || project.projectId
@@ -2275,20 +2185,20 @@ function normalizeStructuredMemoryCandidate(rawCandidate, context = {}) {
   };
 
   if (memoryRole === 'user_success_criteria') {
-    candidate.successCriterion = raw.successCriterion || candidate.rule || candidate.summary;
+    candidate.successCriterion = optionalCandidateString(raw, 'successCriterion');
   }
   if (memoryRole === 'ai_failure_memory') {
-    candidate.failureType = raw.failureType || '';
-    candidate.failureCategory = raw.failureCategory || raw.failureType || '';
-    candidate.failedApproach = raw.failedApproach || '';
-    candidate.failureReason = raw.failureReason || candidate.summary;
-    candidate.affectedContext = raw.affectedContext || '';
-    candidate.recurrenceRisk = raw.recurrenceRisk || '';
+    candidate.failureType = optionalCandidateString(raw, 'failureType');
+    candidate.failureCategory = optionalCandidateString(raw, 'failureCategory');
+    candidate.failedApproach = optionalCandidateString(raw, 'failedApproach');
+    candidate.failureReason = optionalCandidateString(raw, 'failureReason');
+    candidate.affectedContext = optionalCandidateString(raw, 'affectedContext');
+    candidate.recurrenceRisk = optionalCandidateString(raw, 'recurrenceRisk');
   }
   if (memoryRole === 'ai_successful_approach') {
-    candidate.successfulApproach = raw.successfulApproach || candidate.summary;
-    candidate.recoveryApproach = raw.recoveryApproach || '';
-    candidate.whyItWorked = raw.whyItWorked || '';
+    candidate.successfulApproach = optionalCandidateString(raw, 'successfulApproach');
+    candidate.recoveryApproach = optionalCandidateString(raw, 'recoveryApproach');
+    candidate.whyItWorked = optionalCandidateString(raw, 'whyItWorked');
     candidate.reuseWhen = raw.reuseWhen || candidate.appliesTo;
   }
 
@@ -2322,7 +2232,8 @@ async function activeMemories(root) {
 }
 
 export async function extractMemoryCandidates(root = process.cwd(), input = {}) {
-  const structuredCandidates = structuredCandidatesFromInput(input);
+  const parsedStructuredCandidates = structuredCandidatesFromInput(input);
+  const { realCandidates: structuredCandidates } = splitCandidateDiagnostics(parsedStructuredCandidates, input);
   if (structuredCandidates.length === 0) {
     return [];
   }
@@ -2412,12 +2323,8 @@ function projectCompatibleForReplacement(memory, candidate) {
 
 function canReplaceMemory(existing, candidate) {
   if (isNonDurableMemoryCandidate(candidate) || isNonDurableMemoryCandidate(existing)) return false;
-  const existingModelClass = existing.modelClass || inferModelClass(existing);
-  const candidateModelClass = candidate.modelClass || inferModelClass(candidate);
-  const existingModelSubClass = existing.modelSubClass || inferModelSubClass(existing);
-  const candidateModelSubClass = candidate.modelSubClass || inferModelSubClass(candidate);
-  if (!valuesCompatible(existingModelClass, candidateModelClass)) return false;
-  if (!valuesCompatible(existingModelSubClass, candidateModelSubClass)) return false;
+  if (!valuesCompatible(existing.modelClass, candidate.modelClass)) return false;
+  if (!valuesCompatible(existing.modelSubClass, candidate.modelSubClass)) return false;
   if (!valuesCompatible(existing.type, candidate.type)) return false;
   if (!valuesCompatible(existing.scope, candidate.scope)) return false;
   if (!domainsCompatible(existing, candidate)) return false;
@@ -2428,9 +2335,7 @@ function canReplaceMemory(existing, candidate) {
 
 function canApplyAgentReplacement(existing, candidate) {
   if (isNonDurableMemoryCandidate(candidate) || isNonDurableMemoryCandidate(existing)) return false;
-  const existingModelClass = existing.modelClass || inferModelClass(existing);
-  const candidateModelClass = candidate.modelClass || inferModelClass(candidate);
-  if (!valuesCompatible(existingModelClass, candidateModelClass)) return false;
+  if (!valuesCompatible(existing.modelClass, candidate.modelClass)) return false;
   if (!valuesCompatible(existing.type, candidate.type)) return false;
   if (!valuesCompatible(existing.scope, candidate.scope)) return false;
   if (!domainsCompatible(existing, candidate)) return false;
@@ -2439,44 +2344,30 @@ function canApplyAgentReplacement(existing, candidate) {
   return true;
 }
 
-function hasOpposingChoice(memory, candidate) {
-  const left = new Set((memory.tags || []).map((tag) => normalizeText(tag)));
-  const right = new Set((candidate.tags || []).map((tag) => normalizeText(tag)));
-  const mutuallyExclusiveGroups = [
-    ['mssql', 'supabase', 'postgresql', 'mysql', 'sqlite'],
-    ['rest', 'graphql', 'grpc'],
-    ['echarts', 'chart.js', 'recharts'],
-    ['tailwind', 'css modules', 'styled-components']
-  ];
-
-  return mutuallyExclusiveGroups.some((group) => {
-    const leftChoices = group.filter((choice) => left.has(choice));
-    const rightChoices = group.filter((choice) => right.has(choice));
-    return leftChoices.length > 0
-      && rightChoices.length > 0
-      && leftChoices.some((choice) => !rightChoices.includes(choice));
-  });
-}
-
-function isMoreSpecific(memory, candidate) {
-  return (candidate.tags || []).length > (memory.tags || []).length
-    || normalizeText(candidate.summary).length > normalizeText(memory.summary).length + 20
-    || (candidate.appliesTo || []).join(' ').length > (memory.appliesTo || []).join(' ').length + 10;
-}
-
 export function classifyCandidateConflict(activeMemoryRecords = [], candidate) {
   const relatedMemories = activeMemoryRecords.filter((memory) => hasTargetOverlap(memory, candidate));
   if (relatedMemories.length === 0) {
     return { status: 'no_conflict', related: [], supersedes: [], reason: '' };
   }
 
-  const candidateText = normalizeText([candidate.rule, candidate.summary, candidate.details].filter(Boolean).join(' '));
   const related = relatedMemories.map((memory) => memory.id);
   const replaceableMemories = relatedMemories.filter((memory) => canReplaceMemory(memory, candidate));
   const replaceable = replaceableMemories.map((memory) => memory.id);
+  const explicitReplacementIds = normalizeStringArray([
+    ...(candidate.replaces || []),
+    ...(candidate.supersedes || [])
+  ]);
+  const explicitConflictIds = normalizeStringArray((candidate.relationCandidates || [])
+    .filter((relation) => relation && relation.type === 'conflicts_with')
+    .flatMap((relation) => [relation.targetId, relation.target]));
+  const explicitReplaceable = replaceable.filter((id) => explicitReplacementIds.includes(id));
+  if (explicitConflictIds.length > 0 && related.every((id) => explicitConflictIds.includes(id))) {
+    return { status: 'no_conflict', related, supersedes: [], reason: 'Agent provided explicit conflict relation for coexisting active memory.' };
+  }
 
   for (const memory of replaceableMemories) {
     const memoryText = normalizeText([memory.rule, memory.summary, memory.details].filter(Boolean).join(' '));
+    const candidateText = normalizeText([candidate.rule, candidate.summary, candidate.details].filter(Boolean).join(' '));
     const sameShape = memory.type === candidate.type && memory.scope === candidate.scope && memory.topic === candidate.topic;
     const sameCore = normalizeText(memory.rule) === normalizeText(candidate.rule)
       || normalizeText(memory.summary) === normalizeText(candidate.summary)
@@ -2486,31 +2377,19 @@ export function classifyCandidateConflict(activeMemoryRecords = [], candidate) {
     }
   }
 
-  if (textHasAny(candidateText, ['except', 'exception', 'unless', 'only when', 'apart from'])) {
-    return { status: 'exception', related, supersedes: [], reason: 'Candidate defines an exception to existing memory.' };
+  if (candidate.activeCondition && typeof candidate.activeCondition === 'object') {
+    return { status: 'exception', related, supersedes: [], reason: 'Agent provided an explicit activeCondition for overlapping memory.' };
   }
 
-  if (textHasAny(candidateText, ['replace', 'supersede', 'supersedes', 'instead of', 'no longer', 'override'])) {
-    if (replaceable.length > 0) {
-      return { status: 'supersedes', related, supersedes: replaceable, reason: 'Candidate explicitly replaces compatible active memory.' };
+  if (explicitReplacementIds.length > 0) {
+    if (explicitReplaceable.length > 0) {
+      return { status: 'supersedes', related, supersedes: explicitReplaceable, reason: 'Agent explicitly requested replacement of compatible active memory.' };
     }
-    if (relatedMemories.some((memory) => hasOpposingChoice(memory, candidate))) {
-      return { status: 'direct_conflict', related, supersedes: [], reason: 'Candidate conflicts with overlapping memory but is outside the safe replacement scope.' };
-    }
-    return { status: 'needs_user_review', related, supersedes: [], reason: 'Candidate asks to replace memory outside the safe model, scope, domain, or project boundary.' };
-  }
-
-  if (relatedMemories.some((memory) => hasOpposingChoice(memory, candidate))) {
-    return { status: 'direct_conflict', related, supersedes: [], reason: 'Candidate points to a different mutually exclusive technology choice.' };
+    return { status: 'needs_user_review', related, supersedes: [], reason: 'Agent requested replacement outside the safe model, scope, domain, or project boundary.' };
   }
 
   if (candidate.confidence === 'low') {
     return { status: 'needs_user_review', related, supersedes: [], reason: 'Low-confidence candidate overlaps existing memory.' };
-  }
-
-  const refinable = replaceableMemories.filter((memory) => hasSameActiveSubject(memory, candidate) && isMoreSpecific(memory, candidate));
-  if (refinable.length > 0) {
-    return { status: 'refinement', related: refinable.map((memory) => memory.id), supersedes: refinable.map((memory) => memory.id), reason: 'Candidate adds a more specific condition to compatible active memory.' };
   }
 
   return { status: 'needs_user_review', related, supersedes: [], reason: 'Candidate overlaps existing memory but relation is ambiguous.' };
@@ -2545,7 +2424,6 @@ function isAcceptedSuccessCandidate(candidate) {
   if (candidate.userFeedbackSignal === 'acceptance') return true;
   if (candidate.acceptanceBasis === 'confirmed' || candidate.successEvidence === 'confirmed') return true;
   if (candidate.acceptanceBasis === 'inferred' || candidate.successEvidence === 'inferred') return true;
-  if (candidate.type === 'agent_success_pattern' && textHasAny(candidate.summary, ['agent succeeded', 'ai succeeded', 'agent success', 'succeeded by', 'successfully handled by'])) return true;
   return false;
 }
 
@@ -2559,23 +2437,7 @@ function isRejectedSuccessCandidate(candidate) {
     );
 }
 
-function hasConcreteFailureOrRecoveryEvidence(candidate = {}) {
-  const source = candidate.source || {};
-  return normalizeEnum(source.userAcceptance, USER_ACCEPTANCE_VALUES, 'unknown') === 'rejected'
-    || normalizeEnum(source.finalOutcome, FINAL_OUTCOMES, 'unknown') === 'technical_success_user_rejected'
-    || normalizeEnum(source.technicalOutcome, TECHNICAL_OUTCOMES, 'unknown') === 'failure'
-    || source.userFeedbackSignal === 'rejection'
-    || ['aftertask', 'event'].includes(source.kind);
-}
-
-function isLatestUserCorrectionCriteria(candidate = {}) {
-  const source = candidate.source || {};
-  return candidate.memoryRole === 'user_success_criteria'
-    && (source.role === 'userFeedback' || textHasAny(candidate.summary, ['latest user success criteria', 'latest success criteria']))
-    && hasConcreteFailureOrRecoveryEvidence(candidate);
-}
-
-function inferAutoCurationDecision(candidate) {
+function computeAutoCurationDecision(candidate) {
   if (containsSensitive(candidate)) {
     return { action: 'quarantine', status: 'quarantined', reason: 'Sensitive value suspected.' };
   }
@@ -2626,21 +2488,6 @@ function inferAutoCurationDecision(candidate) {
   if (['supersedes', 'refinement'].includes(candidate.conflictStatus)) {
     return { action: 'replace', status: 'active', reason: `Candidate ${candidate.conflictStatus} existing active memory.` };
   }
-  if (
-    ['direct_conflict', 'needs_user_review'].includes(candidate.conflictStatus)
-    && isLatestUserCorrectionCriteria(candidate)
-    && ['medium', 'high'].includes(candidate.confidence)
-  ) {
-    return { action: 'active', status: 'active', reason: 'Latest user correction is an active success criterion.' };
-  }
-  if (
-    ['direct_conflict', 'needs_user_review'].includes(candidate.conflictStatus)
-    && ['ai_failure_memory', 'ai_successful_approach'].includes(candidate.memoryRole)
-    && ['medium', 'high'].includes(candidate.confidence)
-    && hasConcreteFailureOrRecoveryEvidence(candidate)
-  ) {
-    return { action: 'active', status: 'active', reason: `${candidate.memoryRole === 'ai_failure_memory' ? 'AI failure memory' : 'AI successful approach'} coexists with user success criteria.` };
-  }
   if (['direct_conflict', 'needs_user_review'].includes(candidate.conflictStatus)) {
     return { action: 'quarantine', status: 'quarantined', reason: `Ambiguous conflict: ${candidate.conflictStatus}.` };
   }
@@ -2679,7 +2526,7 @@ async function markCandidateLifecycle(root, candidateId, decision) {
 async function autoCurateCandidates(root, candidates = []) {
   const curated = [];
   for (const candidate of candidates) {
-    const decision = inferAutoCurationDecision(candidate);
+    const decision = computeAutoCurationDecision(candidate);
     if (decision.status === 'active') {
       curated.push(await approveMemory(root, candidate.id, {
         curationDecision: decision.action,
@@ -2738,6 +2585,9 @@ function toPendingIndexEntry(candidate) {
     supersedes: candidate.supersedes || [],
     replaces: candidate.replaces || [],
     activeCondition: candidate.activeCondition || null,
+    displayTextDiagnostics: candidate.displayTextDiagnostics || [],
+    displayLanguageDiagnostics: candidate.displayLanguageDiagnostics || [],
+    whyOnlyOneCandidate: candidate.whyOnlyOneCandidate || '',
     updatedAt: candidate.updatedAt
   };
 }
@@ -2771,8 +2621,8 @@ function toMemoryIndexEntry(memory) {
     rule: memory.rule,
     summary: memory.summary,
     details: memory.details,
-    modelClass: memory.modelClass || inferModelClass(memory),
-    modelSubClass: memory.modelSubClass || inferModelSubClass(memory),
+    modelClass: memory.modelClass || '',
+    modelSubClass: memory.modelSubClass || '',
     memoryRole: memory.memoryRole,
     successCriterion: memory.successCriterion,
     docKey: memory.docKey || docKeyForType(memory.type),
@@ -2841,7 +2691,10 @@ function toMemoryIndexEntry(memory) {
     displayTitle: memory.displayTitle,
     displaySummary: memory.displaySummary,
     displayRule: memory.displayRule,
-    displayLanguage: memory.displayLanguage
+    displayLanguage: memory.displayLanguage,
+    displayTextDiagnostics: memory.displayTextDiagnostics || [],
+    displayLanguageDiagnostics: memory.displayLanguageDiagnostics || [],
+    whyOnlyOneCandidate: memory.whyOnlyOneCandidate || ''
   };
 }
 
@@ -3018,11 +2871,10 @@ export async function approveMemory(root = process.cwd(), candidateId, options =
     updatedAt: timestamp
   };
   if (!isAgentStructuredCandidate(memory)) {
-    normalizeCandidateModel(memory);
+    normalizeCandidateStructure(memory);
   } else {
     memory.docKey = memory.docKey || docKeyForType(memory.type);
   }
-  applyMemoryRoleFields(memory, memory.summary || memory.rule || memory.details || '', memory.source || {});
   memory = normalizeMemoryLanguage(memory, memoryLanguage, memoryLocale);
   const replaceIds = replacementIdsForMemory(memory, memoryIndex.memories);
   memory.replaces = [...new Set([...(memory.replaces || []), ...replaceIds])];
@@ -3223,7 +3075,6 @@ function addDerivedMemoryRelations(relationIndex, memory, activeMemories) {
       && (
         hasTargetOverlap(item, memory)
         || setOverlap(item.tags || [], memory.tags || []) >= 1
-        || (textHasAny(item.summary, ['scroll', 'overflow', 'layout']) && textHasAny(memory.summary, ['scroll', 'wrapper', 'layout']))
       )
     ))) {
       addRelation(relationIndex, {
@@ -3468,6 +3319,7 @@ const WIKI_DISPLAY_TEXT = {
     recentActiveMemory: 'Recent Active Memory',
     storage: 'Storage',
     memoryNote: 'Memory note',
+    displayTextMissing: 'display text missing',
     projectSection: 'Project',
     activePatternGraph: 'Active Pattern Graph',
     projectId: 'Project ID',
@@ -3506,6 +3358,7 @@ const WIKI_DISPLAY_TEXT = {
     recentActiveMemory: '\uCD5C\uADFC \uD65C\uC131 \uBA54\uBAA8\uB9AC',
     storage: '\uC800\uC7A5\uC18C',
     memoryNote: '\uBA54\uBAA8\uB9AC \uB178\uD2B8',
+    displayTextMissing: '\uD45C\uC2DC \uBB38\uAD6C \uB204\uB77D',
     projectSection: '\uD504\uB85C\uC81D\uD2B8',
     activePatternGraph: '\uD65C\uC131 \uD328\uD134 \uADF8\uB798\uD504',
     projectId: '\uD504\uB85C\uC81D\uD2B8 ID',
@@ -3801,32 +3654,39 @@ function localizeWikiDisplayText(text, locale = 'en-US') {
   return value.trim();
 }
 
+function memoryDisplayLanguageMatches(memory, locale = 'en-US') {
+  if (!memory.displayLanguage) return false;
+  try {
+    return assertSupportedMemoryLanguageTag(memory.displayLanguage, 'memory displayLanguage') === assertSupportedMemoryLanguageTag(locale, 'wiki locale');
+  } catch {
+    return false;
+  }
+}
+
 function memoryDisplayTitle(memory, locale = 'en-US') {
-  if (memory.displayTitle) return stripVisibleMemoryIds(memory.displayTitle).trim();
-  const role = memory.memoryRole || '';
-  if (role === 'user_success_criteria') return wd(locale, 'userSuccessCriteria');
-  if (role === 'ai_failure_memory') return wd(locale, 'aiFailureMemory');
-  if (role === 'ai_successful_approach') return wd(locale, 'aiSuccessfulApproach');
-  if (role === 'task_context') return wd(locale, 'taskContext');
-  if (role === 'discarded_detail') return wd(locale, 'discardedDetail');
-  return localizedDocTitle(memory.docKey || docKeyForType(memory.type), locale);
+  if (memory.displayTitle && memoryDisplayLanguageMatches(memory, locale)) return stripVisibleMemoryIds(memory.displayTitle).trim();
+  return wd(locale, 'displayTextMissing');
 }
 
 function memoryDisplaySummary(memory, locale = 'en-US') {
-  const value = memory.displaySummary || memory.summary || memory.rule || memory.preferredBehavior || memory.details || memory.title || memory.id;
+  if (memory.displaySummary && memoryDisplayLanguageMatches(memory, locale)) return localizeWikiDisplayText(memory.displaySummary, locale);
+  const diagnostic = wd(locale, 'displayTextMissing');
+  const value = diagnostic || 'display text missing';
   const language = wikiDisplayLanguage(locale);
   if (!['en', 'ko'].includes(language)) {
-    if (memory.displaySummary) return stripVisibleMemoryIds(memory.displaySummary).trim();
     const generic = localizedGenericText(locale, memory.memoryRole || memory.type);
     const topic = stripVisibleMemoryIds(memory.topic || '').trim();
-    return [generic || wd(locale, 'memoryNote'), topic && !hasHangul(topic) ? `(${topic})` : ''].filter(Boolean).join(' ');
+    return [value, generic || wd(locale, 'memoryNote'), topic && !hasHangul(topic) ? `(${topic})` : ''].filter(Boolean).join(' ');
   }
   return localizeWikiDisplayText(value, locale);
 }
 
 function memoryDisplayField(memory, field, locale = 'en-US', fallback = '') {
-  if (field === 'rule' && memory.displayRule) return stripVisibleMemoryIds(memory.displayRule).trim();
-  if (field === 'preventionRule' && memory.displayRule) return stripVisibleMemoryIds(memory.displayRule).trim();
+  if (field === 'rule' && memory.displayRule && memoryDisplayLanguageMatches(memory, locale)) return stripVisibleMemoryIds(memory.displayRule).trim();
+  if (field === 'preventionRule' && memory.displayRule && memoryDisplayLanguageMatches(memory, locale)) return stripVisibleMemoryIds(memory.displayRule).trim();
+  if (['rule', 'preventionRule', 'preferredBehavior', 'forbiddenAction', 'decision', 'recoveryApproach', 'successfulApproach'].includes(field)) {
+    return localizeWikiDisplayText(wd(locale, 'displayTextMissing'), locale);
+  }
   return localizeWikiDisplayText(memory[field] || fallback, locale);
 }
 
@@ -3890,7 +3750,9 @@ function memoryCategoryFolder(memory, locale = 'en-US') {
 }
 
 function memoryNoteTitle(memory, locale = 'en-US') {
-  const display = stripVisibleMemoryIds(memory.displayTitle || memory.title || memory.displaySummary || memory.summary || memory.topic || memoryDisplayTitle(memory, locale))
+  const display = stripVisibleMemoryIds(memory.displayTitle && memoryDisplayLanguageMatches(memory, locale)
+    ? memory.displayTitle
+    : memoryDisplayTitle(memory, locale))
     .replace(/\s+/gu, ' ')
     .trim()
     .slice(0, 56) || memoryDisplayTitle(memory, locale);
@@ -4159,8 +4021,8 @@ function renderMemoryMarkdown(memory, locale = 'en-US', notePathMap = null) {
   const lines = [
     `## ${wikiLinkForMemory(memory, locale, note.title, notePathMap)}`,
     '',
-    `- ${t(locale, 'modelClass')}: \`${memory.modelClass || inferModelClass(memory)}\``,
-    `- ${t(locale, 'modelSubClass')}: \`${memory.modelSubClass || inferModelSubClass(memory)}\``,
+    `- ${t(locale, 'modelClass')}: \`${memory.modelClass || t(locale, 'notSpecified')}\``,
+    `- ${t(locale, 'modelSubClass')}: \`${memory.modelSubClass || t(locale, 'notSpecified')}\``,
     `- ${t(locale, 'scopeLabel')}: \`${memory.scope}\``,
     `- ${t(locale, 'confidenceLabel')}: \`${memory.confidence}\``,
     `- ${t(locale, 'topicLabel')}: ${topicConcept ? conceptWikiLink(topicConcept, locale) : memory.topic}`,
@@ -4226,8 +4088,8 @@ function memoryNoteFrontmatter(memory, note, locale = 'en-US') {
     `id: ${yamlScalar(memory.id)}`,
     `memoryRole: ${yamlScalar(memory.memoryRole || '')}`,
     `type: ${yamlScalar(memory.type || '')}`,
-    `modelClass: ${yamlScalar(memory.modelClass || inferModelClass(memory))}`,
-    `modelSubClass: ${yamlScalar(memory.modelSubClass || inferModelSubClass(memory))}`,
+    `modelClass: ${yamlScalar(memory.modelClass || '')}`,
+    `modelSubClass: ${yamlScalar(memory.modelSubClass || '')}`,
     `scope: ${yamlScalar(memory.scope || '')}`,
     `sourceProjectId: ${yamlScalar(memory.sourceProjectId || '')}`,
     `projectId: ${yamlScalar(memory.projectId || '')}`,
@@ -4497,10 +4359,6 @@ function scoreMemoryDetailed(memory, task, config = {}) {
     score += 18;
     matchScore += 18;
   }
-  if (memory.memoryRole === 'user_success_criteria' && textHasAny(memory.summary, ['latest user success criteria', 'latest success criteria'])) {
-    score += 45;
-    matchScore += 12;
-  }
   if (memory.scope === 'project' && memory.projectId && memory.projectId === config.projectId) score += 25;
   if (memory.scope === 'project') score += 16;
   if (memory.scope === 'global') score -= 6;
@@ -4582,7 +4440,7 @@ function memoryMatchesTaskDomain(memory, taskContext = {}, projectId = null) {
   if (taskDomains.length === 0) return true;
   const memoryDomains = memory.domains || [];
   if (memoryDomains.length === 0) return true;
-  const domainScoped = memory.scope === 'domain' || (memory.modelClass || inferModelClass(memory)) === 'domain_model';
+  const domainScoped = memory.scope === 'domain' || memory.modelClass === 'domain_model';
   if (!domainScoped) return true;
   if (setOverlap(memory.tags || [], taskTags) > 0) return true;
   if (memory.topic && normalizeText(task).includes(normalizeText(memory.topic))) return true;
@@ -4697,7 +4555,7 @@ function formatMemoryLine(memory, options = {}) {
   const locale = options.locale || 'en-US';
   const details = [];
   if (['failure_memory', 'agent_failure_pattern'].includes(memory.type) && memory.preventionRule) {
-    details.push(`${t(locale, 'prevention')}: ${localizeWikiDisplayText(memory.preventionRule, locale)}`);
+    details.push(`${t(locale, 'prevention')}: ${memoryDisplayField(memory, 'preventionRule', locale)}`);
     if (memory.affectedContext) {
       details.push(`Context: ${localizeWikiDisplayText(memory.affectedContext, locale)}`);
     }
@@ -4706,24 +4564,23 @@ function formatMemoryLine(memory, options = {}) {
       && (
         hasTargetOverlap(memory, candidate)
         || setOverlap(memory.tags || [], candidate.tags || []) >= 1
-        || (textHasAny(memory.summary, ['scroll', 'overflow', 'layout']) && textHasAny(candidate.summary, ['scroll', 'wrapper', 'layout']))
       )
     ));
     if (alternative) {
-      details.push(`${t(locale, 'alternative')}: ${localizeWikiDisplayText(alternative.summary, locale)}`);
+      details.push(`${t(locale, 'alternative')}: ${memoryDisplaySummary(alternative, locale)}`);
     }
   }
   if (memory.type === 'success_pattern' && (memory.reuseWhen || []).length > 0) {
-    details.push(`Reuse when: ${localizeWikiDisplayText((memory.reuseWhen || []).join(', '), locale)}`);
+    details.push(`Reuse when: ${memoryDisplayField(memory, 'rule', locale)}`);
   }
   if (memory.type === 'agent_success_pattern' && memory.recoveryApproach) {
-    details.push(`Recovery: ${localizeWikiDisplayText(memory.recoveryApproach, locale)}`);
+    details.push(`Recovery: ${memoryDisplayField(memory, 'recoveryApproach', locale)}`);
   }
   if (memory.patternType && memory.preferredBehavior && memory.preferredBehavior !== memory.summary) {
-    details.push(`${t(locale, 'guidanceForAgent')}: ${localizeWikiDisplayText(memory.preferredBehavior, locale)}`);
+    details.push(`${t(locale, 'guidanceForAgent')}: ${memoryDisplayField(memory, 'preferredBehavior', locale)}`);
   }
   const detailText = details.length > 0 ? ` ${details.join(' ')}` : '';
-  return `- ${memory.confidence === 'low' ? '[low confidence] ' : ''}${localizeWikiDisplayText(memory.summary, locale)}${detailText} [${memory.id}; ${memory.scope}; ${memory.confidence}]`;
+  return `- ${memory.confidence === 'low' ? '[low confidence] ' : ''}${memoryDisplaySummary(memory, locale)}${detailText} [${memory.id}; ${memory.scope}; ${memory.confidence}]`;
 }
 
 function renderContextSection(title, memories, options = {}) {
@@ -4738,34 +4595,28 @@ function renderContextSection(title, memories, options = {}) {
 function renderConflictSection(conflicts, locale = 'en-US') {
   return [
     `${t(locale, 'potentialConflicts')}:`,
-    ...(conflicts.length > 0 ? conflicts.map((candidate) => `- ${candidate.summary} [${candidate.id}; ${candidate.conflictStatus || 'active_conflict'}; ${candidate.confidence || 'medium'}]`) : [`- ${t(locale, 'none')}`]),
+    ...(conflicts.length > 0 ? conflicts.map((candidate) => `- ${memoryDisplaySummary(candidate, locale)} [${candidate.id}; ${candidate.conflictStatus || 'active_conflict'}; ${candidate.confidence || 'medium'}]`) : [`- ${t(locale, 'none')}`]),
     ''
   ].join('\n');
 }
 
 function findActiveMemoryConflicts(memories) {
-  const conflicts = [];
-  for (let leftIndex = 0; leftIndex < memories.length; leftIndex += 1) {
-    for (let rightIndex = leftIndex + 1; rightIndex < memories.length; rightIndex += 1) {
-      const left = memories[leftIndex];
-      const right = memories[rightIndex];
-      const scopePair = new Set([left.scope, right.scope]);
-      if (!scopePair.has('project') || left.scope === right.scope) continue;
-      if (!hasTargetOverlap(left, right) || !hasOpposingChoice(left, right)) continue;
-      const projectMemory = left.scope === 'project' ? left : right;
-      const broaderMemory = left.scope === 'project' ? right : left;
-      conflicts.push({
-        id: `${projectMemory.id}_vs_${broaderMemory.id}`,
-        summary: `Project memory "${projectMemory.summary}" conflicts with broader memory "${broaderMemory.summary}". Follow current user request and verify repository reality.`,
-        conflictStatus: 'direct_conflict',
-        confidence: projectMemory.confidence,
-        related: [projectMemory.id, broaderMemory.id],
-        broaderMemoryId: broaderMemory.id,
-        projectMemoryId: projectMemory.id
-      });
-    }
-  }
-  return conflicts;
+  return memories
+    .flatMap((memory) => (memory.relationCandidates || [])
+      .filter((relation) => relation && relation.type === 'conflicts_with' && relation.targetId)
+      .map((relation) => ({
+        id: `${memory.id}_vs_${relation.targetId}`,
+        summary: relation.summary || relation.reason || 'Agent-provided memory conflict relation.',
+        displayTitle: relation.displayTitle || '',
+        displaySummary: relation.displaySummary || relation.summary || relation.reason || '',
+        displayRule: relation.displayRule || '',
+        displayLanguage: relation.displayLanguage || memory.displayLanguage || '',
+        conflictStatus: 'agent_conflict_relation',
+        confidence: memory.confidence,
+        related: [memory.id, relation.targetId],
+        projectMemoryId: memory.id,
+        broaderMemoryId: relation.targetId
+      })));
 }
 
 export async function generatePreTaskBrief(root = process.cwd(), input = {}) {
@@ -4896,17 +4747,33 @@ function hasExecutionFailureSignal(input = {}, event = {}) {
 export async function afterTask(root = process.cwd(), input = {}) {
   await initVibeBox(root);
   const userRequestText = input.userRequest || input.request || '';
-  const structuredCandidates = structuredCandidatesFromInput(input);
+  const parsedStructuredCandidates = structuredCandidatesFromInput(input);
+  const candidateDiagnostics = splitCandidateDiagnostics(parsedStructuredCandidates, input);
+  const structuredCandidates = candidateDiagnostics.realCandidates;
   const hasStructuredCandidates = structuredCandidates.length > 0;
+  const noCandidateReason = candidateDiagnostics.noCandidateReasons.join('; ');
+  const hasNoReusableMemoryReason = Boolean(noCandidateReason);
+  const noCandidateReasonMissing = candidateDiagnostics.noCandidateReasonMissing;
+  const whyOnlyOneCandidate = candidateDiagnostics.whyOnlyOneCandidate;
   const hasRawActionSummary = Boolean(input.aiActionSummary || input.summary);
   const failureEvidencePresent = hasExecutionFailureSignal(input, {});
+  const candidateContractWarning = hasStructuredCandidates
+    && userRequestText.trim()
+    && structuredCandidates.length === 1
+    && !whyOnlyOneCandidate
+    ? 'structured candidate contract warning: userRequest was captured with exactly one structured memory candidate, but whyOnlyOneCandidate is missing.'
+    : '';
   const semanticExtractionWarning = hasStructuredCandidates
-    ? ''
+    ? candidateContractWarning
+    : hasNoReusableMemoryReason
+      ? ''
+    : noCandidateReasonMissing
+      ? 'no_reusable_memory_candidate is missing noCandidateReason'
     : userRequestText.trim()
-      ? 'userRequest present but agent semantic candidates missing'
+      ? 'userRequest present but structured memory candidates missing'
       : hasRawActionSummary || failureEvidencePresent
-        ? 'agent semantic candidates missing; raw event preserved only'
-        : 'agent semantic candidates missing';
+        ? 'structured memory candidates missing; raw event preserved only'
+        : 'structured memory candidates missing';
   const event = await captureEvent(root, {
     eventType: 'task_summary',
     userRequest: userRequestText,
@@ -4922,18 +4789,46 @@ export async function afterTask(root = process.cwd(), input = {}) {
     technicalOutcome: input.technicalOutcome || input.technical_outcome,
     userAcceptance: input.userAcceptance || input.user_acceptance,
     finalOutcome: input.finalOutcome || input.final_outcome,
-    semanticExtractionStatus: hasStructuredCandidates ? 'agent_candidates_provided' : 'missing_agent_candidates',
+    semanticExtractionStatus: hasStructuredCandidates
+      ? 'agent_candidates_provided'
+      : hasNoReusableMemoryReason
+        ? 'no_reusable_memory_candidate'
+        : 'missing_agent_candidates',
     structuredCandidateCount: structuredCandidates.length,
     semanticExtractionWarning,
+    noCandidateReason,
+    noCandidateReasons: candidateDiagnostics.noCandidateReasons,
+    noCandidateReasonMissing,
+    whyOnlyOneCandidate,
+    candidateContractWarning,
     notes: input.notes || ''
   });
 
   const hasFailureWithoutRequest = hasExecutionFailureSignal(input, event);
+  if (!hasStructuredCandidates && (hasNoReusableMemoryReason || noCandidateReasonMissing)) {
+    return {
+      event,
+      candidates: [],
+      message: [
+        `Captured blackbox event ${event.id}.`,
+        hasNoReusableMemoryReason
+          ? `No reusable memory candidate reason recorded: ${noCandidateReason}`
+          : 'Warning: no_reusable_memory_candidate was provided without noCandidateReason.',
+        'No active memory was created.',
+        'VibeBox Core did not semantically interpret userRequest, action summaries, command output, or raw evidence.',
+        hasFailureWithoutRequest
+          ? 'Command/tool/environment failure evidence was preserved as raw event evidence; active AI failure memory requires an agent structured candidate.'
+          : '',
+        'Use `vibebox review` only for manual debug or override workflows.'
+      ].filter(Boolean).join('\n')
+    };
+  }
+
   if (!hasStructuredCandidates) {
     const warnings = [
       userRequestText.trim()
         ? 'Warning: userRequest is present, but structured memory candidates are missing.'
-        : 'Warning: agent semantic candidates missing; no active memory was created.',
+        : 'Warning: structured memory candidates missing; no active memory was created.',
       userRequestText.trim()
         ? 'VibeBox Core does not semantically interpret userRequest, headings, bullets, keywords, or action summaries.'
         : 'VibeBox Core does not semantically interpret action summaries, command output, or raw evidence.',
@@ -4944,7 +4839,8 @@ export async function afterTask(root = process.cwd(), input = {}) {
       hasRawActionSummary && !userRequestText.trim()
         ? 'AI action summary alone is raw evidence only and cannot create active memory.'
         : '',
-      'The AI Agent must provide a Structured memory candidates JSON block for reusable memory, including explicit memoryRole, type, modelClass, scope, primaryCategory, relatedCategories, localized display fields, evidence, confidence, and sourceType.'
+      'The AI Agent must provide a Structured memory candidates JSON block for reusable memory, including explicit memoryRole, type, modelClass, scope, primaryCategory, relatedCategories, localized display fields, evidence, confidence, and sourceType.',
+      'If no reusable memory exists, include an explicit no_reusable_memory_candidate item with noCandidateReason.'
     ].filter(Boolean);
     return {
       event,
@@ -4988,6 +4884,8 @@ export async function afterTask(root = process.cwd(), input = {}) {
     candidates,
     message: [
       `Captured blackbox event ${event.id}.`,
+      candidateContractWarning ? `Warning: ${candidateContractWarning}` : '',
+      whyOnlyOneCandidate && structuredCandidates.length === 1 ? `One-candidate contract note: reason provided by AI Agent: ${whyOnlyOneCandidate}` : '',
       demotedSuccessIds.length > 0 ? `Demoted rejected AI success memor${demotedSuccessIds.length === 1 ? 'y' : 'ies'}: ${demotedSuccessIds.join(', ')}.` : '',
       summary,
       input.manualReview || input.reviewOnly || input.debugReview
@@ -5017,33 +4915,52 @@ export async function generateReport(root = process.cwd(), input = {}) {
     `${t(locale, 'activeMemory')}: ${active.length}`,
     `${t(locale, 'pendingCandidates')}: ${visiblePending.length}`,
     `${t(locale, 'recentBlackboxEvents')}: ${events.length}`,
+    renderCandidateDiagnostics(t(locale, 'candidateDiagnostics'), t(locale, 'noReusableMemoryCandidate'), events),
     '',
-    renderReportType(t(locale, 'relevantUserPreferences'), active, ['user_preference', 'coding_style', 'design_preference', 'response_preference', 'communication_pattern']),
-    renderReportType(t(locale, 'relevantValidationPatterns'), active, ['validation_pattern']),
-    renderReportType(t(locale, 'relevantProcessPatterns'), active, ['process_pattern', 'handoff_pattern']),
-    renderReportType(t(locale, 'relevantDesignPhilosophy'), active, ['design_philosophy']),
-    renderReportType(t(locale, 'relevantProjectDecisions'), active, ['project_decision', 'decision_pattern']),
-    renderReportType(t(locale, 'relevantArchitectureRules'), active, ['architecture_rule']),
-    renderReportType(t(locale, 'relevantAvoidRules'), active, ['avoid_rule']),
-    renderReportType(t(locale, 'relevantFailureMemory'), active, ['failure_memory', 'agent_failure_pattern']),
-    renderReportType(t(locale, 'relevantSuccessPatterns'), active, ['success_pattern', 'agent_success_pattern']),
-    renderReportType(t(locale, 'pageToolingPreferences'), active, ['tooling_preference', 'technology_preference']),
-    renderReportType(t(locale, 'pageWorkflowRules'), active, ['workflow_rule']),
+    renderReportType(t(locale, 'relevantUserPreferences'), active, ['user_preference', 'coding_style', 'design_preference', 'response_preference', 'communication_pattern'], locale),
+    renderReportType(t(locale, 'relevantValidationPatterns'), active, ['validation_pattern'], locale),
+    renderReportType(t(locale, 'relevantProcessPatterns'), active, ['process_pattern', 'handoff_pattern'], locale),
+    renderReportType(t(locale, 'relevantDesignPhilosophy'), active, ['design_philosophy'], locale),
+    renderReportType(t(locale, 'relevantProjectDecisions'), active, ['project_decision', 'decision_pattern'], locale),
+    renderReportType(t(locale, 'relevantArchitectureRules'), active, ['architecture_rule'], locale),
+    renderReportType(t(locale, 'relevantAvoidRules'), active, ['avoid_rule'], locale),
+    renderReportType(t(locale, 'relevantFailureMemory'), active, ['failure_memory', 'agent_failure_pattern'], locale),
+    renderReportType(t(locale, 'relevantSuccessPatterns'), active, ['success_pattern', 'agent_success_pattern'], locale),
+    renderReportType(t(locale, 'pageToolingPreferences'), active, ['tooling_preference', 'technology_preference'], locale),
+    renderReportType(t(locale, 'pageWorkflowRules'), active, ['workflow_rule'], locale),
     `${t(locale, 'pendingCandidates')}:`,
-    ...(visiblePending.slice(0, 12).map((candidate) => `- ${candidate.id} ${candidate.type}/${candidate.scope}: ${candidate.summary} [${candidate.conflictStatus}; ${candidate.recommendedAction || recommendCandidateAction(candidate).action}]`) || []),
+    ...(visiblePending.slice(0, 12).map((candidate) => `- ${candidate.id} ${candidate.type}/${candidate.scope}: ${memoryDisplaySummary(candidate, locale)} [${candidate.conflictStatus}; ${candidate.recommendedAction || recommendCandidateAction(candidate).action}]`) || []),
     visiblePending.length === 0 ? `- ${t(locale, 'none')}` : '',
     '',
     `${t(locale, 'potentialConflicts')}:`,
-    ...(conflicts.length > 0 ? conflicts.map((candidate) => `- ${candidate.id}: ${candidate.summary} [${candidate.conflictStatus}]`) : [`- ${t(locale, 'none')}`])
+    ...(conflicts.length > 0 ? conflicts.map((candidate) => `- ${candidate.id}: ${memoryDisplaySummary(candidate, locale)} [${candidate.conflictStatus}]`) : [`- ${t(locale, 'none')}`])
   ].filter((line) => line !== '').join('\n'));
 }
 
-function renderReportType(title, memories, types) {
+function renderReportType(title, memories, types, locale = 'en-US') {
   const selected = memories.filter((memory) => types.includes(memory.type));
   return [
     `${title}:`,
-    ...(selected.length > 0 ? selected.map((memory) => `- ${memory.summary} [${memory.id}; ${memory.scope}; ${memory.confidence}]`) : ['- None.']),
+    ...(selected.length > 0 ? selected.map((memory) => `- ${memoryDisplaySummary(memory, locale)} [${memory.id}; ${memory.scope}; ${memory.confidence}]`) : ['- None.']),
     ''
+  ].join('\n');
+}
+
+function renderCandidateDiagnostics(title, noReusableLabel, events = []) {
+  const diagnosticEvents = events.filter((event) => event.noCandidateReason || event.noCandidateReasonMissing || event.candidateContractWarning);
+  return [
+    `${title}:`,
+    ...(diagnosticEvents.length > 0
+      ? diagnosticEvents.slice(-8).map((event) => {
+        if (event.noCandidateReason) {
+          return `- ${event.createdAt}: ${noReusableLabel}: ${event.noCandidateReason}`;
+        }
+        if (event.noCandidateReasonMissing) {
+          return `- ${event.createdAt}: no_reusable_memory_candidate is missing noCandidateReason`;
+        }
+        return `- ${event.createdAt}: ${event.candidateContractWarning}`;
+      })
+      : ['- None.'])
   ].join('\n');
 }
 
@@ -5079,11 +4996,11 @@ export async function generateBlackboxReport(root = process.cwd(), input = {}) {
     ...reportEventApproaches(events, 'success', locale),
     '',
     `${t(locale, 'rejectedDirections')}:`,
-    ...events.filter((event) => textHasAny(event.userFeedback || '', ['reject', 'rejected', 'instead'])).map((event) => `- ${event.userFeedback}`),
-    events.some((event) => textHasAny(event.userFeedback || '', ['reject', 'rejected', 'instead'])) ? '' : `- ${t(locale, 'none')}`,
+    ...events.filter((event) => event.userFeedbackSignal === 'rejection').map((event) => `- ${event.userFeedback || event.id}`),
+    events.some((event) => event.userFeedbackSignal === 'rejection') ? '' : `- ${t(locale, 'none')}`,
     '',
     `${t(locale, 'confirmedDecisions')}:`,
-    ...(active.filter((memory) => memory.type === 'project_decision').map((memory) => `- ${memory.summary}`) || []),
+    ...(active.filter((memory) => memory.type === 'project_decision').map((memory) => `- ${memoryDisplaySummary(memory, locale)}`) || []),
     active.some((memory) => memory.type === 'project_decision') ? '' : `- ${t(locale, 'none')}`,
     '',
     `${t(locale, 'recurringFailureTypes')}:`,
@@ -5093,7 +5010,7 @@ export async function generateBlackboxReport(root = process.cwd(), input = {}) {
     ...formatCounts(changedFiles, locale),
     '',
     `${t(locale, 'preventionRules')}:`,
-    ...(active.filter((memory) => ['failure_memory', 'avoid_rule', 'agent_failure_pattern'].includes(memory.type)).map((memory) => `- ${memory.preventionRule || memory.forbiddenAction || memory.summary}`) || []),
+    ...(active.filter((memory) => ['failure_memory', 'avoid_rule', 'agent_failure_pattern'].includes(memory.type)).map((memory) => `- ${memoryDisplayField(memory, 'preventionRule', locale)}`) || []),
     active.some((memory) => ['failure_memory', 'avoid_rule', 'agent_failure_pattern'].includes(memory.type)) ? '' : `- ${t(locale, 'none')}`
   ].filter((line) => line !== '').join('\n'));
 }
@@ -5196,7 +5113,13 @@ export async function restoreVibeBox(root = process.cwd(), options = {}) {
 function normalizeMemoryLanguage(memory, targetLanguage, locale) {
   const normalized = { ...memory };
   normalized.docKey = normalized.docKey || docKeyForType(normalized.type);
-  normalized.displayLanguage = normalizeConfigLanguageTag(locale || targetLanguage, 'en-US');
+  const targetLocale = normalizeConfigLanguageTag(locale || targetLanguage, 'en-US');
+  if (normalized.displayLanguage && normalized.displayLanguage !== targetLocale) {
+    normalized.displayLanguageDiagnostics = uniqueNonEmpty([
+      ...(normalized.displayLanguageDiagnostics || []),
+      `displayLanguage ${normalized.displayLanguage} does not match configured memoryLanguage ${targetLocale}; AI Agent must provide display fields in ${targetLocale}.`
+    ]);
+  }
   normalized.updatedAt = nowIso();
   return normalized;
 }
@@ -5266,8 +5189,8 @@ async function applyLocalizedDisplayCandidates(root, targetLocale, localizedCand
     if (displayLanguage !== targetLocale) {
       throw new Error(`localized display candidate ${id} uses ${displayLanguage}, expected ${targetLocale}.`);
     }
-    if (!(raw.displayTitle || raw.displaySummary || raw.displayRule || raw.fileTitle)) {
-      throw new Error(`localized display candidate ${id} must include displayTitle, displaySummary, displayRule, or fileTitle.`);
+    if (!(raw.displayTitle || raw.fileTitle) || !raw.displaySummary || !raw.displayRule) {
+      throw new Error(`localized display candidate ${id} must include displayTitle or fileTitle, plus displaySummary and displayRule.`);
     }
     localizedById.set(id, raw);
   }
@@ -5282,9 +5205,9 @@ async function applyLocalizedDisplayCandidates(root, targetLocale, localizedCand
     if (!localized) return memory;
     return {
       ...memory,
-      displayTitle: localized.displayTitle || localized.fileTitle || memory.displayTitle || '',
-      displaySummary: localized.displaySummary || memory.displaySummary || '',
-      displayRule: localized.displayRule || memory.displayRule || '',
+      displayTitle: localized.displayTitle || localized.fileTitle,
+      displaySummary: localized.displaySummary,
+      displayRule: localized.displayRule,
       displayLanguage: targetLocale,
       updatedAt: nowIso()
     };
@@ -5379,7 +5302,7 @@ export async function rebuildVibeBox(root = process.cwd(), options = {}) {
   const memoryIndex = await loadJson(memoryIndexPath, defaultMemoryIndex());
   memoryIndex.memories = (memoryIndex.memories || [])
     .filter((memory) => memory.status === 'active')
-    .map((memory) => toMemoryIndexEntry(normalizeCandidateModel(memory)));
+    .map((memory) => toMemoryIndexEntry(memory));
   memoryIndex.updatedAt = nowIso();
   await saveJson(memoryIndexPath, memoryIndex);
   await rebuildIndexes(root, { syncNamespaceFiles: semantic });

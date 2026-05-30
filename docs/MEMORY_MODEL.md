@@ -63,7 +63,9 @@ Task Context and Discarded Detail do not become normal active guidance. Current 
 
 User instructions and corrections can become active success criteria before any result exists. User dissatisfaction does not mean the user failed; it means the AI result missed the user's criteria and should become AI failure memory, correction guidance, or a more precise active success criteria.
 
-Structured user requests are decomposed by the AI agent, not by Core. Headings, bullets, reference/baseline statements, consistency requirements, validation or preservation requirements, scope limits, and target lists may inform the agent's structured candidates, but Core does not infer meaning from those shapes. If `userRequest` exists without structured candidates, Core emits a missing semantic-candidate warning and creates no active user memory.
+Structured user requests are decomposed by the AI agent, not by Core. Headings, bullets, reference/baseline statements, consistency requirements, validation or preservation requirements, reporting requirements, scope limits, avoid rules, and target lists may inform the agent's structured candidates, but Core does not infer meaning from those shapes. If `userRequest` exists without structured candidates, Core emits a missing semantic-candidate warning and creates no active user memory.
+
+Candidate breadth should be rich enough to preserve distinct reusable meaning. Agents should explicitly consider user success criteria, validation patterns, response preferences, process patterns, design philosophy, decision patterns, prevention/avoid rules, AI failure memory, AI successful approaches, task context, and discarded details. If a complex `userRequest` is represented by only one candidate, the candidate set should include `whyOnlyOneCandidate`. If no reusable memory exists, submit a `no_reusable_memory_candidate` diagnostic with `noCandidateReason`; Core records the diagnostic and creates no active memory.
 
 `aiActionSummary` is raw evidence only unless the AI agent submits a structured `ai_successful_approach` or other candidate. Command, permission, environment, path, API, browser, and tool failure evidence is preserved in raw events, but active `ai_failure_memory` requires an agent-provided candidate.
 
@@ -127,7 +129,7 @@ New candidates are compared with active memory and marked as:
 - `supersedes`
 - `needs_user_review`
 
-The Auto Curator uses these statuses to decide whether a candidate can become active, should replace an active record, should be discarded as noise, or should be quarantined for manual inspection. `approve --safe` is a manual/debug helper and skips anything that needs explicit review.
+The Auto Curator applies these explicit statuses with schema, dedupe, replacement-safety, relation, index, and integrity checks before routing a candidate to active memory, replacement, discard, or quarantine. `approve --safe` is a manual/debug helper and skips anything that needs explicit review.
 
 ## Review Recommendations
 
@@ -152,7 +154,7 @@ Semantic classification belongs to the AI agent. The agent decides permanence, s
 ## Conflict Handling Notes
 
 - `duplicate`: discard as noise unless manual inspection finds missing value.
-- `refinement`: activate the better expression and remove the competing older memory when they should not stand side by side.
+- `refinement`: activate the agent-marked refinement and remove the explicitly related older memory when they should not stand side by side.
 - `exception`: activate only when the exception scope is clear; keep the broader memory active and attach an `activeCondition` to the exception.
 - `direct_conflict`: quarantine until a human decides.
 - `supersedes`: activate the new memory and remove the older memory from active retrieval, active relation graph, namespace files, Context Packs, Pre-Task Briefs, and active wiki sections.
@@ -217,7 +219,7 @@ Existing project-local `.vibebox/` folders are legacy stores. VibeBox warns abou
 
 VibeBox separates canonical memory from the Obsidian display layer. Internal memory records keep stable field names, enum values, relation types, command names, file paths, error text, and technical literals. Input language and `VIBEBOX_LOCALE` do not rewrite an existing store. Raw logs can preserve original source text.
 
-The wiki separates `docKey` from localized filename/title/aliases. Obsidian filenames, category folders, headings, section labels, Recent Active Memory, managed summaries, aliases, and links follow `memoryLanguage`. Individual memory notes are placed under their category folders with human-readable titles; `mem_...` ids stay in frontmatter. Changing system locale does not automatically rename files. `convert-lang` must be explicitly run and requires an agent runtime marker; it converts the wiki display layer, not raw logs or internal JSON field names/enums. `rebuild` recreates indexes, relation-index, namespace files, wiki files, category-based memory notes, and stale localized file cleanup from active memory.
+The wiki separates `docKey` from localized filename/title/aliases. Obsidian filenames, category folders, headings, section labels, Recent Active Memory, managed summaries, aliases, and links follow `memoryLanguage`. Individual memory notes are placed under their category folders with human-readable titles; `mem_...` ids stay in frontmatter. Agent-provided `displayTitle`, `displaySummary`, and `displayRule` are the primary user-facing text. If display text is missing, Core does not translate canonical summaries; it can render a display-text-missing diagnostic. Changing system locale does not automatically rename files. `convert-lang` must be explicitly run and requires an agent runtime marker; it converts the wiki display layer, not raw logs or internal JSON field names/enums. `rebuild` recreates indexes, relation-index, namespace files, wiki files, category-based memory notes, and stale localized file cleanup from active memory.
 
 ## Backup And Restore
 

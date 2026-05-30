@@ -136,6 +136,7 @@ function candidateFixture(overrides = {}) {
 
 function failureCandidate(overrides = {}) {
   const summary = overrides.summary || 'Avoid repeating the failed AI approach.';
+  const preventionRule = overrides.preventionRule || summary;
   return candidateFixture({
     memoryRole: 'ai_failure_memory',
     type: 'agent_failure_pattern',
@@ -149,7 +150,8 @@ function failureCandidate(overrides = {}) {
     rule: summary,
     failureType: 'technical_failure',
     failedApproach: summary,
-    preventionRule: summary,
+    preventionRule,
+    displayRule: overrides.displayRule || preventionRule,
     affectedContext: 'current project',
     technicalOutcome: 'failure',
     confidence: 'high',
@@ -234,7 +236,7 @@ function agentCandidatesFromText(text = '', options = {}) {
       const explicitPrevention = line.match(/prevent this by\s+([^.;]+)/iu)?.[1]?.trim();
       const isAgentFailure = /agent|ai|command|permission|access|not found|regression|body overflow/i.test(line);
       const failure = failureCandidate({ ...common, type: isAgentFailure ? 'agent_failure_pattern' : 'failure_memory', modelClass: common.scope === 'domain' ? 'domain_model' : 'project_model', primaryCategory: isAgentFailure ? 'agent_failure_patterns' : 'failure_memory', preventionRule: explicitPrevention || (/body overflow/i.test(line) ? 'Prefer component-level scrolling instead of global body overflow changes.' : line) });
-      const prevention = candidateFixture({ ...common, memoryRole: 'ai_failure_memory', type: 'prevention_rule', modelClass: failure.modelClass, modelSubClass: 'failure_prevention', scope: common.scope === 'global' ? 'global' : common.scope, primaryCategory: 'prevention_rules', relatedCategories: ['agent_failure_patterns'], summary: failure.preventionRule || line, title: 'Prevent repeated AI failure', preventionRule: failure.preventionRule || line, failureType: failure.failureType || 'technical_failure', technicalOutcome: 'failure' });
+      const prevention = candidateFixture({ ...common, memoryRole: 'ai_failure_memory', type: 'prevention_rule', modelClass: failure.modelClass, modelSubClass: 'failure_prevention', scope: common.scope === 'global' ? 'global' : common.scope, primaryCategory: 'prevention_rules', relatedCategories: ['agent_failure_patterns'], summary: failure.preventionRule || line, title: 'Prevent repeated AI failure', preventionRule: failure.preventionRule || line, displayRule: failure.preventionRule || line, failureType: failure.failureType || 'technical_failure', technicalOutcome: 'failure' });
       return [failure, prevention];
     }
     if (/except for/i.test(line)) {
@@ -252,7 +254,7 @@ function agentCandidatesFromText(text = '', options = {}) {
       })];
     }
     if (/worked successfully|successful|succeeded|recovered|recovery|reuse|reusable|accepted reusable|wrapper-based|validation passed|tests passed|checks passed/i.test(line)) {
-      const inferred = technicalOutcome === 'success' || /worked successfully|validation passed|tests passed|checks passed/i.test(line);
+      const inferred = technicalOutcome === 'success' || /worked successfully|validation passed|tests passed|checks passed|succeeded by|focused tests/i.test(line);
       return [approachCandidate({
         ...common,
         type: /agent succeeded|ai succeeded|recovered|recovery/i.test(line) ? 'agent_success_pattern' : 'success_pattern',
@@ -905,7 +907,7 @@ test('init enriches project identity without locking config to an absolute path'
   assert.equal(project.projectName, 'dashboard-suite');
   assert.equal(project.repositoryName, 'dashboard-suite');
   assert.equal(project.rootPath, path.resolve(root));
-  assert.equal(project.primaryDomain, 'dashboard');
+  assert.equal(project.primaryDomain, 'general');
   assert.ok(project.techStackHints.includes('echarts'));
   await assertNoLocalStore(root);
 });
@@ -1153,22 +1155,74 @@ test('pretask creates an agent-ready brief that prioritizes project guardrails a
   await initVibeBox(root);
 
   const globalCandidates = await extractFromAgent(root, {
-    manualReview: true,
-    text: 'Always prefer Supabase for dashboard database work when no project-specific database decision exists.'
+    structuredMemoryCandidates: [candidateFixture({
+      candidateId: 'global-dashboard-supabase',
+      type: 'technology_preference',
+      modelClass: 'domain_model',
+      modelSubClass: 'dashboard_database_fallback',
+      scope: 'domain',
+      domain: 'dashboard',
+      domains: ['dashboard'],
+      tags: ['dashboard', 'database', 'supabase'],
+      appliesTo: ['dashboard database work'],
+      primaryCategory: 'technology_preferences',
+      relatedCategories: ['decision_patterns'],
+      title: 'Supabase dashboard database fallback',
+      summary: 'Always prefer Supabase for dashboard database work when no project-specific database decision exists.',
+      rule: 'Use Supabase for dashboard database work only when no project-specific database decision exists.',
+      displayTitle: 'Supabase dashboard database fallback',
+      displaySummary: 'Always prefer Supabase for dashboard database work when no project-specific database decision exists.',
+      displayRule: 'Use Supabase only when no project-specific database decision exists.'
+    })]
   });
-  await approveMemory(root, globalCandidates[0].id);
 
   const projectCandidates = await extractFromAgent(root, {
-    manualReview: true,
-    text: [
-      'We decided this project uses MSSQL for dashboard database modules after rejecting Supabase.',
-      'Global body overflow changes caused layout regressions before; prevent this by using wrapper scrolling.',
-      'Wrapper-based table scrolling worked successfully for wide dashboard tables and should be reused there.'
-    ].join('\n')
+    structuredMemoryCandidates: [
+      candidateFixture({
+        candidateId: 'project-dashboard-mssql',
+        type: 'project_decision',
+        modelClass: 'project_model',
+        modelSubClass: 'dashboard_database_decision',
+        scope: 'project',
+        domains: ['dashboard'],
+        tags: ['dashboard', 'database', 'mssql'],
+        appliesTo: ['dashboard database modules'],
+        primaryCategory: 'decision_patterns',
+        relatedCategories: ['technology_preferences'],
+        title: 'MSSQL dashboard database decision',
+        summary: 'We decided this project uses MSSQL for dashboard database modules after rejecting Supabase.',
+        rule: 'Use MSSQL for this project dashboard database modules.',
+        displayTitle: 'MSSQL dashboard database decision',
+        displaySummary: 'We decided this project uses MSSQL for dashboard database modules after rejecting Supabase.',
+        displayRule: 'Use MSSQL for this project dashboard database modules.',
+        relationCandidates: [{
+          type: 'conflicts_with',
+          targetId: globalCandidates[0].id,
+          summary: 'Agent marked project MSSQL decision as conflicting with the broader Supabase fallback.'
+        }]
+      }),
+      failureCandidate({
+        candidateId: 'overflow-wrapper-failure',
+        scope: 'global',
+        modelClass: 'project_model',
+        summary: 'Global body overflow changes caused layout regressions before; prevent this by using wrapper scrolling.',
+        preventionRule: 'using wrapper scrolling',
+        displayRule: 'using wrapper scrolling',
+        displaySummary: 'Global body overflow changes caused layout regressions before; prevent this by using wrapper scrolling.',
+        tags: ['dashboard', 'table', 'scrolling', 'overflow']
+      }),
+      approachCandidate({
+        candidateId: 'wrapper-table-success',
+        scope: 'global',
+        modelClass: 'project_model',
+        summary: 'Wrapper-based table scrolling worked successfully for wide dashboard tables and should be reused there.',
+        displaySummary: 'Wrapper-based table scrolling worked successfully for wide dashboard tables and should be reused there.',
+        displayRule: 'Reuse wrapper-based table scrolling for wide dashboard tables.',
+        tags: ['dashboard', 'table', 'scrolling', 'wrapper']
+      })
+    ]
   });
-  for (const candidate of projectCandidates) {
-    await approveMemory(root, candidate.id);
-  }
+  assert.equal(projectCandidates.every((candidate) => candidate.status === 'active'), true);
 
   const brief = await generatePreTaskBrief(root, {
     task: 'Fix dashboard table scrolling and touch the dashboard database query only if needed.'
@@ -1459,10 +1513,28 @@ test('user correction replaces scoped success criteria and keeps model boundarie
   assert.equal(oldPreference.status, 'active');
 
   const [newPreference] = await extractFromAgent(root, {
-    text: 'Replace the brand landing page color palette preference: use violet palette instead of blue.'
+    structuredMemoryCandidates: [candidateFixture({
+      type: oldPreference.type,
+      modelClass: oldPreference.modelClass,
+      modelSubClass: oldPreference.modelSubClass,
+      scope: oldPreference.scope,
+      domains: oldPreference.domains || ['landing_page'],
+      tags: [...(oldPreference.tags || []), 'violet'],
+      appliesTo: oldPreference.appliesTo || ['brand landing pages'],
+      topic: oldPreference.topic,
+      primaryCategory: oldPreference.primaryCategory || 'user_preferences',
+      title: 'Brand landing page color palette preference',
+      summary: 'For brand landing pages, prefer violet palette instead of blue.',
+      rule: 'Use a violet palette for brand landing pages.',
+      displayTitle: 'Brand landing page color palette preference',
+      displaySummary: 'For brand landing pages, prefer violet palette instead of blue.',
+      displayRule: 'Use a violet palette for brand landing pages.',
+      supersedes: [oldPreference.id],
+      related: [oldPreference.id]
+    })]
   });
   assert.equal(newPreference.status, 'active');
-  assert.ok(['supersedes', 'refinement'].includes(newPreference.conflictStatus));
+  assert.equal(newPreference.conflictStatus, 'supersedes');
 
   const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
   assert.equal(memoryIndex.memories.some((memory) => memory.id === oldPreference.id), false);
@@ -1797,7 +1869,7 @@ test('review recommends actions and safe approval skips conflict candidates', as
 
   const result = await approveSafeMemories(root);
   assert.equal(result.approved.length, 1);
-  assert.equal(result.skipped.some((candidate) => candidate.conflictStatus === 'direct_conflict'), true);
+  assert.equal(result.skipped.some((candidate) => candidate.conflictStatus === 'needs_user_review'), true);
 
   const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
   assert.equal(memoryIndex.memories.some((memory) => memory.summary.includes('package.json')), true);
@@ -1954,7 +2026,7 @@ test('reject only applies to pending candidates and cannot silently reject appro
   assert.equal(memoryIndex.memories[0].status, 'active');
 });
 
-test('conflict resolver classifies duplicate, refinement, exception, direct conflict, supersedes, and review cases', () => {
+test('conflict resolver uses contract fields for duplicate, explicit exception, explicit replacement, and review cases', () => {
   const active = [{
     id: 'mem_dashboard_mssql',
     type: 'user_preference',
@@ -1992,7 +2064,7 @@ test('conflict resolver classifies duplicate, refinement, exception, direct conf
     domains: ['dashboard'],
     appliesTo: ['internal dashboard reporting modules'],
     confidence: 'medium'
-  }).status, 'refinement');
+  }).status, 'needs_user_review');
 
   assert.equal(classifyCandidateConflict(active, {
     type: 'user_preference',
@@ -2003,7 +2075,8 @@ test('conflict resolver classifies duplicate, refinement, exception, direct conf
     tags: ['dashboard', 'database', 'supabase'],
     domains: ['dashboard'],
     appliesTo: ['public marketing dashboards'],
-    confidence: 'medium'
+    confidence: 'medium',
+    activeCondition: { scope: 'public marketing dashboards' }
   }).status, 'exception');
 
   assert.equal(classifyCandidateConflict(active, {
@@ -2016,7 +2089,7 @@ test('conflict resolver classifies duplicate, refinement, exception, direct conf
     domains: ['dashboard'],
     appliesTo: ['dashboard projects'],
     confidence: 'high'
-  }).status, 'direct_conflict');
+  }).status, 'needs_user_review');
 
   assert.equal(classifyCandidateConflict([{
     id: 'mem_api_rest',
@@ -2041,7 +2114,7 @@ test('conflict resolver classifies duplicate, refinement, exception, direct conf
     domains: ['backend'],
     appliesTo: ['api clients'],
     confidence: 'high'
-  }).status, 'direct_conflict');
+  }).status, 'needs_user_review');
 
   assert.equal(classifyCandidateConflict(active, {
     type: 'project_decision',
@@ -2053,7 +2126,7 @@ test('conflict resolver classifies duplicate, refinement, exception, direct conf
     domains: ['dashboard'],
     appliesTo: ['dashboard projects'],
     confidence: 'high'
-  }).status, 'direct_conflict');
+  }).status, 'needs_user_review');
 
   assert.equal(classifyCandidateConflict(active, {
     type: 'user_preference',
@@ -2092,6 +2165,7 @@ test('replacement is bounded by model, domain, project, and durable memory scope
     rule: 'Replace the visual direction rule: for brand landing pages, avoid generic SaaS layouts and card-heavy dashboards.',
     summary: 'For brand landing pages, avoid generic SaaS layouts and card-heavy dashboards.',
     tags: ['brand', 'landing', 'visual', 'dashboard'],
+    supersedes: ['mem_base'],
     confidence: 'high'
   });
   assert.equal(sameCategory.status, 'supersedes');
@@ -2186,7 +2260,26 @@ test('active replacement discards older memory from active retrieval, wiki, and 
   const oldMemory = await approveMemory(root, oldCandidate.id);
 
   const [replacementCandidate] = await extractFromAgent(root, {
-    text: 'Replace the dashboard database rule: for dashboard projects, prefer PostgreSQL instead of MSSQL.'
+    structuredMemoryCandidates: [candidateFixture({
+      type: oldMemory.type,
+      modelClass: oldMemory.modelClass,
+      modelSubClass: oldMemory.modelSubClass,
+      scope: oldMemory.scope,
+      domains: oldMemory.domains || ['dashboard'],
+      tags: [...(oldMemory.tags || []), 'postgresql'],
+      appliesTo: oldMemory.appliesTo || ['dashboard projects'],
+      topic: oldMemory.topic,
+      primaryCategory: oldMemory.primaryCategory || 'user_preferences',
+      title: 'Dashboard database preference',
+      summary: 'For dashboard projects, prefer PostgreSQL instead of MSSQL.',
+      rule: 'For dashboard projects, prefer PostgreSQL instead of MSSQL.',
+      displayTitle: 'Dashboard database preference',
+      displaySummary: 'For dashboard projects, prefer PostgreSQL instead of MSSQL.',
+      displayRule: 'Use PostgreSQL for dashboard projects.',
+      supersedes: [oldMemory.id],
+      related: [oldMemory.id],
+      status: 'pending'
+    })]
   });
   assert.equal(replacementCandidate.conflictStatus, 'supersedes');
   const newMemory = await approveMemory(root, replacementCandidate.id);
@@ -3144,7 +3237,7 @@ test('aftertask with userRequest but missing structured candidates records only 
   assert.equal(memoryIndex.memories.length, 0);
   const events = await readJsonl(path.join(process.env.VIBEBOX_HOME, 'logs', 'events.jsonl'));
   assert.equal(events.at(-1).semanticExtractionStatus, 'missing_agent_candidates');
-  assert.equal(events.at(-1).semanticExtractionWarning, 'userRequest present but agent semantic candidates missing');
+  assert.equal(events.at(-1).semanticExtractionWarning, 'userRequest present but structured memory candidates missing');
 });
 
 test('aftertask with only action summary records the event but skips active extraction with a warning', async () => {
@@ -3160,7 +3253,7 @@ test('aftertask with only action summary records the event but skips active extr
 
   assert.ok(result.event.projectId);
   assert.equal(result.candidates.length, 0);
-  assert.match(result.message, /agent semantic candidates missing; no active memory was created/);
+  assert.match(result.message, /structured memory candidates missing; no active memory was created/);
   assert.match(result.message, /VibeBox Core does not semantically interpret action summaries, command output, or raw evidence\./);
   assert.match(result.message, /AI action summary alone is raw evidence only/);
 
@@ -3168,6 +3261,338 @@ test('aftertask with only action summary records the event but skips active extr
   assert.equal(memoryIndex.memories.length, 0);
   const events = await readJsonl(path.join(process.env.VIBEBOX_HOME, 'logs', 'events.jsonl'));
   assert.equal(events.at(-1).projectId, result.event.projectId);
+});
+
+test('rich agent structured candidates create multiple active memories and wiki graph links', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+  const result = await afterTask(root, {
+    userRequest: [
+      'Keep the existing layout, normalize same-role card title and description sizing, preserve cyan accents on a dark background,',
+      'avoid new effects or animation, verify mobile spacing and title consistency, and report only changed files plus validation results.'
+    ].join(' '),
+    aiActionSummary: 'Normalized card text rhythm without changing layout or adding animation.',
+    changedFiles: ['src/cards.css'],
+    commandResults: ['npm.cmd test passed', 'mobile viewport check passed'],
+    technicalOutcome: 'success',
+    userAcceptance: 'accepted',
+    structuredMemoryCandidates: [
+      candidateFixture({
+        candidateId: 'rich-card-rhythm',
+        memoryRole: 'user_success_criteria',
+        type: 'design_philosophy',
+        modelClass: 'project_model',
+        modelSubClass: 'ui_polish_success_criteria',
+        scope: 'project',
+        primaryCategory: 'design_philosophy',
+        relatedCategories: ['validation_patterns', 'prevention_rules'],
+        title: 'Card rhythm constraint',
+        summary: 'For UI cleanup, preserve the existing layout while normalizing same-role card title and description sizing.',
+        rule: 'Normalize comparable card text rhythm without broad layout changes.',
+        displayTitle: 'Card rhythm constraint',
+        displaySummary: 'Preserve the existing layout while making same-role card titles and descriptions visually consistent.',
+        displayRule: 'Normalize card title and description rhythm without broad layout changes.'
+      }),
+      candidateFixture({
+        candidateId: 'rich-mobile-validation',
+        memoryRole: 'user_success_criteria',
+        type: 'validation_pattern',
+        modelClass: 'project_model',
+        modelSubClass: 'ui_validation_rule',
+        scope: 'project',
+        primaryCategory: 'validation_patterns',
+        relatedCategories: ['workflow_rules'],
+        title: 'Mobile card rhythm validation',
+        summary: 'After card UI cleanup, verify mobile spacing and title-size consistency.',
+        rule: 'Check mobile card spacing and title sizing before final report.',
+        displayTitle: 'Mobile card rhythm validation',
+        displaySummary: 'After card UI cleanup, verify that mobile spacing and card title sizing remain consistent.',
+        displayRule: 'Validate mobile card spacing and title-size consistency.'
+      }),
+      candidateFixture({
+        candidateId: 'rich-response-format',
+        memoryRole: 'user_success_criteria',
+        type: 'response_preference',
+        modelClass: 'user_model',
+        modelSubClass: 'final_report_preference',
+        scope: 'global',
+        primaryCategory: 'user_patterns',
+        relatedCategories: ['workflow_rules'],
+        title: 'Concise validation-only final report',
+        summary: 'When requested, final reports should list only changed files and validation results.',
+        rule: 'Keep final reports limited to changed files and verification results when the user asks for a brief report.',
+        displayTitle: 'Concise validation-only final report',
+        displaySummary: 'When the user asks for a brief final report, include only changed files and validation results.',
+        displayRule: 'Report changed files and verification results only.'
+      }),
+      failureCandidate({
+        candidateId: 'rich-no-new-effects',
+        type: 'prevention_rule',
+        primaryCategory: 'prevention_rules',
+        relatedCategories: ['agent_failure_patterns', 'design_philosophy'],
+        title: 'Avoid unrequested visual effects',
+        summary: 'Do not add new effects or animations when the user requests a restrained UI cleanup.',
+        rule: 'Avoid new visual effects, animation, and scope expansion during restrained UI cleanup.',
+        displayTitle: 'Avoid unrequested visual effects',
+        displaySummary: 'For restrained UI cleanup, do not add new effects, animation, or extra visual treatments.',
+        displayRule: 'Avoid unrequested animation and visual effects.'
+      }),
+      candidateFixture({
+        candidateId: 'rich-task-context',
+        memoryRole: 'task_context',
+        type: 'task_context',
+        modelClass: 'task_context',
+        modelSubClass: 'current_task_scope',
+        scope: 'task',
+        primaryCategory: 'workflow_rules',
+        title: 'Current card cleanup task',
+        summary: 'This task touched card typography rhythm only.',
+        rule: 'Task-only note for the current card cleanup.',
+        displayTitle: 'Current card cleanup task',
+        displaySummary: 'This task touched card typography rhythm only.',
+        displayRule: 'Task-only note for the current card cleanup.',
+        confidence: 'low'
+      })
+    ]
+  });
+
+  assert.equal(result.candidates.length, 5);
+  assert.doesNotMatch(result.message, /whyOnlyOneCandidate is missing/i);
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  const activeDurable = memoryIndex.memories.filter((memory) => memory.status === 'active' && memory.scope !== 'task');
+  assert.ok(activeDurable.length >= 4);
+  assert.equal(activeDurable.some((memory) => memory.memoryRole === 'user_success_criteria'), true);
+  assert.equal(activeDurable.some((memory) => memory.memoryRole === 'ai_failure_memory'), true);
+
+  const noteFiles = await listMemoryNoteFiles(root);
+  const noteFile = noteFiles.find((file) => wikiRelative(root, file).includes('Card rhythm constraint'));
+  assert.ok(noteFile, 'expected primary memory note for card rhythm');
+  const noteTarget = wikiRelative(root, noteFile).replace(/\.md$/u, '');
+  const validationPage = await readFile(storePath(root, 'wiki', 'Validation Patterns.md'), 'utf8');
+  assert.match(validationPage, new RegExp(noteTarget.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')));
+  const projectPage = await readFile(storePath(root, 'wiki', 'projects', `${result.event.projectId}.md`), 'utf8');
+  assert.match(projectPage, new RegExp(noteTarget.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')));
+});
+
+test('one structured candidate for a userRequest emits a contract diagnostic unless the agent explains why', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+  const thin = await afterTask(root, {
+    userRequest: 'Normalize cards, avoid animation, verify mobile, and report only changed files.',
+    aiActionSummary: 'Completed the card cleanup.',
+    structuredMemoryCandidates: [candidateFixture({
+      candidateId: 'one-candidate-thin',
+      title: 'Single combined card cleanup rule',
+      summary: 'Normalize cards, avoid animation, verify mobile, and report only changed files.'
+    })]
+  });
+
+  assert.equal(thin.candidates.length, 1);
+  assert.match(thin.message, /whyOnlyOneCandidate is missing/i);
+  let events = await readJsonl(storePath(root, 'logs', 'events.jsonl'));
+  assert.match(events.at(-1).candidateContractWarning, /exactly one structured memory candidate/);
+
+  const explained = await afterTask(root, {
+    userRequest: 'Remember this one exact reusable CLI flag.',
+    aiActionSummary: 'Captured the single reusable flag.',
+    structuredMemoryCandidates: [{
+      ...candidateFixture({
+        candidateId: 'one-candidate-explained',
+        title: 'Single CLI flag preference',
+        summary: 'Use the documented single CLI flag in this narrow workflow.'
+      }),
+      whyOnlyOneCandidate: 'The request contains exactly one reusable narrow preference and no task outcome, failure, or validation rule.'
+    }]
+  });
+
+  assert.equal(explained.candidates.length, 1);
+  assert.doesNotMatch(explained.message, /whyOnlyOneCandidate is missing/i);
+  assert.match(explained.message, /One-candidate contract note/);
+  events = await readJsonl(storePath(root, 'logs', 'events.jsonl'));
+  assert.match(events.at(-1).whyOnlyOneCandidate, /exactly one reusable narrow preference/);
+});
+
+test('no reusable memory diagnostic records the reason without active memory', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+  const result = await afterTask(root, {
+    userRequest: 'Show the current time once.',
+    aiActionSummary: 'Printed the current time.',
+    structuredMemoryCandidates: [{
+      type: 'no_reusable_memory_candidate',
+      no_reusable_memory_candidate: true,
+      noCandidateReason: 'The request was a one-off time lookup with no reusable preference, project rule, failure, or approach.'
+    }]
+  });
+
+  assert.equal(result.candidates.length, 0);
+  assert.match(result.message, /No reusable memory candidate reason recorded/);
+  assert.doesNotMatch(result.message, /structured memory candidates are missing/);
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.equal(memoryIndex.memories.length, 0);
+  const events = await readJsonl(storePath(root, 'logs', 'events.jsonl'));
+  assert.equal(events.at(-1).semanticExtractionStatus, 'no_reusable_memory_candidate');
+  assert.match(events.at(-1).noCandidateReason, /one-off time lookup/);
+  const report = await generateReport(root);
+  assert.match(report, /No reusable memory candidate/);
+  assert.match(report, /one-off time lookup/);
+});
+
+test('no reusable memory diagnostic without reason records a contract diagnostic', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+  const result = await afterTask(root, {
+    userRequest: 'Show a one-off status.',
+    aiActionSummary: 'Printed the status.',
+    structuredMemoryCandidates: [{
+      type: 'no_reusable_memory_candidate',
+      no_reusable_memory_candidate: true
+    }]
+  });
+
+  assert.equal(result.candidates.length, 0);
+  assert.match(result.message, /no_reusable_memory_candidate was provided without noCandidateReason/);
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.equal(memoryIndex.memories.length, 0);
+  const events = await readJsonl(storePath(root, 'logs', 'events.jsonl'));
+  assert.equal(events.at(-1).noCandidateReasonMissing, true);
+  assert.equal(events.at(-1).semanticExtractionWarning, 'no_reusable_memory_candidate is missing noCandidateReason');
+});
+
+test('Korean wiki uses agent display fields instead of canonical English summaries', async () => {
+  const root = await makeWorkspace();
+  process.env.VIBEBOX_LANGUAGE = 'ko-KR';
+  process.env.VIBEBOX_LOCALE = 'ko-KR';
+  await initVibeBox(root);
+  await afterTask(root, {
+    userRequest: '카드 UI 정리 기준을 한국어 위키에 남긴다.',
+    aiActionSummary: 'Recorded the Korean display candidate.',
+    structuredMemoryCandidates: [candidateFixture({
+      candidateId: 'ko-display-fields',
+      type: 'validation_pattern',
+      modelClass: 'project_model',
+      modelSubClass: 'ui_validation_rule',
+      scope: 'project',
+      primaryCategory: 'validation_patterns',
+      title: 'Canonical English title',
+      summary: 'Canonical English summary must not be used as the Korean wiki display sentence.',
+      rule: 'Canonical English rule must not become the Korean display rule.',
+      displayTitle: '카드 간격 검증',
+      displaySummary: '모바일에서도 카드 간격과 제목 크기가 일정한지 확인한다.',
+      displayRule: '모바일 카드 간격과 제목 크기를 검증한다.',
+      displayLanguage: 'ko-KR'
+    })]
+  });
+
+  const noteTexts = await Promise.all((await listMemoryNoteFiles(root)).map((file) => readFile(file, 'utf8')));
+  const combined = noteTexts.join('\n');
+  assert.match(combined, /모바일에서도 카드 간격과 제목 크기가 일정한지 확인한다/);
+  assert.doesNotMatch(combined, /Canonical English summary must not be used/);
+});
+
+test('missing candidate display summary renders a diagnostic instead of canonical summary', async () => {
+  const root = await makeWorkspace();
+  process.env.VIBEBOX_LANGUAGE = 'ko-KR';
+  process.env.VIBEBOX_LOCALE = 'ko-KR';
+  await initVibeBox(root);
+  const candidate = candidateFixture({
+    candidateId: 'missing-display-summary',
+    type: 'validation_pattern',
+    modelClass: 'project_model',
+    modelSubClass: 'display_missing_diagnostic',
+    scope: 'project',
+    primaryCategory: 'validation_patterns',
+    title: 'Missing display summary',
+    summary: 'Canonical English fallback should not appear in the Korean wiki.',
+    rule: 'Canonical English rule should not appear in the Korean wiki.',
+    displayTitle: '표시 요약 누락 진단',
+    displayRule: '표시 요약이 없으면 진단 문구를 보여준다.',
+    displayLanguage: 'ko-KR'
+  });
+  delete candidate.displaySummary;
+
+  await afterTask(root, {
+    userRequest: '표시 요약이 빠진 후보를 진단한다.',
+    aiActionSummary: 'Captured a candidate with missing displaySummary.',
+    structuredMemoryCandidates: [candidate]
+  });
+
+  const noteTexts = await Promise.all((await listMemoryNoteFiles(root)).map((file) => readFile(file, 'utf8')));
+  const combined = noteTexts.join('\n');
+  assert.match(combined, /표시 문구 누락/);
+  assert.doesNotMatch(combined, /Canonical English fallback should not appear/);
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.equal(memoryIndex.memories.some((memory) => (memory.displayTextDiagnostics || []).some((item) => item.includes('displaySummary missing'))), true);
+});
+
+test('displayLanguage mismatch records diagnostics and does not translate or show mismatched display text', async () => {
+  const root = await makeWorkspace();
+  process.env.VIBEBOX_LANGUAGE = 'ko-KR';
+  process.env.VIBEBOX_LOCALE = 'ko-KR';
+  await initVibeBox(root);
+  await afterTask(root, {
+    userRequest: '한국어 위키에는 한국어 표시 문구가 필요하다.',
+    aiActionSummary: 'Captured an English display candidate for mismatch diagnostics.',
+    structuredMemoryCandidates: [candidateFixture({
+      candidateId: 'display-language-mismatch',
+      type: 'validation_pattern',
+      modelClass: 'project_model',
+      modelSubClass: 'display_language_contract',
+      scope: 'project',
+      primaryCategory: 'validation_patterns',
+      title: 'Canonical language mismatch',
+      summary: 'Canonical English summary should not be translated by Core.',
+      displayTitle: 'English display title',
+      displaySummary: 'English display summary should not appear in the Korean wiki.',
+      displayRule: 'English display rule should not appear in the Korean wiki.',
+      displayLanguage: 'en-US'
+    })]
+  });
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.equal(memoryIndex.memories.some((memory) => (memory.displayLanguageDiagnostics || []).some((item) => item.includes('does not match configured memoryLanguage ko-KR'))), true);
+  const noteTexts = await Promise.all((await listMemoryNoteFiles(root)).map((file) => readFile(file, 'utf8')));
+  const combined = noteTexts.join('\n');
+  assert.match(combined, /표시 문구 누락/);
+  assert.doesNotMatch(combined, /English display summary should not appear/);
+  assert.doesNotMatch(combined, /Canonical English summary should not be translated/);
+});
+
+test('template phrase canonical summaries do not leak into wiki when display text is missing', async () => {
+  const root = await makeWorkspace();
+  process.env.VIBEBOX_LANGUAGE = 'ko-KR';
+  process.env.VIBEBOX_LOCALE = 'ko-KR';
+  await initVibeBox(root);
+  const candidate = candidateFixture({
+    candidateId: 'template-phrase-leak',
+    memoryRole: 'ai_successful_approach',
+    type: 'agent_success_pattern',
+    modelClass: 'project_model',
+    modelSubClass: 'template_phrase_contract',
+    scope: 'project',
+    primaryCategory: 'agent_success_patterns',
+    title: 'Template phrase canonical title',
+    summary: 'Agent succeeded by running a scripted fallback command.',
+    rule: 'This approach worked by copying the action summary.',
+    displayTitle: '템플릿 문구 누출 진단',
+    displayLanguage: 'ko-KR',
+    successEvidence: 'inferred',
+    acceptanceBasis: 'inferred'
+  });
+  delete candidate.displaySummary;
+  delete candidate.displayRule;
+  await afterTask(root, {
+    userRequest: '템플릿 문구가 위키에 노출되지 않도록 확인한다.',
+    aiActionSummary: 'Captured a template phrase candidate.',
+    structuredMemoryCandidates: [candidate]
+  });
+
+  const noteTexts = await Promise.all((await listMemoryNoteFiles(root)).map((file) => readFile(file, 'utf8')));
+  const combined = noteTexts.join('\n');
+  assert.match(combined, /표시 문구 누락/);
+  assert.doesNotMatch(combined, /Agent succeeded by/);
+  assert.doesNotMatch(combined, /This approach worked/);
 });
 
 test('technical failure evidence is raw-only without an agent candidate and active with one', async () => {
@@ -3674,8 +4099,7 @@ test('adaptive language policy preserves Japanese, Chinese, Arabic, and mixed me
   assert.ok(candidates.some((candidate) => candidate.summary.includes('그대로')));
 
   const context = await generateContextPack(root, {
-    task: 'validation process',
-    language: 'auto'
+    task: 'validation process'
   });
   assert.match(context, /変更後/);
   assert.match(context, /修改后/);

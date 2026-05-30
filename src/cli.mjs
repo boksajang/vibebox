@@ -218,6 +218,9 @@ Global store:
   Obsidian Wiki display uses the configured BCP 47 memoryLanguage. VIBEBOX_LANGUAGE/--language can seed a new store; VIBEBOX_LOCALE/--locale is an environment hint and does not rewrite an existing store.
   Active memory requires AI-agent structured candidates. Core does not semantically interpret userRequest, headings, bullets, keywords, raw action summaries, or command output.
   If userRequest is present without candidates, aftertask stores the raw event, warns, and creates no active memory.
+  If userRequest is captured with exactly one candidate, aftertask emits a contract warning unless the AI Agent includes whyOnlyOneCandidate.
+  If no reusable memory exists, include a no_reusable_memory_candidate item with noCandidateReason so Core records the diagnostic without active memory.
+  Wiki display fields (displayTitle/displaySummary/displayRule/displayLanguage) should be written by the AI Agent in configured memoryLanguage; Core does not translate missing display text.
   Semantic operations convert-lang and rebuild require VIBEBOX_AGENT_RUNTIME from an adapter.
 `;
 }
