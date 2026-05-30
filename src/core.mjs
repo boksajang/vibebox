@@ -1671,13 +1671,6 @@ function inferUserAcceptance(input = {}) {
   return 'unknown';
 }
 
-function inferStatementAcceptance(statement = '', source = {}) {
-  if (source.role === 'userFeedback') {
-    return inferUserAcceptance({ userFeedback: statement });
-  }
-  return 'unknown';
-}
-
 function inferTechnicalOutcome(input = {}) {
   const explicit = normalizeEnum(input.technicalOutcome || input.technical_outcome, TECHNICAL_OUTCOMES, '');
   if (explicit) return explicit;
@@ -1911,209 +1904,6 @@ function extractTags(statement) {
   return [...tags];
 }
 
-function determineScope(statement, domains) {
-  if (isTaskOnlyImplementationBoundary(statement) || isCurrentTaskChecklist(statement)) {
-    return 'task';
-  }
-  if (textHasAny(statement, ['for this task only', 'this task only', 'temporarily', 'temporary', 'this once'])) {
-    return textHasAny(statement, ['temporarily', 'temporary']) ? 'temporary' : 'task';
-  }
-  if (textHasAny(statement, ['subagent workflow', 'reference material', 'reference image', 'extract design principles', 'do not copy', 'final report should include', 'report changed files', 'do not assume the same design direction', 'different project type', 'project type'])) {
-    return 'global';
-  }
-  if (textHasAny(statement, ['this project', 'we decided this project', 'in this repo', 'current project'])) {
-    return 'project';
-  }
-  if (textHasAny(statement, ['i want to build', 'current tool', 'existing logo', 'preserve current', 'keep the page', 'one-page landing', 'internal company use'])) {
-    return 'project';
-  }
-  if (domains.length > 0 && textHasAny(statement, [
-    'for dashboard',
-    'dashboard projects',
-    'for app',
-    'app projects',
-    'backend services',
-    'frontend',
-    'landing page',
-    'brand landing',
-    'native app',
-    'internal workflow',
-    'internal company'
-  ])) {
-    return 'domain';
-  }
-  if (textHasAny(statement, ['always', 'do not', 'never', 'unless explicitly requested', 'i usually', 'i prefer'])) {
-    return 'global';
-  }
-  return domains.length > 0 ? 'domain' : 'task';
-}
-
-function isTaskOnlyImplementationBoundary(statement) {
-  const text = String(statement || '');
-  if (textHasAny(text, ['use html/css/vanilla js only', 'npm/build tooling', 'unrelated files'])) return true;
-  if (textHasAny(text, ['fake plugins', 'fake testimonials']) && textHasAny(text, ['do not add', 'unnecessary'])) return true;
-  return textHasAny(text, ['do not add frameworks']) && textHasAny(text, ['backend code', 'build tooling']);
-}
-
-function isCurrentTaskChecklist(statement) {
-  const text = String(statement || '');
-  if (!textHasAny(text, ['before reporting completion', 'final report should include'])) return false;
-  return textHasAny(text, [
-    'logo.webp',
-    'seo/head',
-    'language switching',
-    'hero was redesigned',
-    'saas feeling',
-    'concept image',
-    'mobile layout',
-    'overall atmosphere',
-    'current tool'
-  ]);
-}
-
-function normalizeCandidateScope(type, scope, statement) {
-  if (!PATTERN_TYPES.has(type)) return scope;
-  if (scope === 'temporary' || scope === 'project') return scope;
-  if (scope === 'task' && textHasAny(statement, ['for this task only', 'this task only', 'this once'])) return scope;
-  if (textHasAny(statement, ['for dashboard', 'dashboard projects', 'backend services', 'frontend', 'landing page', 'brand landing', 'native app', 'internal workflow'])) return scope;
-  return scope === 'domain' ? 'domain' : 'global';
-}
-
-function determineConfidence(statement, type, scope) {
-  if (type === 'agent_failure_pattern' && textHasAny(statement, ['permission denied', 'access denied', 'eperm', 'eacces', 'enoent', 'command failed', 'tool failed', 'api failed', 'browser failed', 'image generation failed'])) {
-    return 'high';
-  }
-  if (textHasAny(statement, ['maybe', 'might', 'feels', 'try later', 'can try'])) {
-    return 'low';
-  }
-  if (scope === 'task' || scope === 'temporary') {
-    return 'low';
-  }
-  if (PATTERN_TYPES.has(type)) {
-    if (textHasAny(statement, ['repeatedly', 'always', 'must', 'before claiming completion', '완료를 말하기 전에'])) {
-      return 'high';
-    }
-    return 'medium';
-  }
-  if (type === 'avoid_rule' && textHasAny(statement, ['do not', 'never', 'must not', 'forbidden'])) {
-    return 'high';
-  }
-  if (type === 'project_decision' && textHasAny(statement, ['decided', 'confirmed', 'uses', 'use echarts'])) {
-    return 'high';
-  }
-  if (type === 'success_pattern' && textHasAny(statement, ['worked successfully', 'approved', 'confirmed', 'accepted', 'reuse', 'should be reused'])) {
-    return 'high';
-  }
-  if (type === 'failure_memory' && textHasAny(statement, ['caused', 'failed', 'regression', 'rejected'])) {
-    return 'medium';
-  }
-  if (type === 'design_preference' && textHasAny(statement, ['visual direction', 'catalog direction', 'saas style', 'color palette', 'landing page', 'brand landing', 'native app'])) {
-    return 'medium';
-  }
-  if (['workflow_rule', 'process_pattern', 'response_preference'].includes(type) && textHasAny(statement, ['subagent workflow', 'before coding', 'create a concise plan', 'final report should include', 'report changed files'])) {
-    return 'medium';
-  }
-  if (type === 'architecture_rule' && textHasAny(statement, ['simple', 'maintainable', 'preserve existing architecture'])) {
-    return 'medium';
-  }
-  if (textHasAny(statement, ['prefer', 'usually', 'should', 'because'])) {
-    return 'medium';
-  }
-  return 'low';
-}
-
-function inferType(statement) {
-  const normalized = normalizeText(statement);
-  const hasTemporaryAllowance = textHasAny(statement, ['for this task only', 'temporarily allow', 'temporary allow', 'this once']);
-  const hasRejection = textHasAny(statement, ['do not', 'never', 'must not', 'avoid', 'forbidden', 'unless explicitly requested']);
-  const hasFailure = textHasAny(statement, ['failed', 'failure', 'caused', 'regression', 'broke', 'rejected', 'wrong approach']);
-  const hasSuccess = textHasAny(statement, ['worked successfully', 'successful', 'approved', 'confirmed', 'reuse', 'should be reused']);
-  const hasReusableSuccess = textHasAny(statement, ['worked successfully', 'successful', 'reuse', 'should be reused', 'keep this approach', 'accepted reusable approach']);
-  const hasDecision = textHasAny(statement, ['we decided', 'decided this project', 'this project uses', 'uses echarts', 'after rejecting']);
-  const hasPreference = textHasAny(statement, ['prefer', 'usually prefer', 'i prefer']);
-  const hasDurableUseInstruction = textHasAny(statement, ['for dashboard projects, use', 'dashboard projects use', 'for app projects, use', 'app projects use', 'this project uses']);
-  const hasWorkflow = textHasAny(statement, ['review first', 'approval', 'workflow', 'subagent workflow', 'before coding', 'before implementation', 'inspect the existing project structure', 'create a concise plan']);
-  const hasArchitecture = textHasAny(statement, ['architecture', 'component-level', 'preserve existing behavior', 'simple maintainable architecture']);
-
-  if (textHasAny(statement, ['do not repeat this failed approach', 'prevent this by checking'])) return 'prevention_rule';
-  if (textHasAny(statement, ['user rejected a technically completed result', 'technical success did not match', 'ai failed because', 'failed from the ai perspective'])) return 'agent_failure_pattern';
-  if (textHasAny(statement, ['ai execution failure', 'permission denied', 'access denied', 'eperm', 'eacces', 'enoent', 'command failed', 'tool failed', 'api failed', 'browser failed', 'image generation failed'])) return 'agent_failure_pattern';
-  if (textHasAny(statement, ['recovered by', 'recovery approach', 'workaround', 'alternative command'])) return 'agent_success_pattern';
-
-  if (textHasAny(statement, ['agent repeatedly fails', 'ai repeatedly fails', 'agent failed', 'ai failed', 'agent failure', 'repeatedly fails by', '에이전트가 반복적으로 실패'])) return 'agent_failure_pattern';
-  if (textHasAny(statement, ['agent succeeded', 'ai succeeded', 'agent success', 'succeeded by', 'successfully handled by', '에이전트가 성공'])) return 'agent_success_pattern';
-  if (isTaskOnlyImplementationBoundary(statement) || isCurrentTaskChecklist(statement)) return 'task_context';
-  if (hasReusableSuccess && !hasRejection) return 'success_pattern';
-  if (textHasAny(statement, ['reference material', 'reference image', 'extract design principles', 'do not copy', 'not copied literally'])) return 'user_preference';
-  if (textHasAny(statement, ['final report should include', 'report changed files', 'remaining risks', 'remaining limitations'])) return 'response_preference';
-  if (textHasAny(statement, ['when validating', 'validation pattern', 'verification pattern', 'verify changes', 'before claiming completion', 'run checks before', 'before reporting completion', 'validation result', 'build or type checks', 'manual flow', '검증할 때', '검증 방식', '완료를 말하기 전에'])) return 'validation_pattern';
-  if (textHasAny(statement, ['work process', 'process pattern', 'inspect the repository first', 'inspect the existing project structure', 'small scoped edits', 'create a concise plan', 'plan before coding', '작업 진행', '처리 방식'])) return 'process_pattern';
-  if (textHasAny(statement, ['design philosophy', '설계 철학', 'preserve existing architecture', 'anti-patch', 'full visual direction reset', 'whole direction reset'])) return 'design_philosophy';
-  if (textHasAny(statement, ['question pattern', 'question style', 'when asking', '질문 방식'])) return 'question_pattern';
-  if (textHasAny(statement, ['response preference', 'answer style', 'reply style', 'final report should include', 'report changed files', 'remaining risks', '답변 방식', '답변 선호'])) return 'response_preference';
-  if (textHasAny(statement, ['communication pattern', 'conversation style', 'feedback style', '대화 방식'])) return 'communication_pattern';
-  if (textHasAny(statement, ['correction pattern', 'user correction', 'when corrected', '교정 방식'])) return 'correction_pattern';
-  if (textHasAny(statement, ['decision pattern', 'decision style', 'judgment style', '판단 방식'])) return 'decision_pattern';
-  if (textHasAny(statement, ['handoff pattern', 'handoff', 'handover', '인수인계'])) return 'handoff_pattern';
-  if (textHasAny(statement, ['allowed files', 'only edit', 'for this task', 'current section structure', 'current report checklist', 'receipt image attachment', 'trip request creation', 'approval status tracking'])) return 'task_context';
-  if (textHasAny(statement, ['raw instruction text', 'one-off', 'exact text', 'generated logo', 'fake testimonials', 'pricing', 'login', 'analytics', 'cms', 'unrelated files'])) return hasRejection ? 'avoid_rule' : 'discarded_detail';
-  if (hasPreference && textHasAny(statement, ['technology', 'stack', 'library', 'framework'])) return 'technology_preference';
-  if (textHasAny(statement, ['visual direction', 'dark premium', 'cinematic', '3d hero', 'clean practical readable', 'business-like', 'card-heavy', 'dashboard-like', 'color palette', 'blue palette', 'violet palette', 'catalog direction', 'saas style'])) return 'design_preference';
-  if (textHasAny(statement, ['project type', 'different project type', 'do not assume the same design direction', 'not a marketing landing page', 'not a saas product homepage'])) return 'user_preference';
-  if (textHasAny(statement, ['i want to build', 'current tool', 'existing logo', 'preserve current', 'keep the page', 'one-page landing', 'internal company use'])) return 'project_decision';
-  if (textHasAny(statement, ['except for', 'exception', 'only when', 'apart from']) && textHasAny(statement, ['use', 'prefer', 'instead of'])) return 'user_preference';
-  if (hasRejection) return 'avoid_rule';
-  if (hasFailure) return 'failure_memory';
-  if (hasDecision) return 'project_decision';
-  if (hasSuccess) return 'success_pattern';
-  if (hasTemporaryAllowance) return 'workflow_rule';
-  if (hasWorkflow) return 'workflow_rule';
-  if (hasArchitecture) return 'architecture_rule';
-  if (hasPreference && normalized.includes('tool')) return 'tooling_preference';
-  if (hasPreference) return 'user_preference';
-  if (hasDurableUseInstruction) return textHasAny(statement, ['this project']) ? 'project_decision' : 'user_preference';
-  return null;
-}
-
-function inferTopic(statement, tags, domains) {
-  if (textHasAny(statement, ['verification', 'validating', 'verify', 'npm.cmd test', '검증'])) {
-    return 'verification process';
-  }
-  if (textHasAny(statement, ['work process', 'inspect the repository first', 'small scoped edits', '작업 진행', '처리 방식'])) {
-    return 'work process';
-  }
-  if (textHasAny(statement, ['design philosophy', 'preserve existing architecture', '설계 철학'])) {
-    return 'design philosophy';
-  }
-  if (textHasAny(statement, ['agent repeatedly fails', 'before claiming completion'])) {
-    return 'agent verification failure';
-  }
-  if (textHasAny(statement, ['agent succeeded', 'focused tests'])) {
-    return 'agent success process';
-  }
-  if (tags.includes('dashboard') && (tags.includes('database') || tags.includes('mssql') || tags.includes('supabase') || tags.includes('postgresql'))) {
-    return 'dashboard database';
-  }
-  if (tags.includes('package.json') || tags.includes('dependency') || tags.includes('dependencies')) {
-    return 'package dependency changes';
-  }
-  if (tags.includes('overflow') || tags.includes('layout') || tags.includes('scrolling')) {
-    return tags.includes('table') ? 'table layout scrolling' : 'layout scrolling';
-  }
-  if (tags.includes('echarts') || tags.includes('visualization')) {
-    return 'dashboard visualization';
-  }
-  if (domains.includes('landing_page') || tags.includes('landing page')) return 'brand landing page design';
-  if (domains.includes('native_internal_app')) return 'native internal app workflow';
-  if (tags.includes('reference') || tags.includes('principles')) return 'reference handling';
-  if (tags.includes('approval') || tags.includes('expense') || tags.includes('receipt')) return 'approval and expense workflow';
-  if (tags.includes('3d') || tags.includes('hero') || tags.includes('cinematic')) return 'premium visual direction';
-  if (tags.includes('touch targets') || tags.includes('data clarity')) return 'mobile workflow readability';
-  if (domains.includes('dashboard')) return 'dashboard development';
-  if (domains.includes('database')) return 'database choice';
-  return tags.slice(0, 3).join(' ') || 'general workflow';
-}
-
 function toTitle(type, topic) {
   const label = type
     .split('_')
@@ -2122,10 +1912,10 @@ function toTitle(type, topic) {
   return `${label}: ${topic}`;
 }
 
-const METADATA_LABEL_PREFIX_PATTERN = /^(?:direct|english file|korean file|fixture|test fixture|test|example\s+[a-z0-9]+|user requested|user request|original request|original user request|ai action summary|action summary|summary|notes|source|parser|section|\uC0AC\uC6A9\uC790\s+\uC694\uCCAD|\uC6D0\s+\uC0AC\uC6A9\uC790\s+\uC694\uCCAD|\uC694\uCCAD|\uC694\uC57D)\s*[:\uFF1A]\s*/iu;
-const EMBEDDED_METADATA_LABEL_PATTERN = /(^|[.;]\s*)(?:direct|english file|korean file|fixture|test fixture|test|example\s+[a-z0-9]+|user requested|user request|original request|original user request|ai action summary|action summary|summary|notes|source|parser|section|\uC0AC\uC6A9\uC790\s+\uC694\uCCAD|\uC6D0\s+\uC0AC\uC6A9\uC790\s+\uC694\uCCAD|\uC694\uCCAD|\uC694\uC57D)\s*[:\uFF1A]\s*/giu;
+const METADATA_LABEL_PREFIX_PATTERN = /^(?:user request|original request|original user request|ai action summary|action summary|summary|notes|source|\uC0AC\uC6A9\uC790\s+\uC694\uCCAD|\uC6D0\s+\uC0AC\uC6A9\uC790\s+\uC694\uCCAD|\uC694\uCCAD|\uC694\uC57D)\s*[:\uFF1A]\s*/iu;
+const EMBEDDED_METADATA_LABEL_PATTERN = /(^|[.;]\s*)(?:user request|original request|original user request|ai action summary|action summary|summary|notes|source|\uC0AC\uC6A9\uC790\s+\uC694\uCCAD|\uC6D0\s+\uC0AC\uC6A9\uC790\s+\uC694\uCCAD|\uC694\uCCAD|\uC694\uC57D)\s*[:\uFF1A]\s*/giu;
 const GENERATED_STATEMENT_PREFIX_PATTERN = /^(?:accepted reusable approach|user accepted this approach|this approach was confirmed by the user and worked successfully|this task failed from the user's perspective|user rejected this direction|correction pattern|agent failure pattern|ai execution failure|agent success recovery approach|the approach failed|this task failed)\s*[:\uFF1A]\s*/iu;
-const MEMORY_METADATA_LABEL_PATTERN = /(?:^|\b)(?:english file|korean file|fixture|test fixture|test|example\s+[a-z0-9]+|user request|original request|ai action summary|action summary|source|parser|section)\s*[:\uFF1A]/iu;
+const MEMORY_METADATA_LABEL_PATTERN = /(?:^|\b)(?:user request|original request|ai action summary|action summary|source)\s*[:\uFF1A]/iu;
 
 function stripMemoryMetadataLabels(value) {
   let text = String(value ?? '').replace(/\s+/gu, ' ').trim();
@@ -2244,179 +2034,43 @@ function inferSuccessEvidence(statement = '', source = {}) {
   return 'unknown';
 }
 
-function sourceOutcomeFields(source = {}, statement = '') {
-  const canUseStatementAsFeedback = source.role === 'userFeedback' || source.kind === 'userFeedback' || source.kind === 'user_feedback';
-  const statementAcceptance = canUseStatementAsFeedback ? inferStatementAcceptance(statement, source) : 'unknown';
-  const technicalOutcome = normalizeEnum(source.technicalOutcome, TECHNICAL_OUTCOMES, 'unknown');
-  const userAcceptance = normalizeEnum(source.userAcceptance, USER_ACCEPTANCE_VALUES, statementAcceptance || 'unknown');
-  const finalOutcome = normalizeEnum(source.finalOutcome, FINAL_OUTCOMES, deriveFinalOutcome(technicalOutcome, userAcceptance));
-  const successEvidence = normalizeEnum(source.successEvidence || source.acceptanceBasis, SUCCESS_EVIDENCE_VALUES, inferSuccessEvidence(statement, {
-    ...source,
-    technicalOutcome,
-    userAcceptance,
-    finalOutcome
-  }));
-  return {
-    technicalOutcome,
-    userAcceptance,
-    userFeedbackSignal: source.userFeedbackSignal || (statementAcceptance === 'unknown' ? 'none' : statementAcceptance === 'accepted' ? 'acceptance' : 'rejection'),
-    finalOutcome,
-    successEvidence,
-    acceptanceBasis: successEvidence,
-    rejectionReason: source.rejectionReason || '',
-    correctionDirection: source.correctionDirection || '',
-    preventionRule: source.preventionRule || ''
-  };
-}
-
 function inferModelClass(candidate) {
   if (!candidate) return 'discarded_detail';
+  if (candidate.modelClass) return candidate.modelClass;
   if (candidate.type === 'discarded_detail') return 'discarded_detail';
   if (candidate.type === 'task_context' || ['task', 'temporary'].includes(candidate.scope)) return 'task_context';
   if (candidate.scope === 'project' || candidate.projectId || candidate.type === 'project_decision') return 'project_model';
   if (candidate.scope === 'domain') return 'domain_model';
-  if (['avoid_rule', 'failure_memory', 'success_pattern'].includes(candidate.type) && (candidate.domains || []).length > 0) return 'domain_model';
   return 'user_model';
 }
 
 function inferModelSubClass(candidate) {
   if (!candidate) return 'discarded_detail';
+  if (candidate.modelSubClass) return candidate.modelSubClass;
   if (candidate.type === 'discarded_detail') return 'discarded_detail';
-  if (candidate.type === 'task_context' || ['task', 'temporary'].includes(candidate.scope)) {
-    if (textHasAny(candidate.summary, ['only edit', 'allowed files'])) return 'current_allowed_files';
-    if (isTaskOnlyImplementationBoundary(candidate.summary)) return 'current_implementation_constraint';
-    if (isCurrentTaskChecklist(candidate.summary)) return 'current_validation_checklist';
-    if (textHasAny(candidate.summary, ['verify', 'checklist', 'before reporting completion', 'validation'])) return 'current_validation_checklist';
-    if (textHasAny(candidate.summary, ['reference image', 'reference material'])) return 'current_reference_material';
-    return 'current_task_scope';
-  }
-  if (candidate.scope === 'project' || candidate.projectId) {
-    if (textHasAny(candidate.summary, ['preserve', 'do not replace', 'keep current'])) return 'project_preservation_rule';
-    if (textHasAny(candidate.summary, ['asset', 'logo', 'image'])) return 'project_asset_rule';
-    if (textHasAny(candidate.summary, ['language', 'toggle', 'localization', 'ko/en'])) return 'project_localization_rule';
-    if (candidate.type === 'project_decision') return 'project_decision';
-    return 'project_constraint';
-  }
-  if (candidate.scope === 'domain' || inferModelClass(candidate) === 'domain_model') {
-    if (candidate.type === 'avoid_rule' || textHasAny(candidate.summary, ['avoid', 'do not', 'not a'])) return 'domain_avoidance';
-    if (candidate.type === 'validation_pattern') return 'domain_validation';
-    if (candidate.type === 'process_pattern') return 'domain_process';
-    if (candidate.type === 'failure_memory') return 'domain_failure_prevention';
-    if (candidate.type === 'success_pattern') return 'domain_success_criterion';
-    return 'domain_preference';
-  }
-  const byType = {
-    design_preference: 'visual_preference_model',
-    response_preference: 'response_preference_model',
-    process_pattern: 'process_preference_model',
-    validation_pattern: 'validation_preference_model',
-    communication_pattern: 'reporting_preference_model',
-    design_philosophy: 'design_philosophy_model',
-    avoid_rule: 'rejection_criteria_model',
-    failure_memory: 'rejection_criteria_model',
-    correction_pattern: 'rejection_criteria_model',
-    user_preference: 'preference_model',
-    workflow_rule: 'process_preference_model',
-    decision_pattern: 'scope_control_preference_model'
-  };
-  if (textHasAny(candidate.summary, ['reference image', 'reference material', 'do not copy'])) return 'reference_handling_model';
-  if (textHasAny(candidate.summary, ['project type', 'same design direction', 'implementation boundaries', 'only edit'])) return 'scope_control_preference_model';
-  if (textHasAny(candidate.summary, ['final report', 'report changed files', 'remaining risks'])) return 'reporting_preference_model';
-  return byType[candidate.type] || 'preference_model';
-}
-
-function sourceIndicatesFailure(source = {}, statement = '') {
-  return normalizeEnum(source.userAcceptance, USER_ACCEPTANCE_VALUES, 'unknown') === 'rejected'
-    || normalizeEnum(source.finalOutcome, FINAL_OUTCOMES, 'unknown') === 'technical_success_user_rejected'
-    || normalizeEnum(source.technicalOutcome, TECHNICAL_OUTCOMES, 'unknown') === 'failure'
-    || source.userFeedbackSignal === 'rejection'
-    || textHasAny(statement, [
-      'user rejected',
-      'technically completed result',
-      'ai execution failure',
-      'agent failure',
-      'approach failed',
-      'failed approach',
-      'command failed',
-      'permission denied',
-      'access denied',
-      'tool failed',
-      'api failed',
-      'browser failed',
-      'image generation failed'
-    ]);
-}
-
-function inferMemoryRole(candidate, source = {}, statement = '') {
-  if (!candidate) return 'discarded_detail';
-  if (candidate.type === 'discarded_detail' || candidate.modelClass === 'discarded_detail') return 'discarded_detail';
-  if (candidate.type === 'task_context' || candidate.modelClass === 'task_context' || ['task', 'temporary'].includes(candidate.scope)) return 'task_context';
-  if (['success_pattern', 'agent_success_pattern'].includes(candidate.type)) return 'ai_successful_approach';
-  if (['failure_memory', 'agent_failure_pattern', 'correction_pattern'].includes(candidate.type)) return 'ai_failure_memory';
-  if (candidate.type === 'prevention_rule' && sourceIndicatesFailure(source, statement)) return 'ai_failure_memory';
-  if (candidate.type === 'avoid_rule' && source?.role === 'userFeedback') return 'user_success_criteria';
-  if (candidate.type === 'avoid_rule' && sourceIndicatesFailure(source, statement)) return 'ai_failure_memory';
-  return 'user_success_criteria';
-}
-
-function inferAffectedContext(statement = '') {
-  if (textHasAny(statement, ['permission denied', 'access denied', 'eperm', 'eacces'])) return 'filesystem permissions';
-  if (textHasAny(statement, ['enoent', 'path', 'directory', 'folder'])) return 'filesystem path access';
-  if (textHasAny(statement, ['command failed', 'npm', 'test', 'build', 'check'])) return 'command execution';
-  if (textHasAny(statement, ['browser failed', 'browser access'])) return 'browser automation';
-  if (textHasAny(statement, ['api failed', 'image generation failed', 'tool failed'])) return 'tool runtime';
-  if (textHasAny(statement, ['visual', 'design', 'saas', 'catalog', 'direction'])) return 'visual direction';
-  return 'current AI coding task';
-}
-
-function inferRecoveryApproach(statement = '') {
-  const text = String(statement || '').trim();
-  const match = text.match(/\b(?:recovered by|recovery approach|workaround|alternative command)\b[:\s-]*(.+)/iu);
-  if (match) return summarizeStatement(match[1]);
-  if (textHasAny(text, ['instead of'])) return summarizeStatement(text);
-  return '';
+  if (candidate.type === 'task_context' || ['task', 'temporary'].includes(candidate.scope)) return 'task_context';
+  return candidate.type || 'unspecified';
 }
 
 function applyMemoryRoleFields(candidate, statement, source = {}) {
-  const structured = isAgentStructuredCandidate(candidate) || isAgentStructuredCandidate(source);
   candidate.memoryRole = normalizeEnum(
     candidate.memoryRole,
     MEMORY_ROLE_VALUES,
-    structured ? 'discarded_detail' : inferMemoryRole(candidate, source, statement)
+    'discarded_detail'
   );
-  if (structured) {
-    if (candidate.memoryRole === 'user_success_criteria') {
-      candidate.successCriterion = candidate.successCriterion || candidate.rule || candidate.summary;
-    }
-    if (candidate.memoryRole === 'ai_failure_memory') {
-      candidate.failureReason = candidate.failureReason || candidate.summary;
-      candidate.failureCategory = candidate.failureCategory || candidate.failureType || '';
-    }
-    if (candidate.memoryRole === 'ai_successful_approach') {
-      candidate.successfulApproach = candidate.successfulApproach || candidate.summary;
-      candidate.reuseWhen = candidate.reuseWhen || candidate.appliesTo;
-    }
-    return candidate;
-  }
   if (candidate.memoryRole === 'user_success_criteria') {
-    candidate.successCriterion = candidate.summary;
+    candidate.successCriterion = candidate.successCriterion || candidate.rule || candidate.summary;
     candidate.successEvidence = candidate.successEvidence === 'rejected' ? 'unknown' : candidate.successEvidence;
     candidate.acceptanceBasis = candidate.acceptanceBasis === 'rejected' ? 'unknown' : candidate.acceptanceBasis;
     candidate.userAcceptance = candidate.userAcceptance === 'rejected' ? 'unknown' : candidate.userAcceptance;
     candidate.finalOutcome = candidate.finalOutcome === 'technical_success_user_rejected' ? 'unknown' : candidate.finalOutcome;
   }
   if (candidate.memoryRole === 'ai_failure_memory') {
-    candidate.failureType = candidate.failureType || inferFailureType(statement);
-    candidate.failureCategory = candidate.failureType;
-    candidate.failedApproach = candidate.failedApproach || inferFailureApproach(statement);
     candidate.failureReason = candidate.failureReason || candidate.summary;
-    candidate.preventionRule = candidate.preventionRule || inferPreventionRule(statement);
-    candidate.affectedContext = candidate.affectedContext || inferAffectedContext(statement);
-    candidate.recurrenceRisk = candidate.recurrenceRisk || (candidate.confidence === 'high' ? 'high' : 'medium');
+    candidate.failureCategory = candidate.failureCategory || candidate.failureType || '';
   }
   if (candidate.memoryRole === 'ai_successful_approach') {
     candidate.successfulApproach = candidate.successfulApproach || candidate.summary;
-    candidate.recoveryApproach = candidate.recoveryApproach || inferRecoveryApproach(statement);
     candidate.reuseWhen = candidate.reuseWhen || candidate.appliesTo;
   }
   return candidate;
@@ -2429,945 +2083,10 @@ function normalizeCandidateModel(candidate) {
   return candidate;
 }
 
-function buildCandidate(statement, source, activeMemories) {
-  if (containsSensitive(statement)) {
-    return null;
-  }
-
-  const normalizedStatement = normalizeStatementForMemory(statement);
-  if (!normalizedStatement) {
-    return null;
-  }
-
-  let type = inferType(normalizedStatement);
-  if (source?.role === 'userRequest' && ['success_pattern', 'agent_success_pattern'].includes(type)) {
-    type = 'user_preference';
-  }
-  if (!type || !MEMORY_TYPES.has(type)) {
-    return null;
-  }
-  if (source?.role === 'aiActionSummary' && !['accepted', 'rejected', 'mixed'].includes(source.userAcceptance || '') && !source.allowActionSummary) {
-    return null;
-  }
-
-  const domains = extractDomains(normalizedStatement);
-  const tags = extractTags(normalizedStatement);
-  const scope = normalizeCandidateScope(type, determineScope(normalizedStatement, domains), normalizedStatement);
-  const confidence = determineConfidence(normalizedStatement, type, scope);
-  const topic = inferTopic(normalizedStatement, tags, domains);
-  const timestamp = nowIso();
-  const summary = summarizeStatement(normalizedStatement);
-  const appliesTo = inferAppliesTo(normalizedStatement, scope, domains, topic);
-  const outcomeFields = sourceOutcomeFields(source, normalizedStatement);
-  const candidate = {
-    id: hashId('mem', `${type}|${scope}|${topic}|${summary}`),
-    type,
-    scope,
-    topic,
-    title: toTitle(type, topic),
-    rule: summary,
-    summary,
-    details: summary,
-    tags,
-    domains,
-    appliesTo,
-    source: source || { kind: 'text' },
-    sourceTextKind: source?.role || source?.kind || 'text',
-    sourcePriority: source?.priority || 99,
-    evidence: [{
-      kind: source?.kind || 'text',
-      role: source?.role || 'text',
-      summary
-    }],
-    technicalOutcome: outcomeFields.technicalOutcome,
-    userAcceptance: outcomeFields.userAcceptance,
-    userFeedbackSignal: outcomeFields.userFeedbackSignal,
-    successEvidence: outcomeFields.successEvidence,
-    acceptanceBasis: outcomeFields.acceptanceBasis,
-    finalOutcome: outcomeFields.finalOutcome,
-    rejectionReason: outcomeFields.rejectionReason,
-    correctionDirection: outcomeFields.correctionDirection,
-    preventionRule: outcomeFields.preventionRule,
-    confidence,
-    status: 'pending',
-    conflictStatus: 'no_conflict',
-    supersedes: [],
-    related: [],
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    lastUsedAt: null
-  };
-
-  enrichTypedFields(candidate, normalizedStatement);
-  normalizeCandidateModel(candidate);
-  applyMemoryRoleFields(candidate, normalizedStatement, source);
-  const conflict = classifyCandidateConflict(activeMemories, candidate);
-  candidate.conflictStatus = conflict.status;
-  candidate.related = [...new Set([...(candidate.related || []), ...(conflict.related || [])])];
-  candidate.supersedes = [...new Set([...(candidate.supersedes || []), ...(conflict.supersedes || [])])];
-  if (conflict.reason) {
-    candidate.conflictReason = conflict.reason;
-  }
-  return candidate;
-}
-
-function inferAppliesTo(statement, scope, domains, topic) {
-  if (textHasAny(statement, ['for this task only', 'this task only'])) return ['current task'];
-  if (textHasAny(statement, ['dashboard projects'])) return ['dashboard projects'];
-  if (textHasAny(statement, ['general app prototypes'])) return ['general app prototypes'];
-  if (textHasAny(statement, ['this project'])) return ['current project'];
-  if (textHasAny(statement, ['package.json'])) return ['dependency changes'];
-  if (domains.length > 0) return domains.map((domain) => `${domain} work`);
-  return [scope === 'global' ? 'all projects' : topic];
-}
-
-function semanticNormalize(text = '') {
-  return String(text || '')
-    .normalize('NFKC')
-    .toLowerCase()
-    .replace(/\s+/gu, ' ')
-    .trim();
-}
-
-function hasHangul(text = '') {
-  return /[\uAC00-\uD7A3]/u.test(String(text || ''));
-}
-
-function semanticLanguage(text = '') {
-  return hasHangul(text) ? 'ko' : 'en';
-}
-
-function semanticHasAny(text, phrases = []) {
-  const normalized = semanticNormalize(text);
-  return phrases.some((phrase) => normalized.includes(semanticNormalize(phrase)));
-}
-
-function cleanRequestLine(line = '') {
-  return String(line || '')
-    .replace(/^\s*[-*•]\s*/u, '')
-    .replace(/^\s*\d+[.)]\s*/u, '')
-    .replace(/^\s*\[[ x]\]\s*/iu, '')
-    .replace(/\s+/gu, ' ')
-    .trim();
-}
-
-function shortSemanticText(text = '', maxLength = 180) {
-  const clean = cleanRequestLine(text).replace(/[.;:\uFF1A]+$/u, '').trim();
-  return clean.length > maxLength ? `${clean.slice(0, maxLength - 3)}...` : clean;
-}
-
-function joinSemanticItems(items = [], maxItems = 4, maxLength = 180) {
-  const unique = uniqueNonEmpty(items.map((item) => shortSemanticText(item, maxLength))).slice(0, maxItems);
-  return unique.join('; ');
-}
-
-function parseRequestSections(text = '') {
-  const sections = [];
-  let current = { heading: '', lines: [] };
-  for (const rawLine of String(text || '').split(/\r?\n/u)) {
-    const line = cleanRequestLine(rawLine);
-    if (!line) continue;
-    const headingMatch = line.match(/^(.{1,48})[:\uFF1A]\s*$/u);
-    if (headingMatch) {
-      if (current.heading || current.lines.length > 0) sections.push(current);
-      current = { heading: headingMatch[1].trim(), lines: [] };
-      continue;
-    }
-    current.lines.push(line);
-  }
-  if (current.heading || current.lines.length > 0) sections.push(current);
-  return sections;
-}
-
-function shouldSemanticDecomposeUserRequest(text = '') {
-  const value = String(text || '').trim();
-  if (!value) return false;
-  const lines = value.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
-  const bulletCount = lines.filter((line) => /^\s*(?:[-*•]|\d+[.)])/u.test(line)).length;
-  const headingCount = lines.filter((line) => /^.{1,48}[:\uFF1A]\s*$/u.test(cleanRequestLine(line))).length;
-  return value.length >= 360 || lines.length >= 6 || bulletCount >= 2 || headingCount >= 2;
-}
-
-const SEMANTIC_CUES = {
-  reference: [
-    'basis',
-    'baseline',
-    'reference',
-    'based on',
-    'match',
-    'standard',
-    '기준',
-    '참조',
-    '바탕',
-    '맞춰',
-    '따라'
-  ],
-  consistency: [
-    'consistent',
-    'consistency',
-    'same',
-    'matching',
-    'uniform',
-    'unify',
-    'standardize',
-    'align',
-    'common',
-    'repeat',
-    'reusable',
-    '통일',
-    '일관',
-    '동일',
-    '같은',
-    '공통',
-    '정렬',
-    '반복'
-  ],
-  preservation: [
-    'preserve',
-    'keep',
-    'do not',
-    "don't",
-    'must not',
-    'only',
-    'avoid unnecessary',
-    'without changing',
-    'scope',
-    'unchanged',
-    '보존',
-    '유지',
-    '건드리지',
-    '불필요',
-    '수정만',
-    '만 수정',
-    '바꾸지',
-    '변경하지'
-  ],
-  validation: [
-    'verify',
-    'validate',
-    'check',
-    'after switching',
-    'toggle',
-    'mode',
-    'language',
-    'state',
-    'responsive',
-    '검증',
-    '확인',
-    '전환',
-    '토글',
-    '언어',
-    '모드',
-    '상태',
-    '유지'
-  ],
-  ordering: [
-    'before',
-    'after',
-    'first',
-    'top',
-    'above',
-    'priority',
-    'order',
-    '먼저',
-    '보다 먼저',
-    '최상단',
-    '상단',
-    '순서',
-    '우선'
-  ],
-  target: [
-    'target',
-    'targets',
-    'apply to',
-    'applies to',
-    'scope',
-    '대상',
-    '적용',
-    '범위'
-  ],
-  workflow: [
-    'before implementation',
-    'before coding',
-    'after implementation',
-    'workflow',
-    'report',
-    'plan',
-    '구현 전',
-    '코딩 전',
-    '작업 전',
-    '작업 후',
-    '보고',
-    '계획',
-    '흐름'
-  ],
-  domainUi: [
-    'ui',
-    'ux',
-    'visual',
-    'style',
-    'design',
-    'layout',
-    'component',
-    'navigation',
-    'screen',
-    'table',
-    'form',
-    'page',
-    'site',
-    '디자인',
-    '스타일',
-    '위치',
-    '정렬',
-    '시각',
-    '컴포넌트',
-    '내비게이션',
-    '화면',
-    '표',
-    '폼',
-    '페이지',
-    '사이트'
-  ],
-  technical: [
-    'dependency',
-    'package',
-    'config',
-    'command',
-    'api',
-    'database',
-    'setting',
-    '설정',
-    '명령',
-    '의존성',
-    '패키지',
-    '데이터',
-    '인증'
-  ]
-};
-
-function semanticDomainsForRequest(text = '') {
-  const domains = new Set(extractDomains(text));
-  if (semanticHasAny(text, SEMANTIC_CUES.domainUi)) {
-    domains.add('frontend');
-    domains.add('visual_design');
-  }
-  if (semanticHasAny(text, ['brand', 'landing', 'marketing', '브랜드', '랜딩'])) {
-    domains.add('brand_design');
-    domains.add('landing_page');
-  }
-  if (semanticHasAny(text, ['native', 'mobile', 'app', 'ios', 'android', '네이티브', '모바일', '앱'])) {
-    domains.add('native_internal_app');
-  }
-  if (semanticHasAny(text, ['dashboard', 'table', 'reporting', '대시보드', '표', '리포트'])) {
-    domains.add('dashboard');
-  }
-  if (semanticHasAny(text, ['document', 'docx', 'markdown', '문서'])) {
-    domains.add('documentation');
-  }
-  if (semanticHasAny(text, SEMANTIC_CUES.technical)) {
-    domains.add('tooling');
-  }
-  return [...domains];
-}
-
-function semanticTopicForRequest(text = '', domains = []) {
-  if (domains.includes('visual_design') || domains.includes('frontend')) return 'consistent visual element handling';
-  if (domains.includes('native_internal_app')) return 'native app workflow consistency';
-  if (domains.includes('dashboard')) return 'dashboard interaction consistency';
-  if (domains.includes('documentation')) return 'document output consistency';
-  if (domains.includes('tooling')) return 'configuration and tooling preservation';
-  return 'structured user success criteria';
-}
-
-function semanticAppliesTo(scope, domains, topic) {
-  if (scope === 'project') return ['current project'];
-  if (scope === 'task') return ['current task'];
-  if (domains.length > 0) return domains.map((domain) => `${domain} work`);
-  return [topic || 'all projects'];
-}
-
-function sectionLinesMatching(sections, cues) {
-  return sections.flatMap((section) => (
-    semanticHasAny(section.heading, cues)
-      ? section.lines
-      : section.lines.filter((line) => semanticHasAny(line, cues))
-  ));
-}
-
-function firstMeaningLine(sections) {
-  return sections.flatMap((section) => section.lines)
-    .find((line) => !semanticHasAny(line, SEMANTIC_CUES.target) || semanticHasAny(line, [...SEMANTIC_CUES.consistency, ...SEMANTIC_CUES.reference]))
-    || sections.flatMap((section) => section.lines)[0]
-    || '';
-}
-
-function relatedCategoriesExcludingPrimary(primaryCategory, categories = []) {
-  return uniqueNonEmpty(categories).filter((category) => category !== primaryCategory);
-}
-
-function primaryCategoryForProjectCriteria(pieces = {}, domains = []) {
-  const combined = [
-    pieces.goal,
-    ...(pieces.basis || []),
-    ...(pieces.consistency || []),
-    ...(pieces.ordering || []),
-    ...(pieces.validation || []),
-    ...(pieces.preservation || [])
-  ].filter(Boolean).join('\n');
-  if ((pieces.ordering || []).length > 0 || semanticHasAny(combined, SEMANTIC_CUES.workflow)) {
-    return 'process_patterns';
-  }
-  if ((pieces.validation || []).length > 0 && (pieces.consistency || []).length === 0 && (pieces.basis || []).length === 0) {
-    return 'validation_patterns';
-  }
-  if (domains.includes('visual_design') || domains.includes('frontend') || (pieces.consistency || []).length > 0) {
-    return 'design_philosophy';
-  }
-  return 'decision_patterns';
-}
-
-function semanticSummaryForUnit(language, kind, pieces = {}) {
-  const goal = shortSemanticText(pieces.goal || '');
-  const basis = joinSemanticItems(pieces.basis || [], 2, 120);
-  const consistency = joinSemanticItems(pieces.consistency || [], 3, 120);
-  const ordering = joinSemanticItems(pieces.ordering || [], 2, 120);
-  const validation = joinSemanticItems(pieces.validation || [], 2, 120);
-  const targets = joinSemanticItems(pieces.targets || [], 4, 120);
-  const preservation = joinSemanticItems(pieces.preservation || [], 3, 120);
-
-  if (language === 'ko') {
-    if (kind === 'projectCriteria') {
-      return [
-        goal ? `이 프로젝트에서는 ${goal}` : '이 프로젝트에서는 사용자가 지정한 성공 조건을 기준으로 구현한다',
-        basis ? `기준: ${basis}.` : '',
-        consistency ? `일관성: ${consistency}.` : '',
-        ordering ? `순서와 위치: ${ordering}.` : '',
-        validation ? `검증/보존: ${validation}.` : ''
-      ].filter(Boolean).join(' ');
-    }
-    if (kind === 'consistencyPreference') {
-      return '사용자는 같은 역할의 요소가 작업 전반에서 같은 기준과 위치/스타일로 일관되게 보이길 원한다.';
-    }
-    if (kind === 'referencePreference') {
-      return '사용자는 마음에 든 기준이 있으면 새 요소를 임의로 만들기보다 그 기준에 맞춰 다른 요소를 통일하길 원한다.';
-    }
-    if (kind === 'domainPrinciple') {
-      return '반복되는 시각/동작 요소는 같은 역할이면 하나의 컴포넌트처럼 기준, 위치, 간격, 동작을 일관되게 관리한다.';
-    }
-    if (kind === 'validationRule') {
-      return validation
-        ? `상태 전환이나 모드 변경 후에도 사용자가 지정한 결과가 유지되는지 확인한다. 검증 기준: ${validation}.`
-        : '상태 전환이나 모드 변경 후에도 사용자가 지정한 위치, 스타일, 동작이 유지되는지 확인한다.';
-    }
-    if (kind === 'scopePrevention') {
-      return preservation
-        ? `요청 범위를 넘어 불필요한 구조나 주요 내용을 수정하지 않는다. 보존 기준: ${preservation}.`
-        : '요청 범위를 넘어 큰 구조, 주요 내용, 주변 요소를 불필요하게 수정하지 않는다.';
-    }
-    if (kind === 'taskContext') {
-      return [
-        targets ? `이번 작업의 직접 대상은 ${targets}이다.` : '',
-        preservation ? `이번 작업 범위 제한: ${preservation}.` : '',
-        goal ? `현재 작업 목표: ${goal}.` : ''
-      ].filter(Boolean).join(' ') || '이번 작업의 대상과 범위는 현재 사용자 요청에 한정된다.';
-    }
-  }
-
-  if (kind === 'projectCriteria') {
-    return [
-      goal ? `In this project, satisfy this user success criterion: ${goal}.` : 'In this project, implement against the user-specified success criteria.',
-      basis ? `Reference basis: ${basis}.` : '',
-      consistency ? `Consistency requirements: ${consistency}.` : '',
-      ordering ? `Ordering and placement: ${ordering}.` : '',
-      validation ? `Validation/preservation: ${validation}.` : ''
-    ].filter(Boolean).join(' ');
-  }
-  if (kind === 'consistencyPreference') {
-    return 'The user wants elements with the same role to remain consistent in standard, placement, style, and behavior across the work.';
-  }
-  if (kind === 'referencePreference') {
-    return 'When the user identifies an approved reference, align related elements to that reference instead of inventing a new variant.';
-  }
-  if (kind === 'domainPrinciple') {
-    return 'Repeated visual or behavioral elements with the same role should be managed like one consistent component.';
-  }
-  if (kind === 'validationRule') {
-    return validation
-      ? `After state, mode, or language changes, verify that the requested result remains stable: ${validation}.`
-      : 'After state, mode, or language changes, verify that the requested placement, style, and behavior remain stable.';
-  }
-  if (kind === 'scopePrevention') {
-    return preservation
-      ? `Do not modify major structure or content outside the requested scope. Preservation criteria: ${preservation}.`
-      : 'Do not modify major structure, content, or surrounding elements outside the requested scope.';
-  }
-  if (kind === 'taskContext') {
-    return [
-      targets ? `Current task targets: ${targets}.` : '',
-      preservation ? `Current task scope limits: ${preservation}.` : '',
-      goal ? `Current task goal: ${goal}.` : ''
-    ].filter(Boolean).join(' ') || 'Current task targets and scope are limited to the current user request.';
-  }
-  return goal || 'Structured user success criteria.';
-}
-
-function semanticUnitCandidate(unit, source, activeMemories) {
-  if (!unit?.summary || containsSensitive(unit.summary)) return null;
-  const domains = [...new Set([...(unit.domains || []), ...extractDomains(unit.summary)])];
-  const tags = [...new Set([...(unit.tags || []), ...extractTags(unit.summary)])].slice(0, 16);
-  const topic = unit.topic || inferTopic(unit.summary, tags, domains);
-  const timestamp = nowIso();
-  const candidate = {
-    id: hashId('mem', `semantic|${unit.type}|${unit.scope}|${topic}|${unit.summary}`),
-    type: unit.type,
-    scope: unit.scope,
-    topic,
-    title: toTitle(unit.type, topic),
-    rule: unit.summary,
-    summary: unit.summary,
-    details: unit.details || unit.summary,
-    tags,
-    domains,
-    appliesTo: unit.appliesTo || semanticAppliesTo(unit.scope, domains, topic),
-    source: source || { kind: 'semantic_user_request' },
-    sourceTextKind: source?.role || source?.kind || 'userRequest',
-    sourcePriority: source?.priority || 1,
-    evidence: [{
-      kind: source?.kind || 'semantic_user_request',
-      role: source?.role || 'userRequest',
-      summary: unit.summary
-    }],
-    technicalOutcome: 'unknown',
-    userAcceptance: 'unknown',
-    userFeedbackSignal: 'none',
-    successEvidence: 'unknown',
-    acceptanceBasis: 'unknown',
-    finalOutcome: 'unknown',
-    rejectionReason: '',
-    correctionDirection: '',
-    preventionRule: unit.preventionRule || '',
-    confidence: unit.confidence || 'medium',
-    status: 'pending',
-    conflictStatus: 'no_conflict',
-    supersedes: [],
-    related: [],
-    primaryCategory: unit.primaryCategory,
-    relatedCategories: normalizeCategoryDocKeys(unit.relatedCategories || []),
-    memoryRole: unit.memoryRole || 'user_success_criteria',
-    modelClass: unit.modelClass,
-    modelSubClass: unit.modelSubClass,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    lastUsedAt: null
-  };
-
-  normalizeCandidateModel(candidate);
-  applyMemoryRoleFields(candidate, unit.summary, source);
-  const conflict = classifyCandidateConflict(activeMemories, candidate);
-  candidate.conflictStatus = conflict.status;
-  candidate.related = [...new Set([...(candidate.related || []), ...(conflict.related || [])])];
-  candidate.supersedes = [...new Set([...(candidate.supersedes || []), ...(conflict.supersedes || [])])];
-  if (conflict.reason) candidate.conflictReason = conflict.reason;
-  return candidate;
-}
-
-function semanticCandidatesFromUserRequest(text = '', source = {}, activeMemories = []) {
-  if (!shouldSemanticDecomposeUserRequest(text)) return [];
-  const sections = parseRequestSections(text);
-  if (sections.length === 0) return [];
-
-  const language = semanticLanguage(text);
-  const domains = semanticDomainsForRequest(text);
-  const topic = semanticTopicForRequest(text, domains);
-  const allLines = sections.flatMap((section) => section.lines);
-  const goal = firstMeaningLine(sections);
-  const basis = sectionLinesMatching(sections, SEMANTIC_CUES.reference);
-  const consistency = sectionLinesMatching(sections, SEMANTIC_CUES.consistency);
-  const ordering = sectionLinesMatching(sections, SEMANTIC_CUES.ordering);
-  const validation = sectionLinesMatching(sections, SEMANTIC_CUES.validation);
-  const preservation = sectionLinesMatching(sections, SEMANTIC_CUES.preservation);
-  const targets = sections.flatMap((section) => (
-    semanticHasAny(section.heading, SEMANTIC_CUES.target)
-      ? section.lines
-      : []
-  ));
-  const hasReusableStructure = basis.length > 0 || consistency.length > 0 || ordering.length > 0 || validation.length > 0 || preservation.length > 0;
-  if (!hasReusableStructure) return [];
-
-  const common = { goal, basis, consistency, ordering, validation, preservation, targets };
-  const projectPrimaryCategory = primaryCategoryForProjectCriteria(common, domains);
-  const units = [];
-  const pushUnit = (unit) => {
-    if (!unit.summary || units.some((existing) => normalizeText(existing.summary) === normalizeText(unit.summary))) return;
-    units.push(unit);
-  };
-
-  pushUnit({
-    type: 'project_decision',
-    scope: 'project',
-    topic,
-    modelClass: 'project_model',
-    modelSubClass: validation.length > 0 ? 'project_validation_rule' : 'project_constraint',
-    memoryRole: 'user_success_criteria',
-    primaryCategory: projectPrimaryCategory,
-    relatedCategories: relatedCategoriesExcludingPrimary(projectPrimaryCategory, ['success_patterns', 'user_patterns', 'design_philosophy', 'decision_patterns', 'process_patterns', validation.length > 0 ? 'validation_patterns' : 'success_patterns']),
-    confidence: 'high',
-    domains,
-    summary: semanticSummaryForUnit(language, 'projectCriteria', common)
-  });
-
-  if (consistency.length > 0) {
-    pushUnit({
-      type: 'user_preference',
-      scope: 'global',
-      topic: 'same-role consistency',
-      modelClass: 'user_model',
-      modelSubClass: 'preference_model',
-      memoryRole: 'user_success_criteria',
-      primaryCategory: 'user_patterns',
-      relatedCategories: ['user_preferences', 'design_philosophy', 'success_patterns', 'decision_patterns', 'process_patterns'],
-      confidence: 'medium',
-      domains,
-      summary: semanticSummaryForUnit(language, 'consistencyPreference', common)
-    });
-  }
-
-  if (basis.length > 0) {
-    pushUnit({
-      type: 'decision_pattern',
-      scope: 'global',
-      topic: 'reference-based alignment',
-      modelClass: 'user_model',
-      modelSubClass: 'scope_control_preference_model',
-      memoryRole: 'user_success_criteria',
-      primaryCategory: 'decision_patterns',
-      relatedCategories: ['user_preferences', 'user_patterns', 'design_philosophy', 'success_patterns'],
-      confidence: 'medium',
-      domains,
-      summary: semanticSummaryForUnit(language, 'referencePreference', common)
-    });
-  }
-
-  if (domains.length > 0 && consistency.length > 0) {
-    pushUnit({
-      type: 'design_philosophy',
-      scope: 'domain',
-      topic,
-      modelClass: 'domain_model',
-      modelSubClass: 'domain_preference',
-      memoryRole: 'user_success_criteria',
-      primaryCategory: 'design_philosophy',
-      relatedCategories: ['user_patterns', 'success_patterns', 'process_patterns', 'decision_patterns'],
-      confidence: 'medium',
-      domains,
-      summary: semanticSummaryForUnit(language, 'domainPrinciple', common)
-    });
-  }
-
-  if (validation.length > 0) {
-    pushUnit({
-      type: 'validation_pattern',
-      scope: domains.length > 0 ? 'domain' : 'global',
-      topic: 'state preservation validation',
-      modelClass: domains.length > 0 ? 'domain_model' : 'user_model',
-      modelSubClass: domains.length > 0 ? 'domain_validation' : 'validation_preference_model',
-      memoryRole: 'user_success_criteria',
-      primaryCategory: 'validation_patterns',
-      relatedCategories: ['success_patterns', 'prevention_rules', 'process_patterns'],
-      confidence: 'medium',
-      domains,
-      summary: semanticSummaryForUnit(language, 'validationRule', common)
-    });
-  }
-
-  if (preservation.length > 0) {
-    pushUnit({
-      type: 'prevention_rule',
-      scope: 'global',
-      topic: 'scope control prevention',
-      modelClass: 'user_model',
-      modelSubClass: 'scope_control_preference_model',
-      memoryRole: 'ai_failure_memory',
-      primaryCategory: 'prevention_rules',
-      relatedCategories: ['global_avoid_rules', 'process_patterns', 'decision_patterns', 'agent_failure_patterns', 'user_preferences'],
-      confidence: 'high',
-      domains,
-      summary: semanticSummaryForUnit(language, 'scopePrevention', common),
-      preventionRule: semanticSummaryForUnit(language, 'scopePrevention', common)
-    });
-  }
-
-  if (targets.length > 0 || preservation.length > 0 || allLines.length > 8) {
-    pushUnit({
-      type: 'task_context',
-      scope: 'task',
-      topic: 'current task scope',
-      modelClass: 'task_context',
-      modelSubClass: 'current_task_scope',
-      memoryRole: 'task_context',
-      primaryCategory: 'process_patterns',
-      relatedCategories: ['workflow_rules'],
-      confidence: 'low',
-      domains,
-      appliesTo: ['current task'],
-      summary: semanticSummaryForUnit(language, 'taskContext', common)
-    });
-  }
-
-  return units.map((unit) => semanticUnitCandidate(unit, source, activeMemories)).filter(Boolean);
-}
-
-function enrichTypedFields(candidate, statement) {
-  if (candidate.type === 'failure_memory') {
-    candidate.failureType = inferFailureType(statement);
-    candidate.failedApproach = inferFailureApproach(statement);
-    candidate.failureReason = candidate.summary;
-    candidate.preventionRule = inferPreventionRule(statement);
-    candidate.relatedFiles = candidate.tags.includes('package.json') ? ['package.json'] : [];
-    candidate.recurrenceRisk = candidate.confidence === 'high' ? 'high' : 'medium';
-  }
-
-  if (candidate.type === 'success_pattern') {
-    candidate.successfulApproach = candidate.summary;
-    candidate.whyItWorked = textHasAny(statement, ['because'])
-      ? candidate.summary.split(/\bbecause\b/iu).slice(1).join('because').trim()
-      : candidate.acceptanceBasis === 'confirmed'
-        ? 'Confirmed by user acceptance or positive feedback.'
-        : 'Validation or technical success suggests this approach is reusable.';
-    candidate.reuseWhen = candidate.appliesTo;
-    candidate.relatedFiles = [];
-  }
-
-  if (candidate.type === 'avoid_rule') {
-    candidate.forbiddenAction = candidate.summary;
-    candidate.reason = textHasAny(statement, ['because'])
-      ? candidate.summary.split(/\bbecause\b/iu).slice(1).join('because').trim()
-      : 'Marked as an explicit avoid rule.';
-    candidate.severity = candidate.confidence === 'high' ? 'high' : 'medium';
-  }
-
-  if (candidate.type === 'prevention_rule') {
-    candidate.preventionRule = candidate.summary;
-    candidate.forbiddenAction = candidate.forbiddenAction || candidate.summary;
-    candidate.reason = candidate.reason || 'Captured as a repeat-prevention rule for an AI failure.';
-    candidate.severity = candidate.confidence === 'high' ? 'high' : 'medium';
-  }
-
-  if (candidate.type === 'project_decision') {
-    candidate.decision = candidate.summary;
-    candidate.reason = textHasAny(statement, ['because'])
-      ? candidate.summary.split(/\bbecause\b/iu).slice(1).join('because').trim()
-      : 'Captured from an explicit project decision statement.';
-    candidate.alternativesRejected = inferRejectedAlternatives(statement);
-  }
-
-  if (PATTERN_TYPES.has(candidate.type)) {
-    candidate.patternType = candidate.type;
-    candidate.situation = inferPatternSituation(candidate.type, statement);
-    candidate.trigger = inferTrigger(statement);
-    candidate.observedBehavior = candidate.type.includes('failure') ? candidate.summary : '';
-    candidate.preferredBehavior = inferPreferredBehavior(candidate, statement);
-    candidate.preventionRule = candidate.type === 'agent_failure_pattern'
-      ? inferPreventionRule(statement)
-      : candidate.preventionRule;
-    candidate.reuseWhen = candidate.type === 'agent_success_pattern' ? candidate.appliesTo : candidate.reuseWhen;
-    candidate.relatedProjects = [];
-    candidate.relatedPatterns = [];
-    candidate.relatedFailures = [];
-    candidate.relatedSuccesses = [];
-    candidate.relatedDecisions = [];
-    candidate.relatedPreferences = [];
-  }
-}
-
-function inferPatternSituation(type, statement) {
-  if (type === 'validation_pattern' || textHasAny(statement, ['test', 'check', 'verify', '검증'])) return 'verification';
-  if (type === 'design_philosophy' || textHasAny(statement, ['architecture', 'design'])) return 'architecture';
-  if (type === 'process_pattern' || type === 'handoff_pattern') return 'implementation';
-  if (type === 'agent_failure_pattern') return 'debugging';
-  if (type === 'agent_success_pattern') return 'implementation';
-  if (type === 'response_preference' || type === 'communication_pattern' || type === 'question_pattern') return 'handoff';
-  return 'general';
-}
-
-function inferTrigger(statement) {
-  if (textHasAny(statement, ['when validating', '검증할 때'])) return 'validation work';
-  if (textHasAny(statement, ['before claiming completion', '완료를 말하기 전에'])) return 'completion claim';
-  if (textHasAny(statement, ['inspect the repository first'])) return 'starting repository work';
-  if (textHasAny(statement, ['design philosophy'])) return 'architecture decisions';
-  return summarizeStatement(statement);
-}
-
-function inferPreferredBehavior(candidate, statement) {
-  if (candidate.type === 'agent_failure_pattern') {
-    return inferPreventionRule(statement);
-  }
-  if (textHasAny(statement, ['prefer'])) {
-    const parts = statement.split(/\bprefer\b/iu);
-    return summarizeStatement(parts.slice(1).join('prefer') || statement);
-  }
-  return candidate.summary;
-}
-
-function inferFailureType(statement) {
-  if (textHasAny(statement, ['permission denied', 'access denied', 'eperm', 'eacces'])) return 'permission_failure';
-  if (textHasAny(statement, ['enoent', 'file not found', 'directory not found', 'path not found', 'file lock', 'locked'])) return 'environment_failure';
-  if (textHasAny(statement, ['command failed', 'build failed', 'test failed', 'exit code', 'nonzero'])) return 'technical_failure';
-  if (textHasAny(statement, ['tool failed', 'api failed', 'browser failed', 'image generation failed', 'plugin failed'])) return 'tool_failure';
-  if (textHasAny(statement, ['wrong direction', 'not the right direction', 'generic', 'saas', 'card-heavy', 'visual direction'])) return 'preference_mismatch';
-  if (textHasAny(statement, ['misread', 'missed instruction', 'did not follow', 'instruction'])) return 'instruction_misread';
-  if (textHasAny(statement, ['overgeneralized', 'previous project', 'same design direction'])) return 'overgeneralization_failure';
-  if (textHasAny(statement, ['hardcode', 'fixture', 'example overfit'])) return 'example_overfit_failure';
-  if (textHasAny(statement, ['regression', 'layout'])) return 'regression';
-  if (textHasAny(statement, ['dependency', 'package.json'])) return 'dependency_violation';
-  if (textHasAny(statement, ['wrong stack', 'wrong technology'])) return 'wrong_stack_choice';
-  if (textHasAny(statement, ['assumption'])) return 'wrong_assumption';
-  if (textHasAny(statement, ['repeated'])) return 'repeated_mistake';
-  return 'unclear_requirement';
-}
-
-function inferFailureApproach(statement) {
-  if (textHasAny(statement, ['body overflow'])) return 'Changing global body overflow.';
-  if (textHasAny(statement, ['package.json'])) return 'Changing package dependencies without approval.';
-  return summarizeStatement(statement);
-}
-
-function inferPreventionRule(statement) {
-  if (textHasAny(statement, ['prevent this by'])) {
-    return statement.split(/prevent this by/iu).slice(1).join('prevent this by').trim();
-  }
-  if (textHasAny(statement, ['body overflow'])) {
-    return 'Prefer component-level scrolling instead of global body overflow changes.';
-  }
-  return 'Review prior failure before repeating this approach.';
-}
-
-function inferRejectedAlternatives(statement) {
-  const match = String(statement).match(/reject(?:ing|ed)\s+([^.;]+)/iu);
-  if (!match) {
-    return [];
-  }
-  return match[1].split(/\s+and\s+|,/u).map((item) => item.trim()).filter(Boolean);
-}
-
-function inferActiveCondition(memory) {
-  const text = [memory.rule, memory.summary, memory.details].filter(Boolean).join(' ');
-  const exceptionMatch = text.match(/except\s+for\s+([^,.;]+)/iu)
-    || text.match(/only\s+when\s+([^,.;]+)/iu)
-    || text.match(/unless\s+([^,.;]+)/iu);
-  if (!exceptionMatch) return null;
-  const summary = summarizeStatement(exceptionMatch[1]);
-  const keywords = memoryKeywords({ summary, tags: [], domains: [], appliesTo: [summary] }).slice(0, 8);
-  return {
-    kind: 'exception',
-    summary,
-    keywords
-  };
-}
-
 function matchesActiveCondition(memory, task) {
   if (!memory.activeCondition?.keywords?.length) return true;
   const taskTokens = new Set(memoryKeywords({ summary: task, tags: [], domains: [], appliesTo: [] }));
   return memory.activeCondition.keywords.some((keyword) => taskTokens.has(keyword) || normalizeText(task).includes(keyword));
-}
-
-async function activeMemories(root) {
-  const index = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
-  const project = await resolveCurrentProjectIdentity(root);
-  return index.memories.filter((memory) => memory.status === 'active' && isMemoryVisibleForProject(memory, project));
-}
-
-function isMemoryVisibleForProject(memory, project) {
-  if (!memory) return false;
-  if (memory.scope === 'global') return true;
-  if (memory.scope === 'domain') return !memory.projectId || memoryObservedInProject(memory, project.projectId);
-  return memory.projectId === project.projectId;
-}
-
-function sourceFromEvent(event) {
-  return {
-    kind: 'event',
-    id: event.id,
-    technicalOutcome: event.technicalOutcome,
-    userAcceptance: event.userAcceptance,
-    userFeedbackSignal: event.userFeedbackSignal,
-    finalOutcome: event.finalOutcome,
-    rejectionReason: event.rejectionReason,
-    correctionDirection: event.correctionDirection,
-    preventionRule: event.preventionRule
-  };
-}
-
-function extractionSegmentsFromEvent(event, baseSource = {}) {
-  return [
-    { role: 'userRequest', priority: 1, text: event.userRequest || '' },
-    { role: 'userFeedback', priority: 2, text: event.userFeedback || '' },
-    { role: 'commandResult', priority: 6, text: [...(event.commandResults || []), event.commandResult, ...(event.errors || [])].filter(Boolean).join('\n') },
-    { role: 'notes', priority: 7, text: event.notes || '' },
-    { role: 'aiActionSummary', priority: 8, text: event.aiActionSummary || '' }
-  ].filter((segment) => segment.text).map((segment) => ({
-    ...segment,
-    source: {
-      ...baseSource,
-      role: segment.role,
-      priority: segment.priority,
-      ...(segment.role === 'userRequest'
-        ? {
-          technicalOutcome: 'unknown',
-          userAcceptance: 'unknown',
-          userFeedbackSignal: 'none',
-          finalOutcome: 'unknown',
-          successEvidence: 'unknown',
-          acceptanceBasis: 'unknown'
-        }
-        : {})
-    }
-  }));
-}
-
-function extractionSegmentsFromInput(input = {}, baseSource = {}) {
-  const segments = [];
-  if (input.userRequest || input.request) {
-    segments.push({ role: 'userRequest', priority: 1, text: input.userRequest || input.request });
-  }
-  if (input.userFeedback || input.feedback) {
-    segments.push({ role: 'userFeedback', priority: 2, text: input.userFeedback || input.feedback });
-  }
-  if (input.text) {
-    segments.push({ role: baseSource.role || 'text', priority: baseSource.priority || 3, text: input.text });
-  }
-  const commandText = [
-    ...(input.commandResults || []),
-    input.commandResult,
-    ...(input.errors || [])
-  ].filter(Boolean).join('\n');
-  if (commandText) {
-    segments.push({ role: 'commandResult', priority: 6, text: commandText });
-  }
-  if (input.notes) {
-    segments.push({ role: 'notes', priority: 7, text: input.notes });
-  }
-  if (input.aiActionSummary || input.summary) {
-    segments.push({ role: 'aiActionSummary', priority: 8, text: input.aiActionSummary || input.summary });
-  }
-  return segments.map((segment) => ({
-    ...segment,
-    source: {
-      ...baseSource,
-      role: segment.role,
-      priority: segment.priority,
-      ...(segment.role === 'userRequest'
-        ? {
-          technicalOutcome: 'unknown',
-          userAcceptance: 'unknown',
-          userFeedbackSignal: 'none',
-          finalOutcome: 'unknown',
-          successEvidence: 'unknown',
-          acceptanceBasis: 'unknown'
-        }
-        : {})
-    }
-  }));
 }
 
 function stripJsonFence(value = '') {
@@ -3404,10 +2123,6 @@ function structuredCandidatesFromInput(input = {}) {
     ?? input.agentMemoryCandidates
     ?? input.agentCandidates;
   return parseStructuredCandidateInput(value);
-}
-
-function hasStructuredCandidateInput(input = {}) {
-  return structuredCandidatesFromInput(input).length > 0;
 }
 
 function normalizeStringArray(value = []) {
@@ -3454,20 +2169,24 @@ function normalizeStructuredMemoryCandidate(rawCandidate, context = {}) {
   const memoryRole = requiredCandidateEnum(raw, 'memoryRole', MEMORY_ROLE_VALUES, candidateLabel);
   const type = requiredCandidateEnum(raw, 'type', MEMORY_TYPES, candidateLabel);
   const modelClass = requiredCandidateEnum(raw, 'modelClass', MODEL_CLASS_VALUES, candidateLabel);
+  const modelSubClass = requiredCandidateString(raw, 'modelSubClass', candidateLabel);
   const scope = requiredCandidateEnum(raw, 'scope', CANDIDATE_SCOPE_VALUES, candidateLabel);
   const confidence = requiredCandidateEnum(raw, 'confidence', new Set(Object.keys(CONFIDENCE_PRIORITY)), candidateLabel);
   const sourceType = requiredCandidateEnum(raw, 'sourceType', CANDIDATE_SOURCE_TYPE_VALUES, candidateLabel);
   const title = requiredCandidateString(raw, 'title', candidateLabel);
   const summary = requiredCandidateString(raw, 'summary', candidateLabel);
+  const displayTitle = requiredCandidateString(raw, 'displayTitle', candidateLabel);
+  const displaySummary = requiredCandidateString(raw, 'displaySummary', candidateLabel);
+  const displayRule = requiredCandidateString(raw, 'displayRule', candidateLabel);
+  const rawPrimaryCategory = requiredCandidateString(raw, 'primaryCategory', candidateLabel);
   const rawStatus = raw.status ? requiredCandidateEnum(raw, 'status', CANDIDATE_STATUS_VALUES, candidateLabel) : 'active';
-  const displayLanguage = raw.displayLanguage
-    ? assertSupportedMemoryLanguageTag(raw.displayLanguage, 'structured candidate displayLanguage')
-    : context.locale;
-  const primaryCategory = raw.primaryCategory
-    ? normalizeCategoryDocKeys([raw.primaryCategory])[0]
-    : null;
-  if (raw.primaryCategory && !primaryCategory) {
-    throw new Error(`Structured memory candidate ${candidateLabel} has invalid primaryCategory: ${raw.primaryCategory}.`);
+  const displayLanguage = assertSupportedMemoryLanguageTag(
+    requiredCandidateString(raw, 'displayLanguage', candidateLabel),
+    'structured candidate displayLanguage'
+  );
+  const primaryCategory = normalizeCategoryDocKeys([rawPrimaryCategory])[0];
+  if (!primaryCategory) {
+    throw new Error(`Structured memory candidate ${candidateLabel} has invalid primaryCategory: ${rawPrimaryCategory}.`);
   }
   const rawRelatedCategories = normalizeStringArray(raw.relatedCategories || []);
   const relatedCategories = normalizeCategoryDocKeys(rawRelatedCategories);
@@ -3538,11 +2257,11 @@ function normalizeStructuredMemoryCandidate(rawCandidate, context = {}) {
     relatedCategories,
     memoryRole,
     modelClass,
-    modelSubClass: raw.modelSubClass || '',
+    modelSubClass,
     docKey: raw.docKey || docKeyForType(type),
-    displayTitle: raw.displayTitle || '',
-    displaySummary: raw.displaySummary || '',
-    displayRule: raw.displayRule || '',
+    displayTitle,
+    displaySummary,
+    displayRule,
     displayLanguage,
     sourceProjectId: raw.sourceProjectId || project.projectId || '',
     projectId: ['project', 'task', 'temporary'].includes(scope)
@@ -3597,6 +2316,11 @@ async function buildStructuredMemoryCandidates(root, rawCandidates = [], context
   });
 }
 
+async function activeMemories(root) {
+  const memoryIndex = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), { memories: [] });
+  return (memoryIndex.memories || []).filter((memory) => memory.status === 'active');
+}
+
 export async function extractMemoryCandidates(root = process.cwd(), input = {}) {
   const structuredCandidates = structuredCandidatesFromInput(input);
   if (structuredCandidates.length === 0) {
@@ -3638,23 +2362,6 @@ export async function extractMemoryCandidates(root = process.cwd(), input = {}) 
     return newCandidates;
   }
   return autoCurateCandidates(root, newCandidates);
-}
-
-function isActionSummaryOnlyExtraction(input = {}) {
-  const hasActionSummary = Boolean(input.aiActionSummary || input.summary);
-  if (!hasActionSummary || input.allowActionSummary || input.eventId || input.fromLastEvent) return false;
-  if (['accepted', 'rejected', 'mixed'].includes(input.userAcceptance || '')) return false;
-  return !(
-    input.userRequest
-    || input.request
-    || input.userFeedback
-    || input.feedback
-    || input.text
-    || input.commandResult
-    || (Array.isArray(input.commandResults) && input.commandResults.length > 0)
-    || (Array.isArray(input.errors) && input.errors.length > 0)
-    || input.notes
-  );
 }
 
 function setOverlap(left = [], right = []) {
@@ -3911,9 +2618,7 @@ function inferAutoCurationDecision(candidate) {
     return { action: 'discard', status: 'discarded', reason: 'Low-value task-scoped candidate.' };
   }
   if (candidate.conflictStatus === 'exception') {
-    const activeCondition = candidate.activeCondition || (isAgentStructuredCandidate(candidate) ? null : inferActiveCondition(candidate));
-    if (activeCondition?.keywords?.length) {
-      candidate.activeCondition = activeCondition;
+    if (candidate.activeCondition?.keywords?.length) {
       return { action: 'active', status: 'active', reason: 'Scoped exception has an active condition.' };
     }
     return { action: 'quarantine', status: 'quarantined', reason: 'Exception scope is unclear.' };
@@ -4205,6 +2910,32 @@ function replacementIdsForMemory(memory, existingMemories = []) {
   });
 }
 
+function isMemoryVisibleForProject(memory, project = {}) {
+  if (!memory) return false;
+  if (['global', 'domain'].includes(memory.scope)) return true;
+  const currentProjectIds = new Set([
+    project.projectId,
+    project.id,
+    project.projectName,
+    project.repositoryName,
+    project.rootPath ? path.basename(project.rootPath) : ''
+  ].filter(Boolean).map((value) => String(value)));
+  for (const alias of project.aliases || []) {
+    if (alias) currentProjectIds.add(String(alias));
+  }
+  if (project.rootPath) {
+    currentProjectIds.add(slugProjectId(path.basename(project.rootPath)));
+  }
+  const memoryProjectIds = [
+    memory.projectId,
+    memory.sourceProjectId,
+    memory.projectName,
+    memory.repositoryName
+  ].filter(Boolean).map((value) => String(value));
+  if (memoryProjectIds.length === 0) return true;
+  return memoryProjectIds.some((id) => currentProjectIds.has(id));
+}
+
 export async function approveMemory(root = process.cwd(), candidateId, options = {}) {
   await initVibeBox(root);
   const project = await resolveCurrentProjectIdentity(root);
@@ -4297,10 +3028,6 @@ export async function approveMemory(root = process.cwd(), candidateId, options =
   memory.replaces = [...new Set([...(memory.replaces || []), ...replaceIds])];
   memory.related = (memory.related || []).filter((id) => !replaceIds.includes(id));
   memory.supersedes = (memory.supersedes || []).filter((id) => !replaceIds.includes(id));
-  if (memory.conflictStatus === 'exception' && !memory.activeCondition && !isAgentStructuredCandidate(memory)) {
-    memory.activeCondition = inferActiveCondition(memory);
-  }
-
   memoryIndex.memories = memoryIndex.memories
     .filter((existing) => existing.id === memory.id || !replaceIds.includes(existing.id));
 
@@ -6205,15 +4932,19 @@ export async function afterTask(root = process.cwd(), input = {}) {
   if (!hasStructuredCandidates) {
     const warnings = [
       userRequestText.trim()
-        ? 'Warning: userRequest present but agent semantic candidates missing; no active memory was created.'
+        ? 'Warning: userRequest is present, but structured memory candidates are missing.'
         : 'Warning: agent semantic candidates missing; no active memory was created.',
+      userRequestText.trim()
+        ? 'VibeBox Core does not semantically interpret userRequest, headings, bullets, keywords, or action summaries.'
+        : 'VibeBox Core does not semantically interpret action summaries, command output, or raw evidence.',
+      'No active memory was created.',
       hasFailureWithoutRequest
         ? 'Command/tool/environment failure evidence was preserved as raw event evidence; active AI failure memory requires an agent structured candidate.'
         : '',
       hasRawActionSummary && !userRequestText.trim()
         ? 'AI action summary alone is raw evidence only and cannot create active memory.'
         : '',
-      'Capture again with a Structured memory candidates JSON block when reusable memory should be stored.'
+      'The AI Agent must provide a Structured memory candidates JSON block for reusable memory, including explicit memoryRole, type, modelClass, scope, primaryCategory, relatedCategories, localized display fields, evidence, confidence, and sourceType.'
     ].filter(Boolean);
     return {
       event,

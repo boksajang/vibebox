@@ -1712,10 +1712,26 @@ test('report scopes pending candidates to the current project and visible global
   await initVibeBox(projectB);
 
   await extractFromAgent(projectA, {
-    text: 'We decided this project uses ECharts for dashboard visualization after rejecting Chart.js.'
+    structuredMemoryCandidates: [candidateFixture({
+      type: 'project_decision',
+      modelClass: 'project_model',
+      modelSubClass: 'visualization_library_decision',
+      scope: 'project',
+      primaryCategory: 'decision_patterns',
+      title: 'Use ECharts for dashboard visualization',
+      summary: 'We decided this project uses ECharts for dashboard visualization after rejecting Chart.js.'
+    })]
   });
   await extractFromAgent(projectB, {
-    text: 'We decided this project uses React for frontend app development after rejecting Vue.'
+    structuredMemoryCandidates: [candidateFixture({
+      type: 'project_decision',
+      modelClass: 'project_model',
+      modelSubClass: 'frontend_library_decision',
+      scope: 'project',
+      primaryCategory: 'decision_patterns',
+      title: 'Use React for frontend app development',
+      summary: 'We decided this project uses React for frontend app development after rejecting Vue.'
+    })]
   });
 
   const report = await generateReport(projectB);
@@ -3105,7 +3121,33 @@ test('aftertask records non-null project ids for plain, static, PHP, and JSON-on
   assert.equal(events.every((event) => event.projectId), true);
 });
 
-test('aftertask with missing userRequest records the event but skips active extraction with a warning', async () => {
+test('aftertask with userRequest but missing structured candidates records only raw event with an agent warning', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vibebox-missing-candidates-request-'));
+  process.env.VIBEBOX_HOME = path.join(root, '.vibebox-store');
+  process.env.VIBEBOX_LOCALE = 'en-US';
+  const result = await afterTask(root, {
+    userRequest: 'Keep the existing layout and only normalize card title sizing.',
+    aiActionSummary: 'Implemented the requested card title cleanup.',
+    technicalOutcome: 'success',
+    userAcceptance: 'accepted',
+    changedFiles: ['src/view.mjs']
+  });
+
+  assert.ok(result.event.projectId);
+  assert.equal(result.candidates.length, 0);
+  assert.match(result.message, /Warning: userRequest is present, but structured memory candidates are missing\./);
+  assert.match(result.message, /VibeBox Core does not semantically interpret userRequest, headings, bullets, keywords, or action summaries\./);
+  assert.match(result.message, /No active memory was created\./);
+  assert.match(result.message, /The AI Agent must provide a Structured memory candidates JSON block for reusable memory/);
+
+  const memoryIndex = await loadJson(path.join(process.env.VIBEBOX_HOME, 'index', 'global-memory-index.json'));
+  assert.equal(memoryIndex.memories.length, 0);
+  const events = await readJsonl(path.join(process.env.VIBEBOX_HOME, 'logs', 'events.jsonl'));
+  assert.equal(events.at(-1).semanticExtractionStatus, 'missing_agent_candidates');
+  assert.equal(events.at(-1).semanticExtractionWarning, 'userRequest present but agent semantic candidates missing');
+});
+
+test('aftertask with only action summary records the event but skips active extraction with a warning', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vibebox-empty-request-'));
   process.env.VIBEBOX_HOME = path.join(root, '.vibebox-store');
   process.env.VIBEBOX_LOCALE = 'en-US';
@@ -3119,12 +3161,54 @@ test('aftertask with missing userRequest records the event but skips active extr
   assert.ok(result.event.projectId);
   assert.equal(result.candidates.length, 0);
   assert.match(result.message, /agent semantic candidates missing; no active memory was created/);
+  assert.match(result.message, /VibeBox Core does not semantically interpret action summaries, command output, or raw evidence\./);
   assert.match(result.message, /AI action summary alone is raw evidence only/);
 
   const memoryIndex = await loadJson(path.join(process.env.VIBEBOX_HOME, 'index', 'global-memory-index.json'));
   assert.equal(memoryIndex.memories.length, 0);
   const events = await readJsonl(path.join(process.env.VIBEBOX_HOME, 'logs', 'events.jsonl'));
   assert.equal(events.at(-1).projectId, result.event.projectId);
+});
+
+test('technical failure evidence is raw-only without an agent candidate and active with one', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const rawOnly = await afterTask(root, {
+    aiActionSummary: 'Tried to run the build.',
+    commands: ['npm.cmd run build'],
+    commandResults: ['npm.cmd run build exited 1'],
+    errors: ['Build failed with missing script.'],
+    technicalOutcome: 'failure'
+  });
+
+  assert.equal(rawOnly.candidates.length, 0);
+  assert.match(rawOnly.message, /Command\/tool\/environment failure evidence was preserved as raw event evidence/);
+  let memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.equal(memoryIndex.memories.length, 0);
+  let events = await readJsonl(storePath(root, 'logs', 'events.jsonl'));
+  assert.deepEqual(events.at(-1).errors, ['Build failed with missing script.']);
+  assert.equal(events.at(-1).semanticExtractionStatus, 'missing_agent_candidates');
+
+  const withCandidate = await afterTask(root, {
+    aiActionSummary: 'Build failed because the script was missing.',
+    commands: ['npm.cmd run build'],
+    commandResults: ['npm.cmd run build exited 1'],
+    errors: ['Build failed with missing script.'],
+    technicalOutcome: 'failure',
+    structuredMemoryCandidates: [failureCandidate({
+      summary: 'When npm build script is missing, inspect package scripts before assuming the build command exists.',
+      preventionRule: 'Inspect package scripts before running npm build in this project.',
+      sourceType: 'technical_failure_detection'
+    })]
+  });
+
+  assert.equal(withCandidate.candidates.some((candidate) => candidate.memoryRole === 'ai_failure_memory'), true);
+  memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.equal(memoryIndex.memories.some((memory) => memory.memoryRole === 'ai_failure_memory' && memory.sourceType === 'technical_failure_detection'), true);
+  events = await readJsonl(storePath(root, 'logs', 'events.jsonl'));
+  assert.deepEqual(events.at(-1).errors, ['Build failed with missing script.']);
+  assert.equal(events.at(-1).semanticExtractionStatus, 'agent_candidates_provided');
 });
 
 test('CLI aftertask stores --request and from-file User request sections for active extraction', async () => {
@@ -3222,6 +3306,77 @@ test('CLI aftertask stores --request and from-file User request sections for act
   assert.equal(memoryIndex.memories.length > 0, true);
 });
 
+test('CLI aftertask accepts candidates from candidate files', async () => {
+  const root = await makeWorkspace();
+  const bin = path.resolve('bin/vibebox.mjs');
+  function run(args) {
+    return spawnSync(process.execPath, [bin, ...args], {
+      cwd: root,
+      env: { ...process.env },
+      encoding: 'utf8'
+    });
+  }
+
+  const candidatesFile = path.join(root, 'agent-candidates.json');
+  await writeFile(candidatesFile, JSON.stringify([candidateFixture({
+    type: 'process_pattern',
+    modelClass: 'user_model',
+    modelSubClass: 'process_preference_model',
+    scope: 'global',
+    primaryCategory: 'process_patterns',
+    title: 'Use concise final reports',
+    summary: 'Final reports should briefly include changed files and validation results.'
+  })]), 'utf8');
+
+  const fromCandidatesFile = run([
+    'aftertask',
+    '--request',
+    'Keep final reports concise with changed files and validation results.',
+    '--summary',
+    'Captured the reporting preference.',
+    '--candidates-file',
+    candidatesFile,
+    '--technical-outcome',
+    'success',
+    '--user-acceptance',
+    'accepted'
+  ]);
+  assert.equal(fromCandidatesFile.status, 0);
+  assert.match(fromCandidatesFile.stdout, /Auto-curated/);
+
+  const structuredCandidatesFile = path.join(root, 'structured-candidates.json');
+  await writeFile(structuredCandidatesFile, JSON.stringify([candidateFixture({
+    type: 'validation_pattern',
+    modelClass: 'project_model',
+    modelSubClass: 'mobile_validation_rule',
+    scope: 'project',
+    primaryCategory: 'validation_patterns',
+    relatedCategories: ['design_philosophy'],
+    title: 'Verify mobile card consistency',
+    summary: 'After card spacing or title changes, verify mobile card spacing and title sizing stay consistent.'
+  })]), 'utf8');
+
+  const fromStructuredFile = run([
+    'aftertask',
+    '--request',
+    'Verify mobile card spacing and title sizing after cleanup.',
+    '--summary',
+    'Captured the mobile validation rule.',
+    '--structured-candidates-file',
+    structuredCandidatesFile,
+    '--technical-outcome',
+    'success',
+    '--user-acceptance',
+    'accepted'
+  ]);
+  assert.equal(fromStructuredFile.status, 0);
+  assert.match(fromStructuredFile.stdout, /Auto-curated/);
+
+  const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+  assert.equal(memoryIndex.memories.some((memory) => memory.summary.includes('Final reports should briefly include changed files')), true);
+  assert.equal(memoryIndex.memories.some((memory) => memory.primaryCategory === 'validation_patterns' && memory.relatedCategories?.includes('design_philosophy')), true);
+});
+
 test('active memory normalizes source labels out of summaries and guidance fields', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
@@ -3257,9 +3412,9 @@ test('manual approval refuses candidates that still contain parser labels', asyn
   const poisoned = pending.map((record) => record.id === candidate.id
     ? {
       ...record,
-      summary: `Test: ${record.summary}`,
-      rule: `Test: ${record.rule}`,
-      details: `Test: ${record.details}`
+      summary: `Source: ${record.summary}`,
+      rule: `Source: ${record.rule}`,
+      details: `Source: ${record.details}`
     }
     : record);
   await writeFile(pendingPath, `${poisoned.map((record) => JSON.stringify(record)).join('\n')}\n`, 'utf8');
@@ -3726,7 +3881,8 @@ test('universal agent skill package files exist and declare shared skill metadat
   const plugin = await loadJson(path.resolve('.codex-plugin/plugin.json'));
   assert.equal(plugin.name, 'vibebox');
   assert.equal(plugin.version, '0.1.0');
-  assert.match(plugin.description, /Universal local-first blackbox memory middleware/i);
+  assert.match(plugin.description, /Universal local-first memory middleware/i);
+  assert.match(plugin.description, /structured memory candidates/i);
   assert.equal(plugin.interface.brandColor, '#0891B2');
   assert.equal(plugin.interface.composerIcon, './assets/icon.png');
   assert.equal(plugin.interface.logo, './assets/logo.png');
@@ -3771,6 +3927,7 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   }
 
   const docs = [
+    '.codex-plugin/plugin.json',
     'README.md',
     'docs/USAGE.md',
     'skills/vibebox/SKILL.md',
@@ -3799,6 +3956,9 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /without (?:structured )?candidates, VibeBox records the event and warns|userRequest[\s\S]{0,120}structured candidates are missing/i);
   assert.match(combined, /Structured memory candidates/i);
   assert.match(combined, /Do not call aftertask with only an AI action summary/i);
+  assert.match(combined, /AI Agent must provide|agent must provide|must submit structured candidates/i);
+  assert.match(combined, /Core does not semantically interpret|Core will not infer active memory/i);
+  assert.match(combined, /Reading `pretask` is not a complete VibeBox workflow|pretask[\s\S]{0,160}not a complete VibeBox workflow/i);
   assert.match(combined, /convert-lang[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}convert-lang/i);
   assert.match(combined, /rebuild[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}rebuild/i);
   const codeBlocks = [...combined.matchAll(/```(?:\w+)?\n([\s\S]*?)```/gu)].map((match) => match[1]);

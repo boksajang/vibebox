@@ -13,6 +13,7 @@ VibeBox Core is a local CLI and memory engine. This skill tells an AI coding age
 Past memory is context, not authority. Pending memory must not be treated as active memory.
 VibeBox is not a passive archive or a review-first memory manager: active memory is the latest optimized guidance set chosen by the Auto Curator or a manual override. Replaced, corrected, discarded, quarantined, rejected, or legacy pending memory must not be treated as current guidance.
 VibeBox is not an AI action summary recorder and Core is not the semantic authority. The AI agent must interpret the user's request, feedback, correction, failure signals, successful approaches, model class, scope, categories, relations, replacements, and localized display text. Use AI summaries, changed files, command output, and errors only as evidence for the structured candidates you provide. Treat structured user requests as meaning graphs yourself: extract reusable success criteria, preservation rules, validation expectations, scope limits, user/domain/project patterns, and AI failure-prevention signals before capture.
+Meaningful work is not fully captured by reading `pretask` or by sending a summary. After meaningful work, the AI agent must provide the original `userRequest` plus structured memory candidates, or explicitly explain in `notes`/a discarded diagnostic candidate why no reusable memory exists. VibeBox Core will not infer active memory from `userRequest`, headings, bullets, keywords, action summaries, command output, or fixture terms.
 
 For details, load these references only when needed:
 
@@ -114,13 +115,13 @@ After meaningful coding or design work:
 4. List commands run and results.
 5. Summarize errors or failed attempts.
 6. Summarize user feedback if available.
-7. Create structured memory candidates for any durable meaning: `user_success_criteria`, `ai_failure_memory`, `ai_successful_approach`, `task_context`, or `discarded_detail`.
-8. Include candidate fields such as `memoryRole`, `type`, `modelClass`, `scope`, `primaryCategory`, `relatedCategories`, `displayTitle`, `displaySummary`, `displayRule`, `displayLanguage`, `evidence`, `confidence`, `sourceType`, `relationCandidates`, and `replaces` when relevant.
+7. Create structured memory candidates after reviewing every applicable role: `user_success_criteria`, `ai_failure_memory`, `ai_successful_approach`, `task_context`, and `discarded_detail`.
+8. Include candidate fields such as `memoryRole`, `type`, `modelClass`, `modelSubClass`, `scope`, `primaryCategory`, `relatedCategories`, `title`, `summary`, `rule`, `displayTitle`, `displaySummary`, `displayRule`, `displayLanguage`, `evidence`, `confidence`, `sourceType`, `relationCandidates`, and `replaces`.
 9. Run after-task capture when appropriate; `aftertask` is a global store write/capture operation, unlike repository read-only `pretask` and `context`.
 10. If sandbox permissions block aftertask, request approved global VibeBox store write access for aftertask capture or report that capture was unavailable. Do not create a copied memory store as a fallback.
 11. On Windows/Codex, prefer direct `vibebox.cmd aftertask --request "..." --candidates "<json>" ...`; outside Windows, prefer `vibebox aftertask ...`.
 12. If direct installed commands fail inside the VibeBox repository, use `node bin/vibebox.mjs aftertask --request "..." --candidates "<json>" ...`.
-13. Let VibeBox validate, dedupe, apply replacement safety, index, and render the candidates.
+13. Let VibeBox validate, dedupe, apply replacement safety, index, and render the candidates. If VibeBox warns that structured candidates are missing, rewrite and rerun the capture with candidates; do not assume Core will interpret the request later.
 14. Treat user acceptance and technical success as separate signals.
 15. Show review instructions only when debugging or manual override is useful.
 16. Do not store secrets as memory.
@@ -147,7 +148,7 @@ Active memory is the only memory that should guide normal pre-task context.
 - If the user corrects the direction, treat the correction as the latest success criteria and let VibeBox replace/refine older criteria in the same scope.
 - If a command, tool, permission, or environment failure occurred, preserve the evidence and submit an explicit failure candidate when it is reusable AI failure memory; if a workaround succeeded, submit a recovery/successful-approach candidate.
 - If validation passes and the approach is reusable with no rejection signal, you may submit an inferred AI successful approach, but do not describe it as confirmed by the user.
-- Do not run aftertask with only `--summary` or only `--from-file`; without structured candidates, active memory is not created. For long records, include `User request:` and `Structured memory candidates:` sections in the file.
+- Do not run aftertask with only `--summary` or only `--from-file`; without structured candidates, active memory is not created. For long records, include `User request:` and `Structured memory candidates:` sections in the file. Action summaries, changed files, commands, and errors are evidence only until the AI agent turns them into structured candidates.
 
 ## Consumption Evidence Policy
 
@@ -156,7 +157,7 @@ VibeBox guidance is meant to be consumed, not merely displayed. When VibeBox mat
 - Reflect the relevant user success criteria in the work plan.
 - Avoid the specific failure approach named by the brief.
 - Reuse the applicable successful approach when it fits the current request.
-- Capture the result afterward with `aftertask --request`.
+- Capture the result afterward with `aftertask --request ... --candidates ...` or a `Structured memory candidates:` file section.
 
 If the brief is empty or irrelevant, proceed normally and capture only meaningful outcomes.
 

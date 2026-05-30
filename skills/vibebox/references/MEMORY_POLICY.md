@@ -92,7 +92,7 @@ VibeBox maintains the latest optimized active graph, not a pile of competing rul
 
 User instructions are success criteria. User corrections are more precise success criteria. User dissatisfaction is an AI failure signal, not user failure. User patterns may describe question style, response preference, process habits, validation requirements, design philosophy, decision style, communication style, correction patterns, agent failure patterns, agent success patterns, and handoff style. A single vague statement should be discarded, quarantined, or marked low confidence; explicit or repeated behavior can become active through auto-curation or manual override.
 
-Structured user requests should be analyzed by the AI agent as meaning units before AI action summaries are considered. Reference baselines, consistency requirements, target lists, validation or preservation conditions, scope limits, workflow requirements, and AI failure-prevention signals can produce separate agent candidates from the same request. A single durable memory can have one `primaryCategory` and multiple `relatedCategories`; related category pages should link to the same canonical note instead of duplicating it.
+Structured user requests should be analyzed by the AI agent as meaning units before AI action summaries are considered. Reference baselines, consistency requirements, target lists, validation or preservation conditions, scope limits, workflow requirements, and AI failure-prevention signals can produce separate agent candidates from the same request. Core does not infer any of that from headings, bullets, keywords, or summary text. Each active candidate should carry explicit role/type/class/scope/category fields plus localized `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage`. A single durable memory can have one `primaryCategory` and multiple `relatedCategories`; related category pages should link to the same canonical note instead of duplicating it.
 
 Failure memory must include prevention guidance when possible. Success patterns should describe when to reuse the successful approach and whether the evidence is confirmed by the user or inferred from validation.
 Pretask/context retrieval should consider relevant failure and success nodes together, not only one side.
@@ -128,6 +128,8 @@ event captured
 -> Core validates / dedupes / replaces safely / indexes / renders
 -> active graph, wiki, and context updated
 ```
+
+If a captured event has `userRequest` but no structured candidates, Core records the raw event, prints a missing-candidates warning, and creates no active memory. The agent should prepare explicit candidates and rerun capture when reusable memory should be stored. Action summaries and command/tool failure evidence are evidence only until represented by an agent candidate.
 
 Manual commands remain available for debugging, audits, and override:
 

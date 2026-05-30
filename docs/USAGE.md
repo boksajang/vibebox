@@ -101,7 +101,7 @@ Agents should apply these sections in the actual plan and work. Printing the gui
 Run after meaningful work:
 
 ```bash
-vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling and kept package.json unchanged." --files "src/table.mjs" --commands "npm.cmd test" --technical-outcome success --user-acceptance accepted
+vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling and kept package.json unchanged." --files "src/table.mjs" --commands "npm.cmd test" --technical-outcome success --user-acceptance accepted --candidates '[{"memoryRole":"user_success_criteria","type":"layout_constraint","modelClass":"project_model","modelSubClass":"ui_layout_rule","scope":"project","primaryCategory":"design_philosophy","relatedCategories":["validation_patterns"],"title":"Preserve dashboard layout while fixing table scroll","summary":"For this dashboard, preserve the existing layout and fix scrolling locally instead of changing global page flow.","rule":"Use component-level scrolling for dashboard tables unless the user asks for a layout restructure.","displayTitle":"Preserve dashboard table layout","displaySummary":"Preserve the existing dashboard layout and fix table scrolling locally.","displayRule":"Use component-level scrolling unless a layout restructure is requested.","displayLanguage":"en-US","confidence":"high","sourceType":"agent_semantic_extraction","evidence":["User requested a table scroll fix without changing package setup."]}]'
 ```
 
 For longer notes:
@@ -248,8 +248,7 @@ After `npm link`, VibeBox can be used from another repository:
 cd path/to/another-project
 vibebox init
 vibebox pretask --task "Check project memory before editing"
-vibebox aftertask --request "Check project memory before editing" --summary "Inspected project state." --technical-outcome success --user-acceptance accepted
-vibebox extract --text "Do not modify package.json unless explicitly requested."
+vibebox aftertask --request "Check project memory before editing" --summary "Inspected project state." --technical-outcome success --user-acceptance accepted --candidates '[{"memoryRole":"task_context","type":"workflow_note","modelClass":"task_context","modelSubClass":"pretask_context","scope":"task","primaryCategory":"workflow_rules","relatedCategories":[],"title":"Project memory checked before editing","summary":"The agent checked VibeBox memory before editing this project.","rule":"Use the retrieved VibeBox context when planning repository work.","displayTitle":"Project memory checked","displaySummary":"The agent checked VibeBox memory before editing.","displayRule":"Use retrieved VibeBox context in the work plan.","displayLanguage":"en-US","confidence":"medium","sourceType":"agent_semantic_extraction","evidence":["Pretask was run before editing."]}]'
 vibebox context --task "Change dependency handling"
 vibebox report
 vibebox blackbox --limit 5
@@ -277,35 +276,41 @@ On Windows/Codex, use direct `vibebox.cmd` for the same commands first. If a wra
 Dashboard database preference:
 
 ```bash
-vibebox extract --text "For dashboard reporting modules, MSSQL fits better because the reporting views already live there."
+vibebox extract --candidates '[{"memoryRole":"user_success_criteria","type":"database_preference","modelClass":"domain_model","modelSubClass":"reporting_database_choice","scope":"domain","domain":"dashboard_reporting","primaryCategory":"technology_decisions","relatedCategories":["project_decisions"],"title":"Prefer MSSQL for dashboard reporting modules","summary":"For dashboard reporting modules, prefer MSSQL when reporting views already live there.","rule":"Use MSSQL for dashboard reporting modules that depend on existing reporting views.","displayTitle":"Prefer MSSQL for reporting dashboards","displaySummary":"Use MSSQL for dashboard reporting modules when the reporting views already live there.","displayRule":"Choose MSSQL for reporting dashboards tied to existing reporting views.","displayLanguage":"en-US","confidence":"medium","sourceType":"agent_semantic_extraction","evidence":["Agent semantic candidate from a reusable database preference."]}]'
 ```
 
 App database preference:
 
 ```bash
-vibebox extract --text "For small app prototypes, Supabase is usually fine unless this project has a database decision."
+vibebox extract --candidates '[{"memoryRole":"user_success_criteria","type":"database_preference","modelClass":"domain_model","modelSubClass":"prototype_database_choice","scope":"domain","domain":"small_app_prototypes","primaryCategory":"technology_decisions","relatedCategories":[],"title":"Supabase is acceptable for small app prototypes","summary":"For small app prototypes, Supabase is usually fine unless the project already has a database decision.","rule":"Use Supabase for small app prototypes when no project-specific database decision exists.","displayTitle":"Supabase for small prototypes","displaySummary":"Supabase is acceptable for small app prototypes without an existing database decision.","displayRule":"Use Supabase unless the project has already chosen another database.","displayLanguage":"en-US","confidence":"medium","sourceType":"agent_semantic_extraction","evidence":["Agent semantic candidate from a reusable prototype preference."]}]'
 ```
 
 Package avoid rule:
 
 ```bash
-vibebox extract --text "Do not modify package.json unless explicitly requested; dependency churn has broken reviews before."
+vibebox extract --candidates '[{"memoryRole":"ai_failure_memory","type":"prevention_rule","modelClass":"user_model","modelSubClass":"dependency_churn_prevention","scope":"global","primaryCategory":"prevention_rules","relatedCategories":["workflow_rules"],"title":"Avoid unrequested package.json changes","summary":"Unrequested package.json changes have caused review problems, so avoid dependency churn unless explicitly requested.","rule":"Do not modify package.json unless the user explicitly asks or the task cannot be completed otherwise.","displayTitle":"Avoid package churn","displaySummary":"Unrequested package.json changes have caused review problems.","displayRule":"Do not modify package.json unless explicitly requested or necessary to complete the task.","displayLanguage":"en-US","confidence":"high","sourceType":"agent_semantic_extraction","evidence":["Agent identified an AI failure-prevention rule from prior review problems."]}]'
 ```
 
 Failed layout approach:
 
 ```bash
-vibebox aftertask --request "Fix table scroll" --summary "Tried changing global body overflow." --errors "Global overflow caused layout regressions." --outcome failure
+vibebox aftertask --request "Fix table scroll" --summary "Tried changing global body overflow." --errors "Global overflow caused layout regressions." --outcome failure --candidates '[{"memoryRole":"ai_failure_memory","type":"prevention_rule","modelClass":"project_model","modelSubClass":"layout_failure_prevention","scope":"project","primaryCategory":"prevention_rules","relatedCategories":["design_philosophy"],"title":"Avoid global body overflow for table scrolling","summary":"Changing global body overflow to fix table scrolling caused layout regressions.","rule":"Fix table overflow at the component or wrapper level before touching global body overflow.","displayTitle":"Avoid global overflow scroll fixes","displaySummary":"Changing global body overflow caused layout regressions for table scrolling.","displayRule":"Use component or wrapper-level scrolling before changing global body overflow.","displayLanguage":"en-US","confidence":"high","sourceType":"agent_semantic_extraction","evidence":["Global overflow caused layout regressions."]}]'
 ```
 
 Successful table scroll pattern:
 
 ```bash
-vibebox aftertask --request "Fix wide table scroll" --summary "Wrapper-based table scrolling worked without global layout changes." --technical-outcome success --user-acceptance accepted
+vibebox aftertask --request "Fix wide table scroll" --summary "Wrapper-based table scrolling worked without global layout changes." --technical-outcome success --user-acceptance accepted --candidates '[{"memoryRole":"ai_successful_approach","type":"implementation_pattern","modelClass":"project_model","modelSubClass":"layout_recovery_approach","scope":"project","primaryCategory":"agent_success_patterns","relatedCategories":["success_patterns"],"title":"Use wrapper-based scrolling for wide tables","summary":"Wrapper-based table scrolling solved wide table overflow without global layout changes.","rule":"For wide table overflow, wrap the table in a local scrolling container first.","displayTitle":"Wrapper-based table scrolling","displaySummary":"Wrapper-based scrolling handled wide tables without global layout changes.","displayRule":"Wrap wide tables in a local scrolling container first.","displayLanguage":"en-US","confidence":"high","sourceType":"agent_semantic_extraction","evidence":["Validation passed after wrapper-based table scrolling."]}]'
 ```
 
 Project decision:
 
 ```bash
-vibebox extract --text "We decided this project uses ECharts for dashboard visualization after rejecting Chart.js."
+vibebox extract --candidates '[{"memoryRole":"user_success_criteria","type":"project_decision","modelClass":"project_model","modelSubClass":"visualization_library_decision","scope":"project","primaryCategory":"project_decisions","relatedCategories":["technology_decisions"],"title":"Use ECharts for dashboard visualization","summary":"This project uses ECharts for dashboard visualization after rejecting Chart.js.","rule":"Use ECharts for dashboard visualization in this project unless the user changes the project decision.","displayTitle":"Use ECharts for dashboards","displaySummary":"This project uses ECharts for dashboard visualization after rejecting Chart.js.","displayRule":"Use ECharts for dashboard visualization unless the project decision changes.","displayLanguage":"en-US","confidence":"high","sourceType":"agent_semantic_extraction","evidence":["Agent semantic candidate from a project visualization decision."]}]'
+```
+
+Raw text extraction is available only for legacy/manual debugging. It stores raw evidence or manual-review material; it is not the normal semantic extraction workflow and Core will not infer active user memory from the raw sentence:
+
+```bash
+vibebox extract --text "Raw diagnostic note for manual inspection."
 ```

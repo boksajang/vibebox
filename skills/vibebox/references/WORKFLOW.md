@@ -67,7 +67,7 @@ The brief has been consumed only when it changes the agent's plan or execution. 
 Capture meaningful work after it happens:
 
 ```bash
-vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling and kept package.json unchanged." --files "src/table.mjs" --commands "npm.cmd test" --technical-outcome success --user-acceptance accepted
+vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling and kept package.json unchanged." --files "src/table.mjs" --commands "npm.cmd test" --candidates "<agent-candidate-json>" --technical-outcome success --user-acceptance accepted
 ```
 
 For longer records, keep the original request explicit:
@@ -76,7 +76,7 @@ For longer records, keep the original request explicit:
 vibebox aftertask --request "Fix dashboard table scrolling" --from-file task-result.txt
 ```
 
-Alternatively, the file may contain `User request:`, `AI action summary:`, `Changed files:`, `Commands:`, `Errors:`, and `Structured memory candidates:` sections. Do not use `--summary` or `--from-file` alone for active memory. Without structured candidates, VibeBox records the event and warns; it does not create active user success criteria, active successful approaches, or active AI failure memory by itself.
+The file must include `Structured memory candidates:` when reusable memory should be stored, and should include `User request:`, `AI action summary:`, `Changed files:`, `Commands:`, and `Errors:` sections when present. Do not use `--summary` or `--from-file` alone for active memory. Without structured candidates, VibeBox records the event and warns; it does not create active user success criteria, active successful approaches, or active AI failure memory by itself.
 
 Aftertask is a global store write/capture operation: it writes a blackbox event and ingests AI-agent structured candidates. The agent is responsible for decomposing structured user requests into reusable success criteria, project rules, user/domain patterns, validation/preservation expectations, scope limits, AI failure-prevention rules, and task context before capture. Core validates schema and BCP 47 fields, preserves raw evidence, dedupes, applies replacement safety, builds relation/category/project indexes, and renders the wiki. If sandbox permissions block aftertask, request global VibeBox store write access for aftertask capture or report that capture was unavailable. Skip capture when the user explicitly opts out.
 
@@ -168,8 +168,8 @@ After `npm link`, run VibeBox from another project:
 ```bash
 vibebox init
 vibebox pretask --task "Check project memory before editing"
-vibebox aftertask --request "Check project memory before editing" --summary "Inspected project state." --technical-outcome success --user-acceptance accepted
-vibebox extract --text "Do not modify package.json unless explicitly requested."
+vibebox aftertask --request "Check project memory before editing" --summary "Inspected project state." --candidates "<agent-candidate-json>" --technical-outcome success --user-acceptance accepted
+vibebox extract --candidates "<agent-candidate-json>"
 vibebox context --task "Change dependency handling"
 vibebox report
 vibebox blackbox --limit 5
@@ -181,6 +181,8 @@ vibebox restore --from ./vibebox-backup --confirm-replace
 For manual debugging or override, add `vibebox review`, `vibebox approve <candidate-id>`, or `vibebox reject <candidate-id>`.
 
 These commands use the global user store at `~/.vibebox` by default, or `VIBEBOX_HOME` when configured. They do not create project-local `.vibebox` folders, workspace-local memory snapshots, copied memory stores, pointer files, or hidden metadata in that project.
+
+Summary-only `aftertask` and raw-text `extract --text` are raw evidence/debug paths only. They do not create active memory because Core does not semantically interpret user requests, headings, bullets, keywords, raw action summaries, or command output. If an agent receives a missing-candidates warning, it must prepare structured candidates and capture again.
 
 ## Current User Request Priority Rule
 

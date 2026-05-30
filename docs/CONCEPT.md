@@ -91,7 +91,7 @@ Technical success and user acceptance are separate signals. User acceptance is n
 
 User instructions can create success criteria before a result exists. User corrections can refine or replace older criteria in the same scope. Command, permission, environment, browser, API, plugin, and tool failures can become AI failure memory even when there is no new user preference to extract.
 
-For structured requests, VibeBox treats headings, bullet lists, reference baselines, consistency requirements, scope limits, preservation requirements, and validation conditions as meaning units. The user's requested success conditions are extracted before AI action summaries, so a successful implementation summary cannot crowd out the criteria it was supposed to satisfy.
+For structured requests, the AI agent treats headings, bullet lists, reference baselines, consistency requirements, scope limits, preservation requirements, and validation conditions as possible meaning units and submits explicit structured candidates. VibeBox Core does not interpret those shapes itself. The user's requested success conditions must be represented by the agent before AI action summaries can become evidence, so a successful implementation summary cannot crowd out the criteria it was supposed to satisfy.
 
 ## User Model Layers
 

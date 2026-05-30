@@ -1,7 +1,7 @@
 {
   "name": "vibebox",
   "version": "0.1.0",
-  "description": "Universal local-first blackbox memory middleware for AI coding agents.",
+  "description": "Universal local-first memory middleware where AI agents provide structured memory candidates and Core manages them.",
   "author": {
     "name": "Boksajang"
   },
@@ -15,8 +15,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "VibeBox",
-    "shortDescription": "Local blackbox memory for AI coding agents.",
-    "longDescription": "Use VibeBox's local CLI and shared skill instructions to retrieve active user-model guidance before coding and capture blackbox events after work. This wrapper does not replace the Core CLI.",
+    "shortDescription": "Local structured memory for AI coding agents.",
+    "longDescription": "Use VibeBox's local CLI and shared skill instructions to retrieve active guidance before coding, then capture the original userRequest with AI-agent structured memory candidates after work. VibeBox Core does not infer active memory from raw requests or summaries; it validates, stores, indexes, and renders the candidates supplied by the agent.",
     "developerName": "Boksajang",
     "category": "Productivity",
     "brandColor": "#0891B2",
@@ -27,8 +27,8 @@
     ],
     "defaultPrompt": [
       "Generate a VibeBox pre-task brief.",
-      "Capture this task with VibeBox.",
-      "Review VibeBox pending memory."
+      "Capture this task with userRequest and structured candidates.",
+      "Audit VibeBox memory manually when debugging."
     ]
   }
 }

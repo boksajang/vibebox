@@ -196,14 +196,14 @@ function help() {
 Usage:
   vibebox init [--store <path>]
   vibebox capture --request <text> --summary <text> [--command <text>] [--command-result <text>] [--changed-files a,b] [--feedback <text>] [--outcome success|failure|partial|unknown] [--technical-outcome success|failure|partial|unknown] [--user-acceptance accepted|rejected|mixed|unknown]
-  vibebox extract --text <text> [--manual-review]
-  vibebox review
-  vibebox approve <candidate-id>
-  vibebox approve --safe
-  vibebox reject <candidate-id>
+  vibebox extract --candidates <agent-candidate-json> [--manual-review]
+  vibebox review  (debug/manual override only)
+  vibebox approve <candidate-id>  (debug/manual override only)
+  vibebox approve --safe  (debug/manual override only)
+  vibebox reject <candidate-id>  (debug/manual override only)
   vibebox context --task <text>
   vibebox pretask --task <text>
-  vibebox aftertask --request <text> --summary <text> [--files a,b] [--commands <text>] [--outcome success|failure|partial|unknown] [--technical-outcome success|failure|partial|unknown] [--user-acceptance accepted|rejected|mixed|unknown] [--manual-review]
+  vibebox aftertask --request <text> --summary <text> --candidates <agent-candidate-json> [--candidates-file <path>] [--structured-candidates-file <path>] [--files a,b] [--commands <text>] [--command-results <text>] [--errors <text>] [--technical-outcome success|failure|partial|unknown] [--user-acceptance accepted|rejected|mixed|unknown]
   vibebox report
   vibebox blackbox [--limit 10] [--type success|failure|task_summary] [--since YYYY-MM-DD]
   vibebox doctor
@@ -216,6 +216,8 @@ Usage:
 Global store:
   Defaults to ~/.vibebox and can be overridden with VIBEBOX_HOME or --store <path>.
   Obsidian Wiki display uses the configured BCP 47 memoryLanguage. VIBEBOX_LANGUAGE/--language can seed a new store; VIBEBOX_LOCALE/--locale is an environment hint and does not rewrite an existing store.
+  Active memory requires AI-agent structured candidates. Core does not semantically interpret userRequest, headings, bullets, keywords, raw action summaries, or command output.
+  If userRequest is present without candidates, aftertask stores the raw event, warns, and creates no active memory.
   Semantic operations convert-lang and rebuild require VIBEBOX_AGENT_RUNTIME from an adapter.
 `;
 }

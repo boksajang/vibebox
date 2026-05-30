@@ -84,7 +84,7 @@ vibebox aftertask \
   --user-acceptance unknown
 ```
 
-Always pass the original user request, or a faithful semantic summary, with `--request`, and pass agent structured candidates when active memory should be created. Without candidates, VibeBox records the event and warns instead of creating active memory. Clear command/tool/environment failures are preserved as raw evidence; active AI failure memory requires an agent candidate.
+Always pass the original user request, or a faithful semantic summary, with `--request`, and pass AI-agent structured candidates after meaningful work. If the agent concludes there is no reusable memory, record that reason in `--notes` or a discarded diagnostic candidate. Without candidates, VibeBox records the event and warns instead of creating active memory. Clear command/tool/environment failures are preserved as raw evidence; active AI failure memory requires an agent candidate.
 
 ## Auto Curation
 
@@ -158,7 +158,7 @@ Windows/Codex direct command preference:
 ```bash
 vibebox.cmd pretask --task "..."
 vibebox.cmd context --task "..."
-vibebox.cmd aftertask --request "..." --summary "..."
+vibebox.cmd aftertask --request "..." --summary "..." --candidates "<agent-candidate-json>"
 ```
 
 Avoid wrapping read-only VibeBox retrieval commands in `powershell.exe -Command`; use direct `vibebox.cmd` first.
@@ -178,7 +178,7 @@ vibebox init
 vibebox doctor
 vibebox pretask --task "..."
 vibebox context --task "..."
-vibebox aftertask --request "..." --summary "..."
+vibebox aftertask --request "..." --summary "..." --candidates "<agent-candidate-json>"
 vibebox report
 vibebox blackbox
 vibebox backup --output ./vibebox-backup

@@ -147,7 +147,7 @@ Secrets should not become active memory. VibeBox redacts common API keys, tokens
 
 ## Classification Notes
 
-Classification is deterministic in the core CLI and conservative. It considers permanence, scope, certainty, intent, evidence, relation to existing memory, source priority, technical outcome, and user acceptance. Agent runtimes can provide semantic normalization for operations such as language conversion and semantic rebuild; the core does not call external translation APIs.
+Semantic classification belongs to the AI agent. The agent decides permanence, scope, certainty, intent, source priority, technical outcome meaning, user acceptance meaning, model class, categories, relations, and localized display text before submitting structured candidates. Core performs deterministic management checks only: schema validation, required field validation, BCP 47 validation, dedupe, replacement safety, relation/index generation, wiki rendering, and integrity checks. Agent runtimes provide semantic normalization for operations such as language conversion and semantic rebuild; Core does not translate, summarize, reclassify, or call external translation APIs.
 
 ## Conflict Handling Notes
 
