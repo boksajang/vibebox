@@ -39,6 +39,10 @@ Set `VIBEBOX_HOME` to use a different store root. VibeBox uses this global store
 
 Sandboxed hosts may block access to `~/.vibebox` or `$VIBEBOX_HOME` because the global store is outside the current workspace. `pretask` and `context` are read-only memory retrieval for repository files, but they still need global store read access. `aftertask` writes capture records and active memory updates, so it needs global store write access. If access is denied, request the appropriate approval or report that VibeBox guidance/capture was unavailable; do not create a copied memory fallback.
 
+Before meaningful work in a sandboxed host, adapters should check whether global store read access is available for `pretask`/`context` and whether write access will be needed later for `aftertask`. Denied read access means VibeBox guidance is unavailable. Denied aftertask write access means no capture event, project registration, active memory update, or wiki update was completed.
+
+`pretask` and `context` are read-only and do not create project registry entries. A new project is registered by `init`, `aftertask`, or `capture` when global store write access is available.
+
 The wiki, relation index, Context Packs, and Pre-Task Briefs represent the active graph only: user success criteria, domain model, project model, failure prevention rules, AI successful approaches, validation/process/design patterns, preferences, and AI failure memory. Rejected, discarded, quarantined, replaced, task-only context, and legacy pending memory is excluded. Raw logs are diagnostic and should not be treated as prompt context by default.
 
 Before acting, adapters should surface and apply all three lanes when present: `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`.

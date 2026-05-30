@@ -31,6 +31,20 @@ If memory conflicts with the current request or repository reality, report the c
 
 Do not wait for the user to say "use VibeBox" every time. Consider VibeBox automatically when the repository context, change risk, or memory value makes it relevant.
 
+## Session Access Preflight
+
+In Codex App or any sandboxed host, consider VibeBox global store access before meaningful work:
+
+1. VibeBox uses one global store as the single source of truth, normally `~/.vibebox` or `$VIBEBOX_HOME`.
+2. `pretask` and `context` are read-only retrieval commands, but they still require read access to the global store.
+3. `aftertask` is a write/capture operation and may need write approval for project registration, raw event capture, active memory, indexes, and wiki updates.
+4. `pretask` and `context` do not create project registry entries. A new project is registered by `init`, `aftertask`, or `capture` when write access is available.
+5. If read access is denied, report VibeBox guidance unavailable and request read-only global store access if the host allows it.
+6. If aftertask write access is denied, report that VibeBox capture, project registration, active memory, and wiki updates were not completed. Preserve the aftertask input in the report when useful so it can be rerun after approval.
+7. Do not create workspace-local memory snapshots, copied stores, project-local `.vibebox` folders, pointer files, or hidden metadata as a workaround.
+
+Recommended approval explanation: VibeBox uses one global store as the single source of truth. This Codex App session may need approval to read and write `~/.vibebox`. `pretask` and `context` require read access; `aftertask` requires write access for memory capture. No workspace-local memory snapshot will be created.
+
 ## Core Principle
 
 Use VibeBox to reduce repeated explanation and repeated mistakes:

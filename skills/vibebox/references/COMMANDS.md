@@ -35,7 +35,7 @@ Read-only or inspection commands:
 - `vibebox blackbox`
 - `vibebox doctor` when used for inspection
 
-These commands should not modify repository files, but they read the global VibeBox store.
+These commands should not modify repository files, but they read the global VibeBox store. `pretask` and `context` do not create project registry entries; they can only report guidance from an already accessible store.
 
 Write or maintenance commands:
 
@@ -50,9 +50,21 @@ Write or maintenance commands:
 - `vibebox convert-lang`
 - `vibebox rebuild`
 
-These commands create, update, export, restore, or maintain files in the global VibeBox store.
+These commands create, update, export, restore, or maintain files in the global VibeBox store. `init`, `aftertask`, and `capture` can register the current project when write access is available.
 
-Permission failure guidance: if a sandbox denies `~/.vibebox` or `$VIBEBOX_HOME`, report that VibeBox global store access is required. For `pretask` or `context`, request read-only global VibeBox store access. For `aftertask`, request global VibeBox store write access for aftertask capture. Do not work around the denial by copying memory into the workspace.
+Permission failure guidance: if a sandbox denies `~/.vibebox` or `$VIBEBOX_HOME`, report that VibeBox global store access is required. For `pretask` or `context`, request read-only global VibeBox store access and report guidance unavailable if approval is denied. For `aftertask`, request global VibeBox store write access for aftertask capture; if approval is denied, report that project registration, active memory, and wiki updates did not happen. Do not work around the denial by copying memory into the workspace.
+
+Aftertask rerun shape after approval:
+
+```bash
+vibebox.cmd aftertask --request "<original user request or faithful summary>" --summary "..." --candidates-file structured-candidates.json --technical-outcome success --user-acceptance accepted
+```
+
+If the original capture used a long record file:
+
+```bash
+vibebox.cmd aftertask --from-file task-result.txt
+```
 
 Memory language seed for a new store:
 

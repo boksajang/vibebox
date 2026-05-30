@@ -398,6 +398,13 @@ async function exists(filePath) {
   }
 }
 
+function isPermissionDeniedError(error) {
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '');
+  return ['EACCES', 'EPERM'].includes(code)
+    || /\b(?:permission denied|access denied|operation not permitted|not permitted|sandbox denied|sandbox denial|outside the workspace)\b/iu.test(message);
+}
+
 async function ensureDir(dirPath) {
   await mkdir(dirPath, { recursive: true });
 }
@@ -1577,8 +1584,19 @@ async function ensureConfigFields(root) {
 }
 
 async function ensureStoreForRead(root) {
-  if (!(await exists(vibeboxPath(root)))) {
-    throw new Error(`VibeBox global store not found at ${vibeboxPath(root)}. Run \`vibebox init\` first.`);
+  const storePath = vibeboxPath(root);
+  try {
+    await access(storePath);
+  } catch (error) {
+    if (isPermissionDeniedError(error)) {
+      const wrapped = new Error(`VibeBox global store access denied at ${storePath}. pretask/context require read access to the single global VibeBox store. No workspace-local snapshot will be created.`);
+      wrapped.code = error.code || 'EACCES';
+      throw wrapped;
+    }
+    if (error.code === 'ENOENT') {
+      throw new Error(`VibeBox global store not found at ${storePath}. Run \`vibebox init\` first.`);
+    }
+    throw error;
   }
 }
 
@@ -4896,10 +4914,10 @@ export async function afterTask(root = process.cwd(), input = {}) {
 }
 
 export async function generateReport(root = process.cwd(), input = {}) {
-  await initVibeBox(root);
+  await ensureStoreForRead(root);
   const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
   const locale = resolveLocale(input, config);
-  const project = await resolveCurrentProjectIdentity(root);
+  const project = await resolveProjectIdentityForRead(root);
   const memoryIndex = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
   const pendingIndex = await loadJson(vibeboxPath(root, 'index/pending-index.json'), defaultPendingIndex());
   const events = (await readJsonl(vibeboxPath(root, 'logs/events.jsonl'))).filter((event) => event.projectId === project.projectId);
@@ -4965,10 +4983,10 @@ function renderCandidateDiagnostics(title, noReusableLabel, events = []) {
 }
 
 export async function generateBlackboxReport(root = process.cwd(), input = {}) {
-  await initVibeBox(root);
+  await ensureStoreForRead(root);
   const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig());
   const locale = resolveLocale(input, config);
-  const project = await resolveCurrentProjectIdentity(root);
+  const project = await resolveProjectIdentityForRead(root);
   const limit = Number(input.limit || 10);
   const since = input.since ? Date.parse(input.since) : null;
   const type = input.type || '';

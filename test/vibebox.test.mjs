@@ -4373,6 +4373,11 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /sandbox[\s\S]{0,220}(?:~\/\.vibebox|\$VIBEBOX_HOME|global VibeBox store)/i);
   assert.match(combined, /read-only global VibeBox store access/i);
   assert.match(combined, /global VibeBox store write access/i);
+  assert.match(combined, /Codex App/i);
+  assert.match(combined, /pretask[\s\S]{0,120}do not create project registry entries|do not create project registry entries[\s\S]{0,120}pretask/i);
+  assert.match(combined, /aftertask[\s\S]{0,180}project registration[\s\S]{0,180}active memory[\s\S]{0,180}wiki updates/i);
+  assert.match(combined, /guidance unavailable/i);
+  assert.match(combined, /capture unavailable/i);
   assert.match(combined, /\[features\]\.hooks/);
   assert.match(combined, /\[features\]\.codex_hooks[\s\S]{0,120}deprecated/i);
   assert.match(combined, /Do not create workspace-local memory snapshots/i);
@@ -4402,14 +4407,23 @@ test('CLI permission diagnostics explain sandboxed global store access', async (
 
     const readMessage = formatCliError(error, 'pretask');
     assert.match(readMessage, /VibeBox global store access is required/);
-    assert.match(readMessage, /pretask\/context\/report\/doctor read active memory/);
+    assert.match(readMessage, /pretask\/context\/report\/doctor require read access/);
+    assert.match(readMessage, /pretask\/context are read-only and do not register projects/);
     assert.match(readMessage, /Sandboxed hosts such as Codex/);
+    assert.match(readMessage, /single global VibeBox store/);
     assert.match(readMessage, /Do not create workspace-local memory snapshots/);
     assert.match(readMessage, /approved read-only global VibeBox store access/);
+    assert.match(readMessage, /guidance unavailable/);
 
     const writeMessage = formatCliError(error, 'aftertask');
-    assert.match(writeMessage, /aftertask\/capture\/maintenance commands write capture/);
+    assert.match(writeMessage, /aftertask\/capture\/init\/rebuild\/convert-lang\/restore\/backup write capture/);
+    assert.match(writeMessage, /aftertask requires write access for memory capture and project registration/);
     assert.match(writeMessage, /approved global VibeBox store write access/);
+    assert.match(writeMessage, /capture unavailable/);
+
+    const sandboxMessage = formatCliError(new Error('sandbox denied access to ~/.vibebox outside the workspace'), 'context');
+    assert.match(sandboxMessage, /VibeBox global store access is required/);
+    assert.match(sandboxMessage, /approved read-only global VibeBox store access/);
   } finally {
     if (previousHome === undefined) {
       delete process.env.VIBEBOX_HOME;
@@ -4417,6 +4431,22 @@ test('CLI permission diagnostics explain sandboxed global store access', async (
       process.env.VIBEBOX_HOME = previousHome;
     }
   }
+});
+
+test('report and blackbox inspect existing global store without registering projects', async () => {
+  const root = await makeWorkspace();
+  await mkdir(storePath(root), { recursive: true });
+
+  const report = await generateReport(root);
+  const blackbox = await generateBlackboxReport(root);
+
+  assert.match(report, /Global Store:/);
+  assert.match(blackbox, /Project:/);
+  await assert.rejects(
+    () => access(storePath(root, 'registry/projects.json')),
+    /ENOENT/
+  );
+  await assertNoLocalStore(root);
 });
 
 test('CLI --language overrides environment locale for new store configuration', async () => {

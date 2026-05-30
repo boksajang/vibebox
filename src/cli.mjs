@@ -150,7 +150,7 @@ function isPermissionDeniedError(error) {
   const code = String(error?.code || '').toUpperCase();
   const message = String(error?.message || '');
   return ['EACCES', 'EPERM'].includes(code)
-    || /\b(?:permission denied|access denied|operation not permitted|not permitted)\b/iu.test(message);
+    || /\b(?:permission denied|access denied|operation not permitted|not permitted|sandbox denied|sandbox denial|outside the workspace|approval denied)\b/iu.test(message);
 }
 
 function commandAccessKind(command = '') {
@@ -171,13 +171,13 @@ export function formatCliError(error, command = '') {
   const store = getVibeBoxHome();
   const kind = commandAccessKind(command);
   const purpose = kind === 'read'
-    ? 'pretask/context/report/doctor read active memory and diagnostics from the global VibeBox store.'
+    ? 'pretask/context/report/doctor require read access to active memory and diagnostics in the global VibeBox store. pretask/context are read-only and do not register projects.'
     : kind === 'write'
-      ? 'aftertask/capture/maintenance commands write capture, index, wiki, backup, or restore data in the global VibeBox store.'
+      ? 'aftertask/capture/init/rebuild/convert-lang/restore/backup write capture, registry, index, wiki, backup, or restore data in the global VibeBox store. aftertask requires write access for memory capture and project registration.'
       : 'this command needs access to the global VibeBox store.';
   const approval = kind === 'read'
-    ? 'Rerun with approved read-only global VibeBox store access.'
-    : 'Rerun with approved global VibeBox store write access when the command records or maintains memory.';
+    ? 'Rerun with approved read-only global VibeBox store access, or report VibeBox guidance unavailable if approval is denied.'
+    : 'Rerun with approved global VibeBox store write access when the command records or maintains memory, or report VibeBox capture unavailable if approval is denied.';
 
   return [
     message,
@@ -185,6 +185,7 @@ export function formatCliError(error, command = '') {
     `VibeBox global store access is required at ${store}.`,
     purpose,
     'Sandboxed hosts such as Codex may block ~/.vibebox because it is outside the workspace.',
+    'This command uses the single global VibeBox store; no workspace-local memory snapshot will be created.',
     'Do not create workspace-local memory snapshots, project-local .vibebox folders, or copied memory stores as a fallback.',
     approval
   ].join('\n');

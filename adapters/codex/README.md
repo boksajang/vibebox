@@ -68,7 +68,9 @@ Do not use `powershell.exe -Command` as a default VibeBox workflow example. Trea
 
 VibeBox uses one global store as the single source of truth, normally `~/.vibebox` or `C:\Users\{USER}\.vibebox`. It does not create workspace-local memory snapshots, project-local `.vibebox` folders, copied memory stores, pointer files, or hidden metadata in work projects.
 
-Codex sandbox settings can block that global store because it is outside the current workspace. In a read-only sandbox, even `pretask` and `context` may need approved read-only global VibeBox store access. With on-request approval, Codex may ask before reading `~/.vibebox`; `aftertask` needs global VibeBox store write access because it records the task result and updates active memory. If access is denied, report that VibeBox guidance or capture was unavailable. Do not replace the global store with a local snapshot.
+VS Code or Codex CLI sessions may already have user-home access, while Codex App can run with stricter workspace sandbox and approval review. A setup that records memory in VS Code can still have `~/.vibebox` read/write denied in Codex App.
+
+Codex sandbox settings can block the global store because it is outside the current workspace. In a read-only sandbox, even `pretask` and `context` may need approved read-only global VibeBox store access. With on-request approval, Codex may ask before reading `~/.vibebox`; `aftertask` needs global VibeBox store write access because it records the task result and updates active memory. At the start of a new Codex App session, check whether read access is available for pretask/context and whether write access will be needed later for aftertask capture. If read access is denied, report VibeBox guidance unavailable. If write access is denied, report that aftertask capture, project registration, active memory, and wiki updates were not completed. Do not replace the global store with a local snapshot.
 
 VibeBox does not automatically edit Codex configuration. If you configure hooks manually, use the current `[features].hooks` setting; legacy `[features].codex_hooks` references are deprecated and should not be used for new setup.
 
@@ -81,6 +83,8 @@ vibebox.cmd pretask --task "<task description>"
 ```
 
 Codex should read and apply the `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` sections before planning or editing. This is read-only retrieval for repository files: it prints active guidance and should not modify repository files, but it reads the global VibeBox store. If host approval blocks a wrapper-style attempt, retry direct `vibebox.cmd pretask --task "..."`, then `vibebox pretask --task "..."`, then `node bin/vibebox.mjs pretask --task "..."` from the VibeBox repository. If the sandbox blocks `~/.vibebox`, request read-only global VibeBox store access. If all attempts fail, report that VibeBox guidance was unavailable before proceeding.
+
+`pretask` and `context` do not register a new project because they are read-only. A new Codex App chat may therefore retrieve no project entry until `init`, `aftertask`, or `capture` can write to the global store.
 
 After meaningful work:
 

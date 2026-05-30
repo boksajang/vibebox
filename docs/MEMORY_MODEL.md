@@ -209,9 +209,9 @@ Each relation has `id`, `type`, `from`, `to`, `projectId`, `strength`, `evidence
 
 ## Runtime State Policy
 
-Memory records, raw logs, manual-debug pending candidates, indexes, registry entries, backups created by the user, and wiki pages live under the user-level global store, `~/.vibebox` by default. `VIBEBOX_HOME` can override that location.
+Memory records, raw logs, manual-debug pending candidates, indexes, registry entries, backups created by the user, and wiki pages live under the user-level global store, `~/.vibebox` by default. `VIBEBOX_HOME` can override that location. Sandboxed hosts may require approval to read or write that store; VibeBox does not create workspace-local snapshots, copied stores, or project-local `.vibebox` fallbacks when approval is denied.
 
-Project memory is stored under `projects/{projectId}/`. User-wide preferences, tooling preferences, avoid rules, workflow rules, coding style, and architecture patterns are stored under `global/`. The Obsidian-compatible wiki under `wiki/` connects all projects into one graph. The current project folder remains clean.
+Project memory is stored under `projects/{projectId}/`. `pretask` and `context` are read-only retrieval commands and do not create project registry entries. `init`, `aftertask`, and `capture` register the current project when global store write access is available. User-wide preferences, tooling preferences, avoid rules, workflow rules, coding style, and architecture patterns are stored under `global/`. The Obsidian-compatible wiki under `wiki/` connects all projects into one graph. The current project folder remains clean.
 
 Existing project-local `.vibebox/` folders are legacy stores. VibeBox warns about them in `doctor` and does not run destructive automatic migration.
 

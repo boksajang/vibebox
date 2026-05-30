@@ -68,7 +68,9 @@ vibebox reject <candidate-id>
 - VibeBox memory behavior comes from the Core CLI and shared skill, not from this adapter.
 - Agents should not treat pending memory as active memory.
 - VibeBox uses one global user store at `~/.vibebox` by default, overrideable with `VIBEBOX_HOME`.
-- VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects.
+- VibeBox does not create project-local `.vibebox` folders, workspace-local memory snapshots, copied memory stores, pointer files, or hidden metadata in work projects.
+- Sandboxed hosts may need approved read access for `pretask`/`context` and approved write access for `aftertask`. If read access is denied, report guidance unavailable; if aftertask write access is denied, report that capture, project registration, active memory, and wiki updates were not completed.
+- `pretask` and `context` do not create project registry entries. A new project is registered by `init`, `aftertask`, or `capture` when global store write access is available.
 - Claude performs semantic extraction and supplies structured candidates; action summaries and technical failure text are evidence only until represented in a candidate.
 - `backup` and `restore` are normal CLI maintenance commands; restore is destructive replace and requires confirmation.
 - `convert-lang` and semantic `rebuild` require an agent runtime marker such as `VIBEBOX_AGENT_RUNTIME` and Claude-provided localized/semantic data; Core applies file operations and integrity checks but does not translate or reclassify meaning.

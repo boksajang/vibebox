@@ -6,8 +6,8 @@ VibeBox is agent-neutral. Any AI coding agent that can read files and run shell 
 
 1. Receive the user task.
 2. Judge whether it is meaningful repository work.
-3. Check whether VibeBox is available, the global store exists or can be initialized, and the current working directory is a usable project workspace rather than user home, global store, cache, or tool-internal path.
-4. If memory could affect the task, run read-only `pretask` before planning or editing.
+3. Check whether VibeBox is available, whether the global store exists or can be initialized, whether sandbox approval may be needed for global-store read/write access, and whether the current working directory is a usable project workspace rather than user home, global store, cache, or tool-internal path.
+4. If memory could affect the task, run read-only `pretask` before planning or editing, after requesting read access when the host requires it.
 5. Read `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`.
 6. Use the Pre-Task Brief to reduce wrong assumptions, apply current user patterns, avoid repeated failures, and reuse relevant successful approaches.
 7. Perform the task within the current user request.
@@ -29,6 +29,22 @@ This is an auto-intervention policy, not a hardcoded trigger list. The agent sho
 8. Inspect project health with `vibebox report`, `vibebox blackbox`, and `vibebox doctor`.
 
 VibeBox uses the global user store as the single source of truth. Sandboxed hosts can block access to `~/.vibebox` or `$VIBEBOX_HOME` because that store is outside the current workspace. Agents should request approved global-store access when needed, not create workspace-local memory snapshots, copied stores, or project-local `.vibebox` fallbacks.
+
+## VibeBox Access Preflight
+
+Before meaningful work in Codex App or another sandboxed host, perform a quick access preflight:
+
+1. Identify the global store path (`~/.vibebox` by default, or `$VIBEBOX_HOME` / `--store <path>` when configured).
+2. Explain that `pretask` and `context` are read-only retrieval commands but still require read access to the global store.
+3. Explain that `aftertask` is a global-store write/capture command and may need write access for project registration, raw event capture, active memory, indexes, and wiki updates.
+4. If approval is available, request the narrow access needed for the command being run.
+5. If read access is denied, report VibeBox guidance unavailable before proceeding.
+6. If write access is denied, report VibeBox capture unavailable and state that project registration, active memory, and wiki updates were not completed.
+7. Preserve the aftertask payload in the completion report when useful so the same capture can be rerun after approval.
+
+Recommended wording: `VibeBox uses one global store as the single source of truth. This sandboxed session may need approval to read and write ~/.vibebox. pretask/context require read access. aftertask requires write access for memory capture. No workspace-local memory snapshot will be created.`
+
+`pretask` and `context` are read-only and do not create project registry entries. A new project is registered by `init`, `aftertask`, or `capture` when write access is available.
 
 ## Pre-Task Brief Workflow
 
