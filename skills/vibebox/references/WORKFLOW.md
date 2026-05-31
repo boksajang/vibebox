@@ -92,6 +92,8 @@ For longer records, keep the original request explicit:
 vibebox aftertask --request "Fix dashboard table scrolling" --from-file task-result.txt
 ```
 
+`task-result.txt` must include `User request:` and `Structured memory candidates:` when active memory should be created; otherwise it is only a raw evidence capture.
+
 The file must include `Structured memory candidates:` when reusable memory should be stored, and should include `User request:`, `AI action summary:`, `Changed files:`, `Commands:`, and `Errors:` sections when present. Do not use `--summary` or `--from-file` alone for active memory. Without structured candidates, VibeBox records the event and warns; it does not create active user success criteria, active successful approaches, or active AI failure memory by itself.
 
 Aftertask is a global store write/capture operation: it writes a blackbox event and ingests AI-agent structured candidates. The agent is responsible for decomposing structured user requests into reusable success criteria, project rules, user/domain patterns, validation/preservation expectations, scope limits, AI failure-prevention rules, and task context before capture. Core validates schema and BCP 47 fields, preserves raw evidence, dedupes, applies replacement safety, builds relation/category/project indexes, and renders the wiki. If sandbox permissions block aftertask, request global VibeBox store write access for aftertask capture or report that capture was unavailable. Skip capture when the user explicitly opts out.

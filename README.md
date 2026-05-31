@@ -20,7 +20,7 @@ VibeBox is not a prompt log and it is not a semantic interpreter. The AI agent a
 ## Semantic Authority Contract
 
 - Meaning belongs to the AI agent, not VibeBox Core.
-- `aftertask` and file-based capture can include `Structured memory candidates:` with `memoryRole`, `type`, `modelClass`, `scope`, category, display, evidence, replacement, and relation fields.
+- `aftertask` and file-based capture must include `Structured memory candidates:` with `memoryRole`, `type`, `modelClass`, `scope`, category, display, evidence, replacement, and relation fields when active memory should be created.
 - If a `userRequest` is present but structured candidates are missing, Core records the raw event, emits a warning, and creates no active user memory.
 - An AI action summary alone never creates active user success criteria or successful approach memory.
 - Command, tool, permission, path, and environment failure evidence can be preserved as raw event evidence, but active `ai_failure_memory` requires an agent-provided structured candidate.
@@ -173,6 +173,25 @@ node bin/vibebox.mjs <command>
 ```
 
 Codex users can enable the included VibeBox plugin wrapper. See [Codex Adapter](adapters/codex/README.md).
+
+### Codex App Plugin Cache Check
+
+VibeBox `0.1.1` bumps the plugin version to help Codex App stop reusing stale `0.1.0` plugin cache content. After updating the plugin, verify the installed cache version folder and compare key files before trusting the loaded skill:
+
+```powershell
+$repo = (Get-Location).Path
+$cache = "$env:USERPROFILE\.codex\plugins\cache\personal\vibebox\0.1.1"
+Test-Path $cache
+Get-FileHash "$repo\.codex-plugin\plugin.json", "$cache\.codex-plugin\plugin.json"
+Get-FileHash "$repo\skills\vibebox\SKILL.md", "$cache\skills\vibebox\SKILL.md"
+Get-FileHash "$repo\skills\vibebox\references\WORKFLOW.md", "$cache\skills\vibebox\references\WORKFLOW.md"
+Get-FileHash "$repo\skills\vibebox\references\COMMANDS.md", "$cache\skills\vibebox\references\COMMANDS.md"
+Get-FileHash "$repo\skills\vibebox\references\MEMORY_POLICY.md", "$cache\skills\vibebox\references\MEMORY_POLICY.md"
+Get-FileHash "$repo\adapters\codex\README.md", "$cache\adapters\codex\README.md"
+Select-String -Path "$cache\skills\vibebox\SKILL.md" -Pattern "whyOnlyOneCandidate","no_reusable_memory_candidate","displayLanguage","Core will not infer active memory"
+```
+
+If the folder is still `0.1.0`, the hashes differ, or the latest contract phrases are missing, Codex App is reading stale installed cache content. Reinstall or update the plugin, or refresh the cache through Codex App; VibeBox does not delete or rewrite Codex's plugin cache automatically.
 
 ## Core Commands
 

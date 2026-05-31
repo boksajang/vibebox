@@ -42,6 +42,31 @@ After adding the marketplace source, enable the `vibebox` plugin from Codex's pl
 
 Manual edits to Codex marketplace files are for local development or troubleshooting only.
 
+## Installed Cache Verification
+
+Codex App may load VibeBox from an installed plugin cache instead of the repository working tree. Because the cache path is versioned, keeping the plugin at the same version can let stale files survive across repo edits. VibeBox `0.1.1` is a cache-busting version bump from `0.1.0`; after updating or reinstalling the plugin, confirm that Codex App is reading the new cache folder:
+
+```text
+C:\Users\{USER}\.codex\plugins\cache\personal\vibebox\0.1.1\
+```
+
+Compare the installed cache against the repository before debugging VibeBox behavior:
+
+```powershell
+$repo = (Get-Location).Path
+$cache = "$env:USERPROFILE\.codex\plugins\cache\personal\vibebox\0.1.1"
+Test-Path $cache
+Get-FileHash "$repo\.codex-plugin\plugin.json", "$cache\.codex-plugin\plugin.json"
+Get-FileHash "$repo\skills\vibebox\SKILL.md", "$cache\skills\vibebox\SKILL.md"
+Get-FileHash "$repo\skills\vibebox\references\WORKFLOW.md", "$cache\skills\vibebox\references\WORKFLOW.md"
+Get-FileHash "$repo\skills\vibebox\references\COMMANDS.md", "$cache\skills\vibebox\references\COMMANDS.md"
+Get-FileHash "$repo\skills\vibebox\references\MEMORY_POLICY.md", "$cache\skills\vibebox\references\MEMORY_POLICY.md"
+Get-FileHash "$repo\adapters\codex\README.md", "$cache\adapters\codex\README.md"
+Select-String -Path "$cache\skills\vibebox\SKILL.md" -Pattern "whyOnlyOneCandidate","no_reusable_memory_candidate","displayLanguage","Core will not infer active memory"
+```
+
+If the cache folder is still `0.1.0`, the hashes differ, or the latest contract phrases are missing, reinstall/update the plugin or refresh the Codex App plugin cache. VibeBox does not automatically delete or rewrite Codex App cache files.
+
 ## Command Fallback
 
 Codex on Windows should prefer direct command invocation. A command wrapped as `powershell.exe -Command 'vibebox.cmd ...'` can look riskier to the host approval layer than the direct CLI call, even when the VibeBox command itself is read-only.
@@ -96,7 +121,7 @@ vibebox.cmd aftertask --request "<original user request or faithful summary>" --
 
 Codex is the semantic authority. It must decompose structured requests into project criteria, user/domain patterns, validation and preservation rules, reporting preferences, scope limits, AI failure-prevention rules, task context, categories, relations, replacements, and localized display text before capture. For meaningful work, Codex should scan `user_success_criteria`, `ai_failure_memory`, `ai_successful_approach`, `task_context`, `discarded_detail`, validation patterns, response preferences, process patterns, design philosophy, decision patterns, prevention/avoid rules, and no-reusable-memory diagnostics. Do not collapse separate success, validation, reporting, and failure-avoidance meanings into one summary candidate.
 
-If a complex request produces only one candidate, Codex must include `whyOnlyOneCandidate`. If no reusable memory exists, submit `no_reusable_memory_candidate` with `noCandidateReason`. Wiki display fields must follow the configured `memoryLanguage`; in a `ko-KR` store, `displayTitle`, `displaySummary`, and `displayRule` should be Korean. VibeBox Core validates, stores, dedupes, safely replaces, indexes, and renders those candidates; it does not translate missing display text or backfill semantic memory from raw summaries. The user's request is success criteria, user corrections update those criteria, and user dissatisfaction is an AI failure signal. Confirmed and inferred AI successful approaches can become active without memory approval when Codex submits them; inferred success must not be described as user-confirmed. Preserve command, permission, environment, and tool failure evidence, and submit active AI failure memory only when Codex has made that structured candidate. Use review commands only for debugging, audits, or manual override:
+If a complex request produces only one candidate, Codex must include `whyOnlyOneCandidate`. If no reusable memory exists, submit `no_reusable_memory_candidate` with `noCandidateReason`. Wiki display fields must follow the configured `memoryLanguage`; in a `ko-KR` store, `displayTitle`, `displaySummary`, and `displayRule` should be Korean, and `displayLanguage` should be `ko-KR`. VibeBox Core validates, stores, dedupes, safely replaces, indexes, and renders those candidates; it does not translate missing display text or backfill semantic memory from raw summaries. The user's request is success criteria, user corrections update those criteria, and user dissatisfaction is an AI failure signal. Confirmed and inferred AI successful approaches can become active without memory approval when Codex submits them; inferred success must not be described as user-confirmed. Preserve command, permission, environment, and tool failure evidence, and submit active AI failure memory only when Codex has made that structured candidate. Use review commands only for debugging, audits, or manual override:
 
 ```bash
 vibebox review

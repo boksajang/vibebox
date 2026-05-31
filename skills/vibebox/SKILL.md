@@ -253,6 +253,7 @@ Only run `vibebox convert-lang` or semantic `vibebox rebuild` when an adapter ha
 - If `pretask` or `context` was blocked because it was wrapped in `powershell.exe -Command`, retry direct `vibebox.cmd pretask --task "..."` or `vibebox.cmd context --task "..."`.
 - If `pretask` or `context` was blocked because the sandbox denied `~/.vibebox` or `$VIBEBOX_HOME`, request read-only global VibeBox store access and report guidance unavailable if approval is denied.
 - If `aftertask` was blocked by global store permissions, request global VibeBox store write access for aftertask capture and report capture unavailable if approval is denied.
+- If Codex App behavior looks older than this skill, verify the installed plugin cache path, for example `$USERPROFILE\.codex\plugins\cache\personal\vibebox\0.1.1`, and compare `.codex-plugin/plugin.json`, `SKILL.md`, `WORKFLOW.md`, `COMMANDS.md`, `MEMORY_POLICY.md`, and `adapters/codex/README.md` hashes against the repository. If the folder is still `0.1.0` or hashes differ, reinstall/update the plugin or refresh the Codex App cache; VibeBox does not delete Codex cache files.
 - If pre-task output looks irrelevant, inspect active memory with `vibebox report`; use `vibebox review` only for legacy/manual debug state.
 - If memory/index health is unclear, run `vibebox doctor`.
 - Before risky maintenance, use `vibebox backup`; restore uses destructive replace and requires confirmation.

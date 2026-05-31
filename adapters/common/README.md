@@ -22,7 +22,7 @@ Reference files live under:
 8. Apply relevant guidance in the plan and implementation; do not merely print the VibeBox output.
 9. Run `vibebox aftertask --request "<original user request or faithful summary>" --candidates "<agent-candidate-json>" ...` after meaningful work, including `--technical-outcome` and `--user-acceptance` when known. Do not call aftertask with only an AI action summary.
 10. The adapter/agent is responsible for semantic extraction. Submit structured candidates for user success criteria, AI failure memory, AI successful approaches, task context, discarded detail, categories, relations, replacements, and localized display text. Split separate success, validation, reporting, preference, project, failure-avoidance, and approach meanings into separate candidates when they are reusable.
-11. If a complex request produces only one candidate, include `whyOnlyOneCandidate`. If no reusable memory exists, leave an explicit `no_reusable_memory_candidate` item with `noCandidateReason` instead of assuming Core will decide. Write Wiki display fields in the configured `memoryLanguage`; Core does not translate missing display text.
+11. If a complex request produces only one candidate, include `whyOnlyOneCandidate`. If no reusable memory exists, leave an explicit `no_reusable_memory_candidate` item with `noCandidateReason` instead of assuming Core will decide. Write `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage` for the configured `memoryLanguage`; Core does not translate missing display text.
 12. Use `review`, `approve`, and `reject` only for debugging, audits, or manual override.
 
 ## Storage Roles

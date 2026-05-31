@@ -66,6 +66,8 @@ If the original capture used a long record file:
 vibebox.cmd aftertask --from-file task-result.txt
 ```
 
+`task-result.txt` must contain `User request:` and `Structured memory candidates:` when active memory should be created. A file wrapper without structured candidates is raw evidence only; Core will not infer memory from it.
+
 Memory language seed for a new store:
 
 ```bash

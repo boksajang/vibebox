@@ -110,6 +110,8 @@ For longer notes:
 vibebox aftertask --from-file task-result.txt
 ```
 
+`task-result.txt` must include `User request:` and `Structured memory candidates:` when active memory should be created; the file wrapper alone is not semantic extraction.
+
 `aftertask` writes a blackbox event and accepts AI-agent structured memory candidates. The AI agent, not Core, decides reusable success criteria, failures, successful approaches, model class, scope, categories, replacements, relations, and localized display text. Core validates the candidate schema, applies BCP 47 checks, stores raw evidence, dedupes, applies replacement safety, indexes, and renders the wiki.
 
 For complex user requests, split reusable meaning into separate candidates when the request contains separate success criteria, validation rules, reporting preferences, design/process/decision patterns, project/domain/user rules, failure-prevention rules, AI successful approaches, task context, or discarded details. If only one candidate is truly enough, include `whyOnlyOneCandidate`. If no reusable memory exists, include a `no_reusable_memory_candidate` item with `noCandidateReason`. Wiki display fields should be written in configured `memoryLanguage`; Core does not translate missing display fields.
@@ -291,6 +293,40 @@ On Windows/Codex, use direct `vibebox.cmd` for the same commands first. If a wra
 - If indexes or wiki files look inconsistent, run `vibebox doctor`.
 - If `doctor` reports an old project-local `.vibebox/`, treat it as legacy. No destructive migration is performed automatically.
 
+## Codex App Plugin Cache Verification
+
+VibeBox `0.1.1` is a plugin cache-busting release. Codex App can load an installed plugin cache under a versioned folder such as:
+
+```text
+C:\Users\{USER}\.codex\plugins\cache\personal\vibebox\0.1.1\
+```
+
+After updating or reinstalling the plugin, confirm that Codex App is not still reading stale `0.1.0` files. Compare these repo files with the installed cache:
+
+- `.codex-plugin/plugin.json`
+- `skills/vibebox/SKILL.md`
+- `skills/vibebox/references/WORKFLOW.md`
+- `skills/vibebox/references/COMMANDS.md`
+- `skills/vibebox/references/MEMORY_POLICY.md`
+- `adapters/codex/README.md`
+
+Example PowerShell check:
+
+```powershell
+$repo = (Get-Location).Path
+$cache = "$env:USERPROFILE\.codex\plugins\cache\personal\vibebox\0.1.1"
+Test-Path $cache
+Get-FileHash "$repo\.codex-plugin\plugin.json", "$cache\.codex-plugin\plugin.json"
+Get-FileHash "$repo\skills\vibebox\SKILL.md", "$cache\skills\vibebox\SKILL.md"
+Get-FileHash "$repo\skills\vibebox\references\WORKFLOW.md", "$cache\skills\vibebox\references\WORKFLOW.md"
+Get-FileHash "$repo\skills\vibebox\references\COMMANDS.md", "$cache\skills\vibebox\references\COMMANDS.md"
+Get-FileHash "$repo\skills\vibebox\references\MEMORY_POLICY.md", "$cache\skills\vibebox\references\MEMORY_POLICY.md"
+Get-FileHash "$repo\adapters\codex\README.md", "$cache\adapters\codex\README.md"
+Select-String -Path "$cache\skills\vibebox\SKILL.md" -Pattern "whyOnlyOneCandidate","no_reusable_memory_candidate","displayLanguage","Core will not infer active memory"
+```
+
+If the installed cache folder remains `0.1.0`, the hashes differ, or the latest contract phrases are absent, refresh or reinstall the plugin before relying on VibeBox guidance. VibeBox does not automatically delete Codex App cache files.
+
 ## Examples
 
 Dashboard database preference:
@@ -328,6 +364,8 @@ Project decision:
 ```bash
 vibebox extract --candidates '[{"memoryRole":"user_success_criteria","type":"project_decision","modelClass":"project_model","modelSubClass":"visualization_library_decision","scope":"project","primaryCategory":"decision_patterns","relatedCategories":["technology_preferences"],"title":"Use ECharts for dashboard visualization","summary":"This project uses ECharts for dashboard visualization after rejecting Chart.js.","rule":"Use ECharts for dashboard visualization in this project unless the user changes the project decision.","displayTitle":"Use ECharts for dashboards","displaySummary":"This project uses ECharts for dashboard visualization after rejecting Chart.js.","displayRule":"Use ECharts for dashboard visualization unless the project decision changes.","displayLanguage":"en-US","confidence":"high","sourceType":"agent_semantic_extraction","evidence":["Agent semantic candidate from a project visualization decision."]}]'
 ```
+
+### Legacy / Manual Debugging Only
 
 Raw text extraction is available only for legacy/manual debugging. It stores raw evidence or manual-review material; it is not the normal semantic extraction workflow and Core will not infer active user memory from the raw sentence:
 

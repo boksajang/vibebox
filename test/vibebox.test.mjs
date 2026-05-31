@@ -35,7 +35,8 @@ import {
   rebuildVibeBox,
   restoreVibeBox,
   reviewPending,
-  runDoctor
+  runDoctor,
+  VIBEBOX_VERSION
 } from '../src/core.mjs';
 import { formatCliError } from '../src/cli.mjs';
 
@@ -4302,9 +4303,13 @@ test('universal agent skill package files exist and declare shared skill metadat
     assert.ok(content.trim().length > 0, `${relativePath} should not be empty`);
   }
 
+  const expectedVersion = '0.1.1';
+  const packageJson = await loadJson(path.resolve('package.json'));
   const plugin = await loadJson(path.resolve('.codex-plugin/plugin.json'));
   assert.equal(plugin.name, 'vibebox');
-  assert.equal(plugin.version, '0.1.0');
+  assert.equal(plugin.version, expectedVersion);
+  assert.equal(packageJson.version, expectedVersion);
+  assert.equal(VIBEBOX_VERSION, expectedVersion);
   assert.match(plugin.description, /Universal local-first memory middleware/i);
   assert.match(plugin.description, /structured memory candidates/i);
   assert.equal(plugin.interface.brandColor, '#0891B2');
@@ -4319,9 +4324,14 @@ test('universal agent skill package files exist and declare shared skill metadat
 
   const marketplace = await loadJson(path.resolve('.agents/plugins/marketplace.json'));
   assert.equal(marketplace.name, 'vibebox');
+  if (marketplace.version) {
+    assert.equal(marketplace.version, expectedVersion);
+  }
   assert.equal(marketplace.plugins.some((entry) => entry.name === 'vibebox'), true);
-
-  const packageJson = await loadJson(path.resolve('package.json'));
+  const marketplacePlugin = marketplace.plugins.find((entry) => entry.name === 'vibebox');
+  if (marketplacePlugin.version) {
+    assert.equal(marketplacePlugin.version, expectedVersion);
+  }
   assert.equal(packageJson.bin.vibebox, './bin/vibebox.mjs');
 });
 
@@ -4390,12 +4400,24 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /Reading `pretask` is not a complete VibeBox workflow|pretask[\s\S]{0,160}not a complete VibeBox workflow/i);
   assert.match(combined, /convert-lang[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}convert-lang/i);
   assert.match(combined, /rebuild[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}rebuild/i);
+  assert.match(combined, /0\.1\.1[\s\S]{0,180}cache-busting|cache-busting[\s\S]{0,180}0\.1\.1/i);
+  assert.match(combined, /plugins\\cache\\personal\\vibebox\\0\.1\.1/i);
+  assert.match(combined, /Get-FileHash[\s\S]{0,800}skills\\vibebox\\SKILL\.md/i);
+  assert.match(combined, /Get-FileHash[\s\S]{0,800}skills\\vibebox\\references\\WORKFLOW\.md/i);
+  assert.match(combined, /Get-FileHash[\s\S]{0,800}adapters\\codex\\README\.md/i);
+  assert.match(combined, /Select-String[\s\S]{0,240}whyOnlyOneCandidate[\s\S]{0,240}no_reusable_memory_candidate/i);
+  assert.match(combined, /stale[\s\S]{0,180}plugin cache|plugin cache[\s\S]{0,180}stale/i);
+  assert.match(combined, /VibeBox does not[\s\S]{0,80}(?:delete|rewrite)[\s\S]{0,120}Codex(?:'s)?(?: App)?(?: plugin)? cache/i);
+  assert.match(combined, /task-result\.txt` must (?:contain|include) `User request:` and `Structured memory candidates:`/i);
+  assert.match(combined, /Summary-only `aftertask` and raw-text `extract --text` are raw evidence\/debug paths only/i);
+  assert.match(combined, /Legacy \/ Manual Debugging Only/i);
   const codeBlocks = [...combined.matchAll(/```(?:\w+)?\n([\s\S]*?)```/gu)].map((match) => match[1]);
   assert.equal(codeBlocks.some((block) => /powershell(?:\.exe)?\s+-Command/iu.test(block)), false);
   assert.match(combined, /Do not (?:use|wrap)[^.]{0,160}powershell(?:\.exe)? -Command/i);
   assert.doesNotMatch(combined, /Codex-only|Claude-only|Codex 전용|Claude 전용/i);
   assert.doesNotMatch(combined, /marketplace distribution is available|official Claude install is available|cloud install is available/i);
   assert.doesNotMatch(combined, /fallback to (?:a )?(?:workspace-local|project-local|copied) memory/i);
+  assert.doesNotMatch(combined, /vibebox aftertask --request "Check project memory before editing" --summary "Inspected project state\." --technical-outcome success --user-acceptance accepted\s*\r?\n\s*vibebox extract --text/i);
 });
 
 test('CLI permission diagnostics explain sandboxed global store access', async () => {
