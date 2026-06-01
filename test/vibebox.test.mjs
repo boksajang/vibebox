@@ -1282,6 +1282,81 @@ test('domain memory can support other projects while project memory stays namesp
   assert.doesNotMatch(brief, /ECharts/);
 });
 
+test('retrieval uses structural indexes, source project priority, and lexical scoring only', async () => {
+  const root = await makeWorkspace();
+  const { projectId } = await initVibeBox(root);
+  const otherRoot = await mkdtemp(path.join(os.tmpdir(), 'vibebox-test-index-other-'));
+  await writeFile(path.join(otherRoot, 'package.json'), JSON.stringify({ name: 'other-source-project' }, null, 2), 'utf8');
+  await initVibeBox(otherRoot);
+  const configPath = storePath(root, 'config.json');
+  const config = await loadJson(configPath);
+  await writeFile(configPath, JSON.stringify({ ...config, maxContextItems: 1, maxContextChars: 6000 }, null, 2), 'utf8');
+
+  await extractFromAgent(root, {
+    structuredMemoryCandidates: [
+      candidateFixture({
+        candidateId: 'source-project-check',
+        type: 'workflow_rule',
+        scope: 'global',
+        sourceProjectId: projectId,
+        topic: 'npm cmd verification',
+        summary: 'Use npm.cmd check for this source project verification flow.',
+        rule: 'Prefer npm.cmd check for this source project verification flow.',
+        tags: ['npm.cmd', 'check', 'verification'],
+        domains: ['verification']
+      })
+    ]
+  });
+
+  await extractFromAgent(otherRoot, {
+    structuredMemoryCandidates: [
+      candidateFixture({
+        candidateId: 'other-source-check',
+        type: 'workflow_rule',
+        scope: 'global',
+        topic: 'npm cmd verification',
+        summary: 'Use generic npm.cmd check for unrelated source project verification.',
+        rule: 'Prefer generic npm.cmd check for unrelated source project verification.',
+        tags: ['npm.cmd', 'check', 'verification'],
+        domains: ['verification']
+      }),
+      candidateFixture({
+        candidateId: 'other-project-check',
+        type: 'workflow_rule',
+        scope: 'project',
+        topic: 'npm cmd verification',
+        summary: 'Other project npm.cmd check guidance must stay out of this project.',
+        rule: 'Use this rule only in the other project.',
+        tags: ['npm.cmd', 'check', 'verification'],
+        domains: ['verification']
+      }),
+      candidateFixture({
+        candidateId: 'automobile-policy',
+        type: 'technology_preference',
+        scope: 'global',
+        topic: 'automobile drivetrain',
+        summary: 'Automobile drivetrain notes apply only to automobile drivetrain maintenance.',
+        rule: 'Only retrieve this when lexical automobile drivetrain terms match.',
+        tags: ['automobile', 'drivetrain'],
+        domains: ['automotive']
+      })
+    ]
+  });
+
+  const brief = await generatePreTaskBrief(root, {
+    task: 'Run npm.cmd check for verification.',
+    debug: true
+  });
+  assert.match(brief, /source project verification flow/);
+  assert.doesNotMatch(brief, /unrelated source project verification/);
+  assert.doesNotMatch(brief, /Other project npm\.cmd check guidance/);
+
+  const lexicalOnlyBrief = await generatePreTaskBrief(root, {
+    task: 'Build a car screen.'
+  });
+  assert.doesNotMatch(lexicalOnlyBrief, /Automobile drivetrain notes/);
+});
+
 test('project memory is not crowded out by matching global memory limits', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);

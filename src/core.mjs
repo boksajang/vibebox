@@ -2781,9 +2781,7 @@ function replacementIdsForMemory(memory, existingMemories = []) {
   });
 }
 
-function isMemoryVisibleForProject(memory, project = {}) {
-  if (!memory) return false;
-  if (['global', 'domain'].includes(memory.scope)) return true;
+function projectIdentityKeys(project = {}) {
   const currentProjectIds = new Set([
     project.projectId,
     project.id,
@@ -2797,12 +2795,25 @@ function isMemoryVisibleForProject(memory, project = {}) {
   if (project.rootPath) {
     currentProjectIds.add(slugProjectId(path.basename(project.rootPath)));
   }
+  return currentProjectIds;
+}
+
+function memoryProjectIdentityKeys(memory = {}) {
   const memoryProjectIds = [
     memory.projectId,
     memory.sourceProjectId,
     memory.projectName,
     memory.repositoryName
   ].filter(Boolean).map((value) => String(value));
+  return memoryProjectIds;
+}
+
+function isMemoryVisibleForProject(memory, project = {}) {
+  if (!memory) return false;
+  if (['global', 'domain'].includes(memory.scope)) return true;
+  const currentProjectIds = projectIdentityKeys(project);
+  if (memory.projectId) return currentProjectIds.has(String(memory.projectId));
+  const memoryProjectIds = memoryProjectIdentityKeys(memory);
   if (memoryProjectIds.length === 0) return true;
   return memoryProjectIds.some((id) => currentProjectIds.has(id));
 }
@@ -4365,7 +4376,8 @@ function scoreMemoryDetailed(memory, task, config = {}) {
       matchScore += 12;
     }
   }
-  if (normalizeText(task).includes(normalizeText(memory.topic))) {
+  const normalizedTopic = normalizeText(memory.topic);
+  if (normalizedTopic && normalizeText(task).includes(normalizedTopic)) {
     score += 32;
     matchScore += 32;
   }
@@ -4377,7 +4389,7 @@ function scoreMemoryDetailed(memory, task, config = {}) {
     score += 18;
     matchScore += 18;
   }
-  if (memory.scope === 'project' && memory.projectId && memory.projectId === config.projectId) score += 25;
+  if (memoryBelongsToCurrentProject(memory, config.projectIds || config.projectId)) score += 25;
   if (memory.scope === 'project') score += 16;
   if (memory.scope === 'global') score -= 6;
   if (['avoid_rule', 'failure_memory', 'agent_failure_pattern'].includes(memory.type) && matchScore > 0) score += 35;
@@ -4422,6 +4434,66 @@ function situationPreferredTypes(situation) {
   return bySituation[situation] || bySituation.implementation;
 }
 
+function addIndexedIds(target, indexSection = {}, values = []) {
+  for (const value of values || []) {
+    const key = normalizeText(value);
+    if (!key) continue;
+    for (const id of indexSection[key] || []) {
+      target.add(id);
+    }
+  }
+}
+
+function hasUsableKeywordIndex(keywordIndex = {}) {
+  return ['keywords', 'tags', 'topics', 'domains', 'types', 'scopes', 'projects']
+    .some((section) => Object.keys(keywordIndex[section] || {}).length > 0);
+}
+
+function retrievalCandidateIdsFromKeywordIndex(keywordIndex = {}, task = '', project = {}, situation = 'implementation') {
+  const ids = new Set();
+  const taskDomains = extractDomains(task);
+  const taskTags = extractTags(task);
+  const taskKeywords = memoryKeywords({ summary: task, tags: taskTags, domains: taskDomains, appliesTo: [] });
+
+  addIndexedIds(ids, keywordIndex.projects, [...projectIdentityKeys(project)]);
+  addIndexedIds(ids, keywordIndex.scopes, ['global', 'domain']);
+  addIndexedIds(ids, keywordIndex.keywords, taskKeywords);
+  addIndexedIds(ids, keywordIndex.tags, taskTags);
+  addIndexedIds(ids, keywordIndex.domains, taskDomains);
+  addIndexedIds(ids, keywordIndex.types, situationPreferredTypes(situation));
+
+  return ids;
+}
+
+function expandCandidateIdsWithRelations(ids, relationIndex = {}) {
+  if (ids.size === 0) return ids;
+  const expanded = new Set(ids);
+  for (const relation of relationIndex.relations || []) {
+    if (!relation || relation.active === false) continue;
+    if (ids.has(relation.from) && relation.to) expanded.add(relation.to);
+    if (ids.has(relation.to) && relation.from) expanded.add(relation.from);
+  }
+  return expanded;
+}
+
+function indexedVisibleMemories(memoryIndex = {}, keywordIndex = {}, relationIndex = {}, task = '', project = {}, config = {}) {
+  const active = (memoryIndex.memories || []).filter((memory) => memory.status === 'active');
+  if (!hasUsableKeywordIndex(keywordIndex)) {
+    return active.filter((memory) => isMemoryVisibleForProject(memory, project));
+  }
+
+  const situation = config.situation || detectSituation(task);
+  const candidateIds = expandCandidateIdsWithRelations(
+    retrievalCandidateIdsFromKeywordIndex(keywordIndex, task, project, situation),
+    relationIndex
+  );
+  if (candidateIds.size === 0) {
+    return active.filter((memory) => isMemoryVisibleForProject(memory, project));
+  }
+
+  return active.filter((memory) => candidateIds.has(memory.id) && isMemoryVisibleForProject(memory, project));
+}
+
 function selectRelevantMemories(memories, task, config) {
   const maxItems = config.maxContextItems || 8;
   const situation = config.situation || detectSituation(task);
@@ -4430,12 +4502,12 @@ function selectRelevantMemories(memories, task, config) {
   const scored = memories
     .filter((memory) => memory.status === 'active')
     .filter((memory) => matchesActiveCondition(memory, task))
-    .filter((memory) => memoryMatchesTaskDomain(memory, { taskDomains, taskTags, task }, config.projectId))
+    .filter((memory) => memoryMatchesTaskDomain(memory, { taskDomains, taskTags, task }, config.projectIds || config.projectId))
     .map((memory) => ({ memory, ...scoreMemoryDetailed(memory, task, { ...config, situation }) }))
     .filter((item) => item.matchScore > 0)
     .sort((left, right) => right.score - left.score);
-  const currentProject = scored.filter((item) => memoryBelongsToCurrentProject(item.memory, config.projectId));
-  const broader = scored.filter((item) => !memoryBelongsToCurrentProject(item.memory, config.projectId));
+  const currentProject = scored.filter((item) => memoryBelongsToCurrentProject(item.memory, config.projectIds || config.projectId));
+  const broader = scored.filter((item) => !memoryBelongsToCurrentProject(item.memory, config.projectIds || config.projectId));
   const preferredBroader = broader.filter((item) => situationPreferredTypes(situation).includes(item.memory.type));
   const combined = [...currentProject, ...preferredBroader, ...broader];
   const seen = new Set();
@@ -4465,8 +4537,13 @@ function memoryMatchesTaskDomain(memory, taskContext = {}, projectId = null) {
   return setOverlap(memoryDomains, taskDomains) > 0;
 }
 
-function memoryBelongsToCurrentProject(memory, projectId) {
-  return Boolean(projectId && memory.projectId === projectId);
+function memoryBelongsToCurrentProject(memory, projectIdentity) {
+  const currentProjectIds = projectIdentity instanceof Set
+    ? projectIdentity
+    : new Set((Array.isArray(projectIdentity) ? projectIdentity : [projectIdentity]).filter(Boolean).map((value) => String(value)));
+  if (currentProjectIds.size === 0) return false;
+  if (memory.projectId) return currentProjectIds.has(String(memory.projectId));
+  return memoryProjectIdentityKeys(memory).some((id) => currentProjectIds.has(id));
 }
 
 function includeSuccessFailurePairs(selected, candidates, maxItems) {
@@ -4518,9 +4595,11 @@ export async function generateContextPack(root = process.cwd(), input = {}) {
   const project = await resolveProjectIdentityForRead(root);
   const task = input.task || input.text || '';
   const situation = detectSituation(task);
-  const retrievalConfig = { ...config, projectId: project.projectId, situation };
+  const retrievalConfig = { ...config, projectId: project.projectId, projectIds: [...projectIdentityKeys(project)], situation };
   const index = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
-  const active = index.memories.filter((memory) => memory.status === 'active' && isMemoryVisibleForProject(memory, project));
+  const keywordIndex = await loadJson(vibeboxPath(root, 'index/keyword-index.json'), defaultKeywordIndex());
+  const relationIndex = await loadJson(vibeboxPath(root, 'index/relation-index.json'), defaultRelationIndex());
+  const active = indexedVisibleMemories(index, keywordIndex, relationIndex, task, project, retrievalConfig);
   const scored = selectRelevantMemories(active, task, retrievalConfig);
 
   const pendingIndex = await loadJson(vibeboxPath(root, 'index/pending-index.json'), defaultPendingIndex());
@@ -4644,9 +4723,11 @@ export async function generatePreTaskBrief(root = process.cwd(), input = {}) {
   const project = await resolveProjectIdentityForRead(root);
   const task = input.task || input.text || '';
   const situation = detectSituation(task);
-  const retrievalConfig = { ...config, projectId: project.projectId, situation };
+  const retrievalConfig = { ...config, projectId: project.projectId, projectIds: [...projectIdentityKeys(project)], situation };
   const index = await loadJson(vibeboxPath(root, 'index/global-memory-index.json'), defaultMemoryIndex());
-  const relevant = selectRelevantMemories(index.memories.filter((memory) => isMemoryVisibleForProject(memory, project)), task, retrievalConfig);
+  const keywordIndex = await loadJson(vibeboxPath(root, 'index/keyword-index.json'), defaultKeywordIndex());
+  const relationIndex = await loadJson(vibeboxPath(root, 'index/relation-index.json'), defaultRelationIndex());
+  const relevant = selectRelevantMemories(indexedVisibleMemories(index, keywordIndex, relationIndex, task, project, retrievalConfig), task, retrievalConfig);
   const pendingIndex = await loadJson(vibeboxPath(root, 'index/pending-index.json'), defaultPendingIndex());
   const conflicts = [
     ...pendingIndex.candidates

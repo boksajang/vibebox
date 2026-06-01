@@ -120,6 +120,8 @@ Memory can be:
 
 Only active memory guides normal pretask/context output. Pending is legacy/manual debug state, not normal workflow guidance.
 
+Pretask/context retrieval first narrows active memory with structural data: current `projectId`, `sourceProjectId`, scope, type/category, active status, keyword indexes, and active relation indexes. Task text can affect deterministic token/domain/tag/situation scoring, but Core must not infer user intent, success criteria, failure meaning, category meaning, or memory fitness semantically. Semantic judgment stays with the AI Agent that creates structured candidates.
+
 ## Conflict And Replacement
 
 Candidate conflict statuses include:
