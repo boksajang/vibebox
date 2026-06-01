@@ -22,6 +22,7 @@ import {
   captureEvent,
   classifyCandidateConflict,
   convertLanguage,
+  displayTemplateSchema,
   extractMemoryCandidates,
   generateBlackboxReport,
   generateContextPack,
@@ -45,6 +46,7 @@ async function makeWorkspace() {
   process.env.VIBEBOX_HOME = storePath(root);
   process.env.VIBEBOX_LOCALE = 'en-US';
   delete process.env.VIBEBOX_LANGUAGE;
+  clearAgentDisplayTemplateEnv();
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'vibebox-test-project' }, null, 2), 'utf8');
   return root;
 }
@@ -649,7 +651,156 @@ async function listMemoryNoteFiles(root) {
 }
 
 const LANGUAGE_CONFIG_KEYS = ['locale', 'memoryLanguage', 'outputLanguage', 'wikiLanguage', 'reportLanguage', 'contextLanguage'];
-const COMMON_TEST_LANGUAGE_EXAMPLES = ['ko-KR', 'en-US', 'ja-JP', 'zh-CN', 'zh-TW', 'ar'];
+const TEST_BCP47_LANGUAGE_TAGS = ['ko', 'en-US', 'ja', 'zh-Hans', 'zh-Hant-TW', 'ar', 'fr-FR', 'de-DE'];
+
+function agentDisplayTemplate(displayLanguage, overrides = {}) {
+  const { requiredKeys } = displayTemplateSchema();
+  return Object.fromEntries(requiredKeys.map((key) => [key, overrides[key] || `${displayLanguage} ${key}`]));
+}
+
+function agentDisplayTemplateInput(displayLanguage, overrides = {}) {
+  return {
+    displayTemplates: {
+      [displayLanguage]: agentDisplayTemplate(displayLanguage, overrides)
+    }
+  };
+}
+
+const KOREAN_DISPLAY_TEMPLATE_OVERRIDES = {
+  homeTitle: 'VibeBox 홈',
+  contextTitle: 'VibeBox 컨텍스트 팩',
+  pretaskTitle: 'VibeBox 사전 작업 브리프',
+  reportTitle: 'VibeBox 메모리 보고서',
+  blackboxTitle: 'VibeBox 블랙박스 보고서',
+  doctorTitle: 'VibeBox 진단',
+  task: '작업',
+  userTask: '사용자 작업',
+  relevantMemoryContext: '관련 메모리 컨텍스트',
+  relevantValidationPatterns: '관련 검증 패턴',
+  relevantProcessPatterns: '관련 처리 방식',
+  relevantDesignPhilosophy: '관련 설계 철학',
+  relevantProjectDecisions: '관련 프로젝트 결정',
+  relevantArchitectureRules: '관련 아키텍처 규칙',
+  relevantAvoidRules: '관련 회피 규칙',
+  relevantFailureMemory: '관련 실패 메모리',
+  knownFailureRisks: '알려진 실패 위험',
+  knownSuccessPatterns: '알려진 성공 패턴',
+  userSuccessCriteria: '사용자 성공 기준',
+  aiFailureAvoidance: 'AI 실패 회피',
+  aiSuccessfulApproaches: 'AI 성공 접근',
+  projectGuardrails: '프로젝트 가드레일',
+  potentialConflicts: '잠재적 충돌',
+  guidanceForAgent: 'AI 에이전트 지침',
+  instructionForAgent: 'AI 에이전트 지침',
+  prevention: '예방',
+  alternative: '대안',
+  none: '없음.',
+  pageUserPreferences: '사용자 성향',
+  pageUserPatterns: '사용자 패턴',
+  pageDesignPhilosophy: '설계 철학',
+  pageValidationPatterns: '검증 패턴',
+  pageProcessPatterns: '처리 방식',
+  pageDecisionPatterns: '판단 방식',
+  pageTechnologyPreferences: '기술 선호',
+  pageAgentFailurePatterns: 'AI 실패 패턴',
+  pageAgentSuccessPatterns: 'AI 성공 패턴',
+  pagePreventionRules: '예방 규칙',
+  pageGlobalAvoidRules: '전역 금지 규칙',
+  pageFailureMemory: '실패 메모리',
+  pageSuccessPatterns: '성공 패턴',
+  pageToolingPreferences: '도구 선호',
+  pageWorkflowRules: '워크플로 규칙',
+  pageProjectIndex: '프로젝트 인덱스',
+  activeMemory: '활성 메모리',
+  pendingCandidates: '대기 후보',
+  recentBlackboxEvents: '최근 블랙박스 이벤트',
+  candidateDiagnostics: '후보 진단',
+  noReusableMemoryCandidate: '재사용 가능한 메모리 후보 없음',
+  taskTimeline: '작업 타임라인',
+  failedApproaches: '실패한 접근',
+  successfulApproaches: '성공한 접근',
+  rejectedDirections: '거부된 방향',
+  confirmedDecisions: '확정된 결정',
+  recurringFailureTypes: '반복 실패 유형',
+  frequentlyChangedFiles: '자주 변경된 파일',
+  preventionRules: '예방 규칙',
+  project: '프로젝트',
+  status: '상태',
+  globalStore: '전역 저장소',
+  currentProjectId: '현재 projectId',
+  errors: '오류',
+  warnings: '경고',
+  noIssuesFound: '문제 없음.',
+  modelClass: '모델 계층',
+  modelSubClass: '모델',
+  scopeLabel: '범위',
+  confidenceLabel: '신뢰도',
+  topicLabel: '주제',
+  summaryLabel: '요약',
+  appliesToLabel: '적용 조건',
+  failureTypeLabel: '실패 유형',
+  preventionRuleLabel: '예방 규칙',
+  reuseWhenLabel: '재사용 조건',
+  patternTypeLabel: '패턴 유형',
+  situationLabel: '상황',
+  preferredBehaviorLabel: '선호 행동',
+  forbiddenActionLabel: '금지 행동',
+  severityLabel: '심각도',
+  decisionLabel: '결정',
+  alternativesRejectedLabel: '거부된 대안',
+  notSpecified: '지정되지 않음',
+  wiki: '위키',
+  recentActiveMemory: '최근 활성 메모리',
+  storage: '저장소',
+  memoryNote: '메모리 노트',
+  displayTextMissing: '표시 문구 누락',
+  projectSection: '프로젝트',
+  activePatternGraph: '활성 패턴 그래프',
+  projectId: '프로젝트 ID',
+  repository: '저장소',
+  primaryDomain: '주요 도메인',
+  lastSeen: '마지막 확인',
+  category: '카테고리',
+  relatedMemory: '관련 메모리',
+  relatedSuccessfulApproaches: '관련 AI 성공 접근',
+  relatedFailureAvoidance: '관련 AI 실패 회피',
+  aiFailureMemory: 'AI 실패 메모리',
+  aiSuccessfulApproach: 'AI 성공 접근',
+  taskContext: '작업 컨텍스트',
+  discardedDetail: '폐기된 세부사항',
+  commandFailed: '명령 실행 실패',
+  aiSuccessApproach: 'AI 성공 접근',
+  doNotRepeat: '반복 금지',
+  reviewPriorFailure: '같은 접근을 반복하기 전에 이전 실패를 확인한다.',
+  similarWork: '유사 작업에서 재사용한다.',
+  sameFailure: '같은 실패가 나타날 때',
+  summarySection: '요약',
+  scopeSection: '적용 범위',
+  sourceSection: '관찰 출처',
+  relatedCategories: '관련 카테고리',
+  observedUserSuccessCriteria: '이 프로젝트에서 관찰된 사용자 성공 기준',
+  observedUserPatterns: '이 프로젝트에서 관찰된 사용자 성향/패턴',
+  observedAiFailures: '이 프로젝트에서 발생한 AI 실패',
+  observedAiSuccessfulApproaches: '이 프로젝트에서 사용된 AI 성공 접근',
+  observedValidationPreservation: '이 프로젝트의 검증/보존 규칙',
+  projectSpecificMemory: '프로젝트 전용 결정과 규칙',
+  relatedProjectMemory: '이 프로젝트에서 관찰된 기타 메모리',
+  homeDescription: 'AI 코딩 에이전트를 위한 로컬 우선 전역 메모리 저장소.',
+  backTo: '돌아가기',
+  storageJsonIndexes: 'JSON 인덱스는 `../index/`에 저장된다.',
+  storageRawEvents: '원시 blackbox 이벤트는 `../logs/events.jsonl`에 저장된다.',
+  storagePendingCandidates: '대기 중인 메모리 후보는 `../pending/memory-candidates.jsonl`에 저장된다.'
+};
+
+function setAgentDisplayTemplateEnv(displayLanguage, overrides = {}) {
+  process.env.VIBEBOX_DISPLAY_TEMPLATE = JSON.stringify(agentDisplayTemplateInput(displayLanguage, overrides));
+}
+
+function clearAgentDisplayTemplateEnv() {
+  delete process.env.VIBEBOX_DISPLAY_TEMPLATE;
+  delete process.env.VIBEBOX_DISPLAY_TEMPLATES;
+  delete process.env.VIBEBOX_LOCALE_TEMPLATE;
+}
 
 function assertBcp47Tag(value, label = 'language tag') {
   assert.equal(typeof value, 'string', `${label} should be a string`);
@@ -2584,6 +2735,7 @@ test('user pattern memory is auto-curated and applied by situation-aware context
 test('locale controls human-facing headings and localized wiki filenames while JSON fields stay English', async () => {
   const root = await makeWorkspace();
   process.env.VIBEBOX_LOCALE = 'ko-KR';
+  setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   await initVibeBox(root);
 
   const [candidate] = await extractFromAgent(root, {
@@ -2635,7 +2787,8 @@ test('memoryLanguage stores BCP 47 tags and applies language in the Obsidian dis
     outputLanguage: 'ko-KR',
     wikiLanguage: 'ko-KR',
     reportLanguage: 'ko-KR',
-    contextLanguage: 'ko-KR'
+    contextLanguage: 'ko-KR',
+    displayTemplates: agentDisplayTemplateInput('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES).displayTemplates
   }, null, 2), 'utf8');
   process.env.VIBEBOX_LOCALE = 'en-US';
 
@@ -2736,6 +2889,7 @@ test('cross-project generalization keeps landing-page visual details out of nati
 test('localized Obsidian doc registry uses Korean filenames and valid managed links', async () => {
   const root = await makeWorkspace();
   process.env.VIBEBOX_LOCALE = 'ko-KR';
+  setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   await initVibeBox(root);
 
   const candidates = await extractFromAgent(root, {
@@ -2760,6 +2914,7 @@ test('localized Obsidian doc registry uses Korean filenames and valid managed li
 test('Korean wiki display localizes recent active memory, AI failures, AI successful approaches, and memory notes', async () => {
   const root = await makeWorkspace();
   process.env.VIBEBOX_LOCALE = 'ko-KR';
+  setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   await initVibeBox(root);
 
   const result = await afterTaskWithAgent(root, {
@@ -2805,6 +2960,7 @@ test('Korean wiki display localizes recent active memory, AI failures, AI succes
 test('structured Korean userRequest extracts success criteria before action-summary success memory', async () => {
   const root = await makeWorkspace();
   process.env.VIBEBOX_LOCALE = 'ko-KR';
+  setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'boksajang' }, null, 2), 'utf8');
   await initVibeBox(root);
 
@@ -2849,6 +3005,7 @@ test('structured Korean userRequest extracts success criteria before action-summ
 test('structured extraction generalizes beyond the kicker fixture without fixture-specific branches', async () => {
   const root = await makeWorkspace();
   process.env.VIBEBOX_LOCALE = 'ko-KR';
+  setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'travel-ops-native' }, null, 2), 'utf8');
   await initVibeBox(root);
 
@@ -2886,6 +3043,7 @@ test('Flovix language policy instruction creates event, active memory, multi-cat
   const root = await makeWorkspace();
   delete process.env.VIBEBOX_LOCALE;
   process.env.VIBEBOX_LANGUAGE = 'ko-KR';
+  setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'flovix' }, null, 2), 'utf8');
   await initVibeBox(root);
   delete process.env.VIBEBOX_LANGUAGE;
@@ -2959,6 +3117,7 @@ test('Flovix language policy instruction creates event, active memory, multi-cat
 test('multi-category graph links one canonical note from every related category and source project', async () => {
   const root = await makeWorkspace();
   process.env.VIBEBOX_LOCALE = 'ko-KR';
+  setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'boksajang' }, null, 2), 'utf8');
   await initVibeBox(root);
 
@@ -3028,6 +3187,7 @@ test('multi-category graph links one canonical note from every related category 
 test('category-based memory notes hide ids and link categories, source projects, and recent memory', async () => {
   const root = await makeWorkspace();
   process.env.VIBEBOX_LOCALE = 'ko-KR';
+  setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   await initVibeBox(root);
 
   await afterTaskWithAgent(root, {
@@ -3106,6 +3266,7 @@ test('category-based memory notes hide ids and link categories, source projects,
 test('visible wiki memory note names strip memory id tokens from source text', async () => {
   const root = await makeWorkspace();
   process.env.VIBEBOX_LOCALE = 'ko-KR';
+  setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   await initVibeBox(root);
 
   await afterTaskWithAgent(root, {
@@ -3538,7 +3699,9 @@ test('no reusable memory diagnostic without reason records a contract diagnostic
 test('Korean wiki uses agent display fields instead of canonical English summaries', async () => {
   const root = await makeWorkspace();
   process.env.VIBEBOX_LANGUAGE = 'ko-KR';
+  setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   process.env.VIBEBOX_LOCALE = 'ko-KR';
+  setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   await initVibeBox(root);
   await afterTask(root, {
     userRequest: '카드 UI 정리 기준을 한국어 위키에 남긴다.',
@@ -3566,10 +3729,212 @@ test('Korean wiki uses agent display fields instead of canonical English summari
   assert.doesNotMatch(combined, /Canonical English summary must not be used/);
 });
 
+test('locale-specific wiki categories and memory display fields are generated from agent templates', async () => {
+  const expectedDocKeys = [
+    'home',
+    'user_preferences',
+    'user_patterns',
+    'design_philosophy',
+    'validation_patterns',
+    'process_patterns',
+    'decision_patterns',
+    'technology_preferences',
+    'agent_failure_patterns',
+    'agent_success_patterns',
+    'prevention_rules',
+    'global_avoid_rules',
+    'failure_memory',
+    'success_patterns',
+    'tooling_preferences',
+    'workflow_rules',
+    'project_index'
+  ];
+  const localeCases = [
+    {
+      locale: 'en-US',
+      expectedFiles: [
+        'Home.md',
+        'User Preferences.md',
+        'User Patterns.md',
+        'Design Philosophy.md',
+        'Validation Patterns.md',
+        'Process Patterns.md',
+        'Decision Patterns.md',
+        'Technology Preferences.md',
+        'Agent Failure Patterns.md',
+        'Agent Success Patterns.md',
+        'Prevention Rules.md',
+        'Global Avoid Rules.md',
+        'Failure Memory.md',
+        'Success Patterns.md',
+        'Tooling Preferences.md',
+        'Workflow Rules.md',
+        'Project Index.md'
+      ],
+      validationFolder: 'Validation Patterns',
+      displayTitle: 'Card spacing validation',
+      displaySummary: 'Verify that card spacing remains consistent on mobile screens.',
+      displayRule: 'Validate card spacing and title sizing before completion.',
+      userRequest: 'Record an English validation memory.'
+    },
+    {
+      locale: 'ja-JP',
+      templateOverrides: {
+        homeTitle: 'VibeBox ホーム',
+        pageUserPreferences: 'ユーザー設定',
+        pageUserPatterns: 'ユーザーパターン',
+        pageDesignPhilosophy: '設計思想',
+        pageValidationPatterns: '検証パターン',
+        pageProcessPatterns: '処理方式',
+        pageDecisionPatterns: '判断方式',
+        pageTechnologyPreferences: '技術設定',
+        pageAgentFailurePatterns: 'AI失敗パターン',
+        pageAgentSuccessPatterns: 'AI成功パターン',
+        pagePreventionRules: '予防ルール',
+        pageGlobalAvoidRules: 'グローバル禁止ルール',
+        pageFailureMemory: '失敗メモリ',
+        pageSuccessPatterns: '成功パターン',
+        pageToolingPreferences: 'ツール設定',
+        pageWorkflowRules: 'ワークフロールール',
+        pageProjectIndex: 'プロジェクト索引',
+        summaryLabel: '要約',
+        scopeSection: '適用範囲',
+        sourceSection: '観察元',
+        relatedCategories: '関連カテゴリ',
+        displayTextMissing: '表示文言なし',
+        backTo: '戻る',
+        wiki: 'Wiki',
+        recentActiveMemory: '最近の有効メモリ',
+        storage: 'ストレージ',
+        homeDescription: 'AIコーディングエージェントのためのローカル優先メモリストア。',
+        storageJsonIndexes: 'JSONインデックスは `../index/` に保存される。',
+        storageRawEvents: '生の blackbox イベントは `../logs/events.jsonl` に保存される。',
+        storagePendingCandidates: '保留中のメモリ候補は `../pending/memory-candidates.jsonl` に保存される。'
+      },
+      expectedFiles: [
+        'Home.md',
+        'ユーザー設定.md',
+        'ユーザーパターン.md',
+        '設計思想.md',
+        '検証パターン.md',
+        '処理方式.md',
+        '判断方式.md',
+        '技術設定.md',
+        'AI失敗パターン.md',
+        'AI成功パターン.md',
+        '予防ルール.md',
+        'グローバル禁止ルール.md',
+        '失敗メモリ.md',
+        '成功パターン.md',
+        'ツール設定.md',
+        'ワークフロールール.md',
+        'プロジェクト索引.md'
+      ],
+      validationFolder: '検証パターン',
+      displayTitle: 'カード間隔検証',
+      displaySummary: 'モバイル画面でもカードの間隔と見出しサイズが一貫していることを確認する。',
+      displayRule: '完了前にカード間隔と見出しサイズを検証する。',
+      userRequest: '日本語の検証メモリを記録する。'
+    },
+    {
+      locale: 'ko-KR',
+      templateOverrides: KOREAN_DISPLAY_TEMPLATE_OVERRIDES,
+      expectedFiles: [
+        'Home.md',
+        '사용자 성향.md',
+        '사용자 패턴.md',
+        '설계 철학.md',
+        '검증 패턴.md',
+        '처리 방식.md',
+        '판단 방식.md',
+        '기술 선호.md',
+        'AI 실패 패턴.md',
+        'AI 성공 패턴.md',
+        '예방 규칙.md',
+        '전역 금지 규칙.md',
+        '실패 메모리.md',
+        '성공 패턴.md',
+        '도구 선호.md',
+        '워크플로 규칙.md',
+        '프로젝트 인덱스.md'
+      ],
+      validationFolder: '검증 패턴',
+      displayTitle: '카드 간격 검증',
+      displaySummary: '모바일에서도 카드 간격과 제목 크기가 일정한지 확인한다.',
+      displayRule: '완료 전에 카드 간격과 제목 크기를 검증한다.',
+      userRequest: '한국어 검증 메모리를 기록한다.'
+    }
+  ];
+
+  for (const spec of localeCases) {
+    const root = await makeWorkspace();
+    process.env.VIBEBOX_LANGUAGE = spec.locale;
+    process.env.VIBEBOX_LOCALE = spec.locale;
+    if (spec.templateOverrides) {
+      setAgentDisplayTemplateEnv(spec.locale, spec.templateOverrides);
+    } else {
+      clearAgentDisplayTemplateEnv();
+    }
+    await initVibeBox(root);
+    await afterTask(root, {
+      userRequest: spec.userRequest,
+      aiActionSummary: `Recorded a localized ${spec.locale} validation memory.`,
+      structuredMemoryCandidates: [{
+        ...candidateFixture({
+          candidateId: `locale-display-${spec.locale}`,
+          memoryRole: 'ai_failure_memory',
+          type: 'failure_memory',
+          modelClass: 'project_model',
+          modelSubClass: 'localized_failure_prevention_rule',
+          scope: 'project',
+          primaryCategory: 'validation_patterns',
+          relatedCategories: ['failure_memory', 'prevention_rules'],
+          title: `Canonical ${spec.locale} validation title`,
+          summary: `Canonical ${spec.locale} validation summary must not be rendered.`,
+          rule: `Canonical ${spec.locale} validation rule must not be rendered.`,
+          preventionRule: `Canonical ${spec.locale} prevention rule must not be rendered.`,
+          failureType: 'locale_display_contract',
+          displayTitle: spec.displayTitle,
+          displaySummary: spec.displaySummary,
+          displayRule: spec.displayRule,
+          displayLanguage: spec.locale
+        }),
+        whyOnlyOneCandidate: 'This locale check needs one representative rendered memory.'
+      }]
+    });
+
+    const registry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+    assert.equal(registry.locale, spec.locale);
+    assert.deepEqual(registry.docs.map((doc) => doc.docKey), expectedDocKeys);
+    assert.deepEqual(registry.docs.map((doc) => doc.fileName), spec.expectedFiles);
+
+    const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
+    const memory = memoryIndex.memories.find((item) => item.id === `locale-display-${spec.locale}`);
+    assert.equal(memory?.displayLanguage, spec.locale);
+    assert.equal(memory?.displayTitle, spec.displayTitle);
+    assert.equal(memory?.displaySummary, spec.displaySummary);
+    assert.equal(memory?.displayRule, spec.displayRule);
+    assert.deepEqual(memory?.displayLanguageDiagnostics || [], []);
+
+    const noteFiles = await listMemoryNoteFiles(root);
+    const noteRelatives = noteFiles.map((file) => wikiRelative(root, file));
+    assert.equal(noteRelatives.some((relative) => relative.startsWith(`${spec.validationFolder}/`)), true);
+    const combined = (await Promise.all(noteFiles.map((file) => readFile(file, 'utf8')))).join('\n');
+    assert.match(combined, new RegExp(spec.displaySummary.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'));
+    assert.match(combined, new RegExp(spec.displayRule.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'));
+    assert.doesNotMatch(combined, new RegExp(`Canonical ${spec.locale} validation summary must not be rendered\\.`, 'u'));
+    await assertWikiLinksResolve(root);
+    const doctor = await runDoctor(root);
+    assert.deepEqual(doctor.errors, []);
+  }
+});
+
 test('missing candidate display summary renders a diagnostic instead of canonical summary', async () => {
   const root = await makeWorkspace();
   process.env.VIBEBOX_LANGUAGE = 'ko-KR';
+  setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   process.env.VIBEBOX_LOCALE = 'ko-KR';
+  setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   await initVibeBox(root);
   const candidate = candidateFixture({
     candidateId: 'missing-display-summary',
@@ -3604,7 +3969,9 @@ test('missing candidate display summary renders a diagnostic instead of canonica
 test('displayLanguage mismatch records diagnostics and does not translate or show mismatched display text', async () => {
   const root = await makeWorkspace();
   process.env.VIBEBOX_LANGUAGE = 'ko-KR';
+  setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   process.env.VIBEBOX_LOCALE = 'ko-KR';
+  setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   await initVibeBox(root);
   await afterTask(root, {
     userRequest: '한국어 위키에는 한국어 표시 문구가 필요하다.',
@@ -3637,7 +4004,9 @@ test('displayLanguage mismatch records diagnostics and does not translate or sho
 test('template phrase canonical summaries do not leak into wiki when display text is missing', async () => {
   const root = await makeWorkspace();
   process.env.VIBEBOX_LANGUAGE = 'ko-KR';
+  setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   process.env.VIBEBOX_LOCALE = 'ko-KR';
+  setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   await initVibeBox(root);
   const candidate = candidateFixture({
     candidateId: 'template-phrase-leak',
@@ -4043,7 +4412,12 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
   await assert.rejects(() => rebuildVibeBox(root), /requires an AI agent runtime/);
 
   process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
-  await convertLanguage(root, { from: 'en-US', to: 'ko-KR', localizedCandidates: await localizedDisplayCandidates(root, 'ko-KR') });
+  await convertLanguage(root, {
+    from: 'en-US',
+    to: 'ko-KR',
+    localizedCandidates: await localizedDisplayCandidates(root, 'ko-KR'),
+    displayTemplate: agentDisplayTemplateInput('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES)
+  });
   delete process.env.VIBEBOX_AGENT_RUNTIME;
 
   assert.equal(await readFile(storePath(root, 'logs', 'events.jsonl'), 'utf8'), rawBefore);
@@ -4081,7 +4455,12 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
   await assertWikiLinksResolve(root);
 
   process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
-  await convertLanguage(root, { from: 'en-US', to: 'ko-KR', localizedCandidates: await localizedDisplayCandidates(root, 'ko-KR') });
+  await convertLanguage(root, {
+    from: 'en-US',
+    to: 'ko-KR',
+    localizedCandidates: await localizedDisplayCandidates(root, 'ko-KR'),
+    displayTemplate: agentDisplayTemplateInput('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES)
+  });
   delete process.env.VIBEBOX_AGENT_RUNTIME;
   const configKoAgain = await loadJson(storePath(root, 'config.json'));
   assertConfigLanguageTags(configKoAgain, 'ko-KR');
@@ -4156,6 +4535,7 @@ test('adaptive language policy preserves Japanese, Chinese, Arabic, and mixed me
   const root = await makeWorkspace();
   delete process.env.VIBEBOX_LOCALE;
   process.env.VIBEBOX_LANGUAGE = 'ja-JP';
+  setAgentDisplayTemplateEnv('ja-JP');
   await initVibeBox(root);
 
   const candidates = await extractFromAgent(root, {
@@ -4189,11 +4569,18 @@ test('adaptive language policy preserves Japanese, Chinese, Arabic, and mixed me
   assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'userAcceptance'), true);
 });
 
-test('BCP 47 strict language settings reject aliases before writing config', async () => {
+test('BCP 47 language settings accept canonical tags and reject invalid tags before writing config', async () => {
   const bin = path.resolve('bin/vibebox.mjs');
-  for (const tag of [...COMMON_TEST_LANGUAGE_EXAMPLES, 'fr-FR', 'de-DE']) {
+  for (const tag of TEST_BCP47_LANGUAGE_TAGS) {
     const root = await makeWorkspace();
-    const result = spawnSync(process.execPath, [bin, 'init', '--language', tag], {
+    const result = spawnSync(process.execPath, [
+      bin,
+      'init',
+      '--language',
+      tag,
+      '--display-template',
+      JSON.stringify(agentDisplayTemplateInput(tag))
+    ], {
       cwd: root,
       encoding: 'utf8'
     });
@@ -4201,7 +4588,7 @@ test('BCP 47 strict language settings reject aliases before writing config', asy
     assertConfigLanguageTags(await loadJson(storePath(root, 'config.json')), tag);
   }
 
-  for (const tag of ['ko', 'en', 'ja', 'zh', 'cn', 'tw', 'jp', 'kor', 'eng', 'jpn', 'korean', 'english']) {
+  for (const tag of ['auto', 'en_US', 'en-us', 'not a tag', 'i-notvalid']) {
     const root = await makeWorkspace();
     const result = spawnSync(process.execPath, [bin, 'init', '--language', tag], {
       cwd: root,
@@ -4213,7 +4600,7 @@ test('BCP 47 strict language settings reject aliases before writing config', asy
   }
 });
 
-test('convert-lang accepts valid BCP 47 tags and leaves files unchanged on aliases', async () => {
+test('convert-lang accepts valid BCP 47 tags and leaves files unchanged on invalid tags', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
   const configBefore = await readFile(storePath(root, 'config.json'), 'utf8');
@@ -4224,10 +4611,10 @@ test('convert-lang accepts valid BCP 47 tags and leaves files unchanged on alias
 
   process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
   for (const pair of [
-    ['ko', 'en'],
-    ['en', 'ko'],
-    ['ar', 'ja'],
-    ['zh', 'cn']
+    ['en_US', 'en-US'],
+    ['en-US', 'auto'],
+    ['not a tag', 'fr-FR'],
+    ['en-US', 'i-notvalid']
   ]) {
     await assert.rejects(() => convertLanguage(root, { from: pair[0], to: pair[1] }), /valid canonical BCP 47 language tag/i);
     assert.equal(await readFile(storePath(root, 'config.json'), 'utf8'), configBefore);
@@ -4239,8 +4626,13 @@ test('convert-lang accepts valid BCP 47 tags and leaves files unchanged on alias
   }
 
   let current = 'en-US';
-  for (const target of ['ko-KR', 'en-US', 'ja-JP', 'zh-CN', 'zh-TW', 'ar', 'fr-FR']) {
-    await convertLanguage(root, { from: current, to: target, localizedCandidates: await localizedDisplayCandidates(root, target) });
+  for (const target of TEST_BCP47_LANGUAGE_TAGS) {
+    await convertLanguage(root, {
+      from: current,
+      to: target,
+      localizedCandidates: await localizedDisplayCandidates(root, target),
+      displayTemplate: target === 'en-US' ? '' : agentDisplayTemplateInput(target)
+    });
     assertConfigLanguageTags(await loadJson(storePath(root, 'config.json')), target);
     const registry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
     assert.equal(registry.languageTag, target);
@@ -4256,34 +4648,39 @@ test('BCP 47 language tags drive distinct Obsidian Wiki display packs through re
     text: 'Before coding, create a concise plan. Final report should include changed files and validation result.'
   });
 
-  const expectations = {
-    'ko-KR': { doc: '사용자 패턴.md', home: /최근 활성 메모리/u },
-    'en-US': { doc: 'User Patterns.md', home: /Recent Active Memory/u },
-    'ja-JP': { doc: 'ユーザーパターン.md', home: /最近の有効メモリー/u },
-    'zh-CN': { doc: '用户模式.md', home: /最近活跃记忆/u },
-    'zh-TW': { doc: '使用者模式.md', home: /最近活躍記憶/u },
-    ar: { doc: 'أنماط المستخدم.md', home: /الذاكرة النشطة الأخيرة/u }
-  };
+  const targets = TEST_BCP47_LANGUAGE_TAGS.filter((tag) => tag !== 'de-DE');
 
   let current = 'en-US';
   process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
-  for (const [target, expected] of Object.entries(expectations)) {
-    await convertLanguage(root, { from: current, to: target, localizedCandidates: await localizedDisplayCandidates(root, target) });
+  for (const target of targets) {
+    const overrides = {
+      pageUserPatterns: `${target} User Patterns Page`,
+      recentActiveMemory: `${target} Recent Active Memory`,
+      homeDescription: `${target} Home Description`,
+      wiki: `${target} Wiki`,
+      backTo: `${target} Back`
+    };
+    await convertLanguage(root, {
+      from: current,
+      to: target,
+      localizedCandidates: await localizedDisplayCandidates(root, target),
+      displayTemplate: target === 'en-US' ? '' : agentDisplayTemplateInput(target, overrides)
+    });
     await rebuildVibeBox(root, { agentSemanticData: { reviewed: true, changes: [] } });
     const config = await loadJson(storePath(root, 'config.json'));
     assertConfigLanguageTags(config, target);
     const registry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
     assert.equal(registry.languageTag, target);
-    assert.equal(registry.docs.find((doc) => doc.docKey === 'user_patterns').fileName, expected.doc);
+    const expectedDoc = target === 'en-US' ? 'User Patterns.md' : `${target} User Patterns Page.md`;
+    assert.equal(registry.docs.find((doc) => doc.docKey === 'user_patterns').fileName, expectedDoc);
     const home = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
-    assert.match(home, expected.home);
-    const userPatternsPage = await readFile(storePath(root, 'wiki', expected.doc), 'utf8');
+    assert.match(home, target === 'en-US' ? /Recent Active Memory/u : new RegExp(`${target} Recent Active Memory`, 'u'));
+    const userPatternsPage = await readFile(storePath(root, 'wiki', expectedDoc), 'utf8');
     if (target !== 'en-US') {
       assert.doesNotMatch(home, /Global local-first memory store|JSON indexes live|Raw blackbox events live|Pending memory candidates live/u);
       assert.doesNotMatch(home, /^## Wiki$/mu);
       assert.doesNotMatch(userPatternsPage, /^Back to /mu);
     }
-    if (target !== 'ko-KR') assert.doesNotMatch(home, /최근 활성 메모리|사용자 패턴/u);
     current = target;
   }
   delete process.env.VIBEBOX_AGENT_RUNTIME;
@@ -4292,6 +4689,7 @@ test('BCP 47 language tags drive distinct Obsidian Wiki display packs through re
 test('ko-KR locale applies to report, blackbox, doctor headings and empty states', async () => {
   const root = await makeWorkspace();
   process.env.VIBEBOX_LOCALE = 'ko-KR';
+  setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   await initVibeBox(root);
 
   const report = await generateReport(root);
@@ -4548,7 +4946,14 @@ test('report and blackbox inspect existing global store without registering proj
 test('CLI --language overrides environment locale for new store configuration', async () => {
   const root = await makeWorkspace();
   const bin = path.resolve('bin/vibebox.mjs');
-  const result = spawnSync(process.execPath, [bin, 'init', '--language', 'ja-JP'], {
+  const result = spawnSync(process.execPath, [
+    bin,
+    'init',
+    '--language',
+    'ja-JP',
+    '--display-template',
+    JSON.stringify(agentDisplayTemplateInput('ja-JP'))
+  ], {
     cwd: root,
     encoding: 'utf8'
   });
@@ -4633,7 +5038,15 @@ test('CLI exposes init, capture, extract, review, approve, context, pretask, aft
   assert.match(blockedConvert.stderr, /requires an AI agent runtime/);
 
   const convertCandidates = JSON.stringify(await localizedDisplayCandidates(root, 'ko-KR'));
-  const convert = run(['convert-lang', 'en-US', 'ko-KR', '--candidates', convertCandidates], { VIBEBOX_AGENT_RUNTIME: 'cli-test' });
+  const convert = run([
+    'convert-lang',
+    'en-US',
+    'ko-KR',
+    '--candidates',
+    convertCandidates,
+    '--display-template',
+    JSON.stringify(agentDisplayTemplateInput('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES))
+  ], { VIBEBOX_AGENT_RUNTIME: 'cli-test' });
   assert.equal(convert.status, 0);
   assert.match(convert.stdout, /converted to ko-KR/);
 

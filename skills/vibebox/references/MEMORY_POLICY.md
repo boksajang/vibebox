@@ -152,18 +152,9 @@ Scoped exceptions can coexist with broader rules only when the condition is clea
 
 Configured `memoryLanguage` controls Obsidian Wiki display text.
 
-`memoryLanguage` must be a valid canonical BCP 47 language tag. Short aliases such as `ko`, `en`, `ja`, `cn`, or `tw` are not accepted.
+`memoryLanguage` must be a valid canonical BCP 47 language tag. Core validates the tag generically and does not keep hardcoded alias deny-lists or supported-language examples.
 
-Common examples:
-
-- `ko-KR`
-- `en-US`
-- `ja-JP`
-- `zh-CN`
-- `zh-TW`
-- `ar`
-
-These are examples, not the full language limit.
+For non-default initial languages and conversion targets, the AI Agent must provide a complete display template for the exact configured tag. Core stores it in `config.displayTemplates` and renders from that agent-provided template.
 
 The AI Agent writes `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage` in the configured language. VibeBox Core validates the BCP 47 tag and renders files from the agent-provided display fields. Core does not translate, summarize, or generate missing user-facing display text.
 

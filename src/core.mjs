@@ -303,8 +303,7 @@ const CATEGORY_AXIS_DOC_KEYS = [
   'agent_failure_patterns'
 ];
 
-const COMMON_MEMORY_LANGUAGE_EXAMPLES = ['ko-KR', 'en-US', 'ja-JP', 'zh-CN', 'zh-TW', 'ar'];
-const DISALLOWED_MEMORY_LANGUAGE_ALIASES = new Set(['ko', 'en', 'ja', 'zh', 'cn', 'tw', 'jp', 'kor', 'eng', 'jpn', 'korean', 'english']);
+const BASE_MEMORY_LANGUAGE = 'en-US';
 
 const STOP_WORDS = new Set([
   'about',
@@ -459,9 +458,9 @@ async function writeJsonl(filePath, records) {
 
 function detectSystemLocale() {
   try {
-    return new Intl.DateTimeFormat().resolvedOptions().locale || 'en-US';
+    return new Intl.DateTimeFormat().resolvedOptions().locale || BASE_MEMORY_LANGUAGE;
   } catch {
-    return 'en-US';
+    return BASE_MEMORY_LANGUAGE;
   }
 }
 
@@ -479,7 +478,7 @@ function normalizeLanguageTag(locale) {
 function normalizeLocale(locale) {
   const tag = normalizeLanguageTag(locale);
   if (tag === 'auto') return 'auto';
-  return tag || 'en-US';
+  return tag || BASE_MEMORY_LANGUAGE;
 }
 
 function languageFromLocale(locale) {
@@ -489,48 +488,37 @@ function languageFromLocale(locale) {
   return match ? match[1].toLowerCase() : 'en';
 }
 
-function localeFromLanguage(language = 'en-US') {
-  return normalizeLocale(language || 'en-US');
+function localeFromLanguage(language = BASE_MEMORY_LANGUAGE) {
+  return normalizeLocale(language || BASE_MEMORY_LANGUAGE);
 }
 
-function languageValidationError(value, label = 'memoryLanguage') {
-  return new Error(`${label} must be a valid canonical BCP 47 language tag. Short aliases such as ko, en, ja, zh, cn, tw, jp, kor, eng, jpn, korean, and english are not supported. Common examples include ${COMMON_MEMORY_LANGUAGE_EXAMPLES.join(', ')}; these are examples, not the full language limit.`);
+function languageValidationError(_value, label = 'memoryLanguage') {
+  return new Error(`${label} must be a valid canonical BCP 47 language tag.`);
 }
 
 function assertSupportedMemoryLanguageTag(value, label = 'memoryLanguage') {
   const raw = String(value || '').trim();
   const canonical = normalizeLanguageTag(raw);
-  if (!raw || raw.toLowerCase() === 'auto' || DISALLOWED_MEMORY_LANGUAGE_ALIASES.has(raw.toLowerCase()) || !canonical || canonical !== raw) {
+  if (!raw || raw.toLowerCase() === 'auto' || !canonical || canonical !== raw) {
     throw languageValidationError(raw || '(empty)', label);
   }
   return canonical;
 }
 
-function defaultSupportedLanguageTag(value = '', fallback = 'en-US') {
-  const canonical = normalizeLanguageTag(value);
-  if (canonical && canonical !== 'auto' && !DISALLOWED_MEMORY_LANGUAGE_ALIASES.has(canonical.toLowerCase())) return canonical;
-  const primary = languageFromLocale(canonical || '');
-  if (primary === 'ko') return 'ko-KR';
-  if (primary === 'en') return 'en-US';
-  if (primary === 'ja') return 'ja-JP';
-  if (primary === 'zh') return 'zh-CN';
-  if (primary === 'ar') return 'ar';
-  return fallback;
-}
-
-function normalizeConfigLanguageTag(value, fallback = 'en-US') {
+function normalizeConfigLanguageTag(value, fallback = BASE_MEMORY_LANGUAGE) {
   const raw = String(value || '').trim();
   return assertSupportedMemoryLanguageTag(raw || fallback, 'memoryLanguage');
 }
 
 function configuredMemoryLanguageTag(config = {}) {
+  activateDisplayTemplates(config);
   const explicit = config.memoryLanguage || config.outputLanguage || config.wikiLanguage || config.reportLanguage || config.contextLanguage;
-  return normalizeConfigLanguageTag(explicit || config.locale || 'en-US', config.locale || 'en-US');
+  return normalizeConfigLanguageTag(explicit || config.locale || BASE_MEMORY_LANGUAGE, config.locale || BASE_MEMORY_LANGUAGE);
 }
 
 function configuredMemoryLanguage(config = {}) {
   const language = languageFromLocale(configuredMemoryLanguageTag(config));
-  return language === 'auto' ? 'en' : language;
+  return language === 'auto' ? languageFromLocale(BASE_MEMORY_LANGUAGE) : language;
 }
 
 function configuredMemoryLocale(config = {}) {
@@ -551,11 +539,11 @@ function detectLanguageFromText(text) {
     ar: countScript(value, /\p{Script=Arabic}/gu),
     latin: countScript(value, /\p{Script=Latin}/gu)
   };
-  if (counts.ko > 0) return 'ko-KR';
-  if (counts.ja > 0) return 'ja-JP';
+  if (counts.ko > 0) return 'ko';
+  if (counts.ja > 0) return 'ja';
   if (counts.ar > 0) return 'ar';
-  if (counts.zh >= Math.max(2, counts.latin)) return 'zh-CN';
-  if (counts.latin > 0) return 'en-US';
+  if (counts.zh >= Math.max(2, counts.latin)) return 'zh';
+  if (counts.latin > 0) return 'en';
   return '';
 }
 
@@ -573,14 +561,23 @@ function languageDetectionText(input = {}) {
   ].filter(Boolean).join('\n');
 }
 
-function defaultConfig() {
+function defaultConfig(options = {}) {
   const timestamp = nowIso();
-  const explicitLanguage = process.env.VIBEBOX_LANGUAGE || process.env.VIBEBOX_LOCALE || '';
-  const outputLanguage = explicitLanguage
-    ? assertSupportedMemoryLanguageTag(explicitLanguage, 'memoryLanguage')
-    : defaultSupportedLanguageTag(detectSystemLocale(), 'en-US');
+  const explicitLanguage = options.language || options.locale || process.env.VIBEBOX_LANGUAGE || process.env.VIBEBOX_LOCALE || '';
+  const selectedLanguage = explicitLanguage || detectSystemLocale() || BASE_MEMORY_LANGUAGE;
+  const outputLanguage = normalizeConfigLanguageTag(selectedLanguage, BASE_MEMORY_LANGUAGE);
+  const displayTemplateInput = options.displayTemplates
+    ?? options.displayTemplate
+    ?? process.env.VIBEBOX_DISPLAY_TEMPLATES
+    ?? process.env.VIBEBOX_DISPLAY_TEMPLATE
+    ?? process.env.VIBEBOX_LOCALE_TEMPLATE
+    ?? null;
+  const displayTemplates = normalizeAgentDisplayTemplates(displayTemplateInput, outputLanguage, 'display template');
+  if (options.requireDisplayTemplate === true && outputLanguage !== BASE_MEMORY_LANGUAGE && !displayTemplates[outputLanguage]) {
+    throw new Error(`init for ${outputLanguage} requires an AI-agent display template for that exact canonical BCP 47 tag. Provide --display-template/--display-template-file or VIBEBOX_DISPLAY_TEMPLATE so Core can initialize user-facing templates without hardcoded locale packs.`);
+  }
   const locale = outputLanguage;
-  return {
+  const config = {
     version: VIBEBOX_VERSION,
     memoryMode: 'auto',
     curationMode: 'auto',
@@ -599,362 +596,261 @@ function defaultConfig() {
     createdAt: timestamp,
     updatedAt: timestamp
   };
+  if (Object.keys(displayTemplates).length > 0) {
+    config.displayTemplates = displayTemplates;
+  }
+  activateDisplayTemplates(config);
+  return config;
 }
 
-const LOCALE_TEMPLATES = {
-  'en-US': {
-    homeTitle: 'VibeBox Home',
-    contextTitle: 'VibeBox Context Pack',
-    pretaskTitle: 'VibeBox Pre-Task Brief',
-    reportTitle: 'VibeBox Memory Report',
-    blackboxTitle: 'VibeBox Blackbox Report',
-    doctorTitle: 'VibeBox Doctor',
-    task: 'Task',
-    userTask: 'User Task',
-    relevantMemoryContext: 'Relevant Memory Context',
-    relevantUserPreferences: 'Relevant User Preferences',
-    relevantUserPatterns: 'Relevant User Patterns',
-    relevantProjectDecisions: 'Relevant Project Decisions',
-    relevantArchitectureRules: 'Relevant Architecture Rules',
-    relevantAvoidRules: 'Relevant Avoid Rules',
-    relevantFailureMemory: 'Relevant Failure Memory',
-    knownFailureRisks: 'Known Failure Risks',
-    knownSuccessPatterns: 'Known Success Patterns',
-    relevantSuccessPatterns: 'Relevant Success Patterns',
-    relevantValidationPatterns: 'Relevant Validation Patterns',
-    relevantProcessPatterns: 'Relevant Process Patterns',
-    relevantDesignPhilosophy: 'Relevant Design Philosophy',
-    relevantAgentFailurePatterns: 'Relevant Agent Failure Patterns',
-    relevantAgentSuccessPatterns: 'Relevant Agent Success Patterns',
-    relevantCorrectionPatterns: 'Relevant Correction Patterns',
-    relevantResponsePreferences: 'Relevant Response Preferences',
-    relevantCommunicationPatterns: 'Relevant Communication Patterns',
-    relevantQuestionPatterns: 'Relevant Question Patterns',
-    relevantDecisionPatterns: 'Relevant Decision Patterns',
-    relevantHandoffPatterns: 'Relevant Handoff Patterns',
-    userSuccessCriteria: 'User Success Criteria',
-    aiFailureAvoidance: 'AI Failure Avoidance',
-    aiSuccessfulApproaches: 'AI Successful Approaches',
-    projectGuardrails: 'Project Guardrails',
-    potentialConflicts: 'Potential Conflicts',
-    guidanceForAgent: 'Guidance for AI Agent',
-    instructionForAgent: 'Instruction for AI Agent',
-    prevention: 'Prevention',
-    alternative: 'Alternative',
-    none: 'None.',
-    pageUserPreferences: 'User Preferences',
-    pageUserPatterns: 'User Patterns',
-    pageDesignPhilosophy: 'Design Philosophy',
-    pageValidationPatterns: 'Validation Patterns',
-    pageProcessPatterns: 'Process Patterns',
-    pageDecisionPatterns: 'Decision Patterns',
-    pageTechnologyPreferences: 'Technology Preferences',
-    pageAgentFailurePatterns: 'Agent Failure Patterns',
-    pageAgentSuccessPatterns: 'Agent Success Patterns',
-    pagePreventionRules: 'Prevention Rules',
-    pageGlobalAvoidRules: 'Global Avoid Rules',
-    pageFailureMemory: 'Failure Memory',
-    pageSuccessPatterns: 'Success Patterns',
-    pageToolingPreferences: 'Tooling Preferences',
-    pageWorkflowRules: 'Workflow Rules',
-    pageProjectIndex: 'Project Index',
-    activeMemory: 'Active Memory',
-    pendingCandidates: 'Pending Candidates',
-    recentBlackboxEvents: 'Recent Blackbox Events',
-    candidateDiagnostics: 'Candidate Diagnostics',
-    noReusableMemoryCandidate: 'No reusable memory candidate',
-    taskTimeline: 'Task Timeline',
-    failedApproaches: 'Failed Approaches',
-    successfulApproaches: 'Successful Approaches',
-    rejectedDirections: 'Rejected Directions',
-    confirmedDecisions: 'Confirmed Decisions',
-    recurringFailureTypes: 'Recurring Failure Types',
-    frequentlyChangedFiles: 'Frequently Changed Files',
-    preventionRules: 'Prevention Rules',
-    project: 'Project',
-    status: 'Status',
-    globalStore: 'Global store',
-    currentProjectId: 'Current projectId',
-    errors: 'Errors',
-    warnings: 'Warnings',
-    noIssuesFound: 'No issues found.',
-    modelClass: 'Model class',
-    modelSubClass: 'Model',
-    idLabel: 'ID',
-    scopeLabel: 'Scope',
-    confidenceLabel: 'Confidence',
-    topicLabel: 'Topic',
-    summaryLabel: 'Summary',
-    appliesToLabel: 'Applies to',
-    failureTypeLabel: 'Failure type',
-    preventionRuleLabel: 'Prevention rule',
-    reuseWhenLabel: 'Reuse when',
-    patternTypeLabel: 'Pattern type',
-    situationLabel: 'Situation',
-    preferredBehaviorLabel: 'Preferred behavior',
-    forbiddenActionLabel: 'Forbidden action',
-    severityLabel: 'Severity',
-    decisionLabel: 'Decision',
-    alternativesRejectedLabel: 'Alternatives rejected',
-    notSpecified: 'Not specified'
-  },
-  'ko-KR': {
-    homeTitle: 'VibeBox 홈',
-    contextTitle: 'VibeBox 컨텍스트 팩',
-    pretaskTitle: 'VibeBox 사전 작업 브리프',
-    reportTitle: 'VibeBox 메모리 보고서',
-    blackboxTitle: 'VibeBox 블랙박스 보고서',
-    doctorTitle: 'VibeBox 진단',
-    task: '작업',
-    userTask: '작업',
-    relevantMemoryContext: '관련 메모리 컨텍스트',
-    relevantUserPreferences: '관련 사용자 성향',
-    relevantUserPatterns: '관련 사용자 패턴',
-    relevantProjectDecisions: '관련 프로젝트 결정',
-    relevantArchitectureRules: '관련 아키텍처 규칙',
-    relevantAvoidRules: '관련 금지 규칙',
-    relevantFailureMemory: '관련 실패 메모리',
-    knownFailureRisks: '알려진 실패 위험',
-    knownSuccessPatterns: '관련 성공 패턴',
-    relevantSuccessPatterns: '관련 성공 패턴',
-    relevantValidationPatterns: '관련 검증 패턴',
-    relevantProcessPatterns: '관련 처리 방식',
-    relevantDesignPhilosophy: '관련 설계 철학',
-    relevantAgentFailurePatterns: '관련 AI 실패 패턴',
-    relevantAgentSuccessPatterns: '관련 AI 성공 패턴',
-    relevantCorrectionPatterns: '관련 교정 패턴',
-    relevantResponsePreferences: '관련 답변 선호',
-    relevantCommunicationPatterns: '관련 대화 방식',
-    relevantQuestionPatterns: '관련 질문 방식',
-    relevantDecisionPatterns: '관련 판단 방식',
-    relevantHandoffPatterns: '관련 인수인계 방식',
-    projectGuardrails: '프로젝트 가드레일',
-    potentialConflicts: '잠재적 충돌',
-    guidanceForAgent: 'AI 에이전트 지침',
-    instructionForAgent: 'AI 에이전트 지침',
-    prevention: '예방',
-    alternative: '대안',
-    none: '없음.',
-    pageUserPreferences: '사용자 성향',
-    pageUserPatterns: '사용자 패턴',
-    pageDesignPhilosophy: '설계 철학',
-    pageValidationPatterns: '검증 패턴',
-    pageProcessPatterns: '처리 방식',
-    pageDecisionPatterns: '판단 방식',
-    pageTechnologyPreferences: '기술 선호',
-    pageAgentFailurePatterns: 'AI 실패 패턴',
-    pageAgentSuccessPatterns: 'AI 성공 패턴',
-    pagePreventionRules: '예방 규칙',
-    pageGlobalAvoidRules: '전역 금지 규칙',
-    pageFailureMemory: '실패 메모리',
-    pageSuccessPatterns: '성공 패턴',
-    pageToolingPreferences: '도구 선호',
-    pageWorkflowRules: '워크플로 규칙',
-    pageProjectIndex: '프로젝트 인덱스',
-    activeMemory: '활성 메모리',
-    pendingCandidates: '검토 대기 후보',
-    recentBlackboxEvents: '최근 블랙박스 이벤트',
-    taskTimeline: '작업 타임라인',
-    failedApproaches: '실패한 접근',
-    successfulApproaches: '성공한 접근',
-    rejectedDirections: '거절된 방향',
-    confirmedDecisions: '확정된 결정',
-    recurringFailureTypes: '반복 실패 유형',
-    frequentlyChangedFiles: '자주 변경된 파일',
-    preventionRules: '예방 규칙',
-    project: '프로젝트',
-    status: '상태',
-    globalStore: '전역 저장소',
-    currentProjectId: '현재 projectId',
-    errors: '오류',
-    warnings: '경고',
-    noIssuesFound: '문제 없음.',
-    modelClass: '모델 계층',
-    modelSubClass: '모델',
-    idLabel: 'ID',
-    scopeLabel: '범위',
-    confidenceLabel: '신뢰도',
-    topicLabel: '주제',
-    summaryLabel: '요약',
-    appliesToLabel: '적용 조건',
-    failureTypeLabel: '실패 유형',
-    preventionRuleLabel: '예방 규칙',
-    reuseWhenLabel: '재사용 조건',
-    patternTypeLabel: '패턴 유형',
-    situationLabel: '상황',
-    preferredBehaviorLabel: '선호 행동',
-    forbiddenActionLabel: '금지 행동',
-    severityLabel: '심각도',
-    decisionLabel: '결정',
-    alternativesRejectedLabel: '거절된 대안',
-    notSpecified: '지정되지 않음'
-  }
-};
-
-Object.assign(LOCALE_TEMPLATES, {
-  'ja-JP': {
-    ...LOCALE_TEMPLATES['en-US'],
-    homeTitle: 'VibeBox ホーム',
-    contextTitle: 'VibeBox コンテキストパック',
-    pretaskTitle: 'VibeBox 事前作業ブリーフ',
-    reportTitle: 'VibeBox メモリーレポート',
-    blackboxTitle: 'VibeBox ブラックボックスレポート',
-    doctorTitle: 'VibeBox 診断',
-    task: 'タスク',
-    userTask: 'ユーザータスク',
-    userSuccessCriteria: 'ユーザー成功基準',
-    aiFailureAvoidance: 'AI 失敗回避',
-    aiSuccessfulApproaches: 'AI 成功アプローチ',
-    none: 'なし。',
-    pageUserPreferences: 'ユーザー傾向',
-    pageUserPatterns: 'ユーザーパターン',
-    pageDesignPhilosophy: '設計哲学',
-    pageValidationPatterns: '検証パターン',
-    pageProcessPatterns: '処理方式',
-    pageDecisionPatterns: '判断方式',
-    pageTechnologyPreferences: '技術選好',
-    pageAgentFailurePatterns: 'AI 失敗パターン',
-    pageAgentSuccessPatterns: 'AI 成功パターン',
-    pagePreventionRules: '予防ルール',
-    pageGlobalAvoidRules: 'グローバル禁止ルール',
-    pageFailureMemory: '失敗メモリー',
-    pageSuccessPatterns: '成功パターン',
-    pageToolingPreferences: 'ツール選好',
-    pageWorkflowRules: 'ワークフロールール',
-    pageProjectIndex: 'プロジェクト索引',
-    activeMemory: '有効メモリー',
-    pendingCandidates: '保留候補',
-    recentBlackboxEvents: '最近のブラックボックスイベント',
-    preventionRules: '予防ルール',
-    project: 'プロジェクト',
-    status: '状態',
-    errors: 'エラー',
-    warnings: '警告',
-    noIssuesFound: '問題はありません。'
-  },
-  'zh-CN': {
-    ...LOCALE_TEMPLATES['en-US'],
-    homeTitle: 'VibeBox 主页',
-    contextTitle: 'VibeBox 上下文包',
-    pretaskTitle: 'VibeBox 任务前简报',
-    reportTitle: 'VibeBox 记忆报告',
-    blackboxTitle: 'VibeBox 黑箱报告',
-    doctorTitle: 'VibeBox 诊断',
-    task: '任务',
-    userTask: '用户任务',
-    userSuccessCriteria: '用户成功标准',
-    aiFailureAvoidance: 'AI 失败规避',
-    aiSuccessfulApproaches: 'AI 成功做法',
-    none: '无。',
-    pageUserPreferences: '用户倾向',
-    pageUserPatterns: '用户模式',
-    pageDesignPhilosophy: '设计哲学',
-    pageValidationPatterns: '验证模式',
-    pageProcessPatterns: '处理方式',
-    pageDecisionPatterns: '判断方式',
-    pageTechnologyPreferences: '技术偏好',
-    pageAgentFailurePatterns: 'AI 失败模式',
-    pageAgentSuccessPatterns: 'AI 成功模式',
-    pagePreventionRules: '预防规则',
-    pageGlobalAvoidRules: '全局禁止规则',
-    pageFailureMemory: '失败记忆',
-    pageSuccessPatterns: '成功模式',
-    pageToolingPreferences: '工具偏好',
-    pageWorkflowRules: '工作流规则',
-    pageProjectIndex: '项目索引',
-    activeMemory: '活跃记忆',
-    pendingCandidates: '待处理候选',
-    recentBlackboxEvents: '最近黑箱事件',
-    preventionRules: '预防规则',
-    project: '项目',
-    status: '状态',
-    errors: '错误',
-    warnings: '警告',
-    noIssuesFound: '未发现问题。'
-  },
-  'zh-TW': {
-    ...LOCALE_TEMPLATES['en-US'],
-    homeTitle: 'VibeBox 首頁',
-    contextTitle: 'VibeBox 脈絡包',
-    pretaskTitle: 'VibeBox 任務前簡報',
-    reportTitle: 'VibeBox 記憶報告',
-    blackboxTitle: 'VibeBox 黑箱報告',
-    doctorTitle: 'VibeBox 診斷',
-    task: '任務',
-    userTask: '使用者任務',
-    userSuccessCriteria: '使用者成功標準',
-    aiFailureAvoidance: 'AI 失敗避免',
-    aiSuccessfulApproaches: 'AI 成功做法',
-    none: '無。',
-    pageUserPreferences: '使用者傾向',
-    pageUserPatterns: '使用者模式',
-    pageDesignPhilosophy: '設計哲學',
-    pageValidationPatterns: '驗證模式',
-    pageProcessPatterns: '處理方式',
-    pageDecisionPatterns: '判斷方式',
-    pageTechnologyPreferences: '技術偏好',
-    pageAgentFailurePatterns: 'AI 失敗模式',
-    pageAgentSuccessPatterns: 'AI 成功模式',
-    pagePreventionRules: '預防規則',
-    pageGlobalAvoidRules: '全域禁止規則',
-    pageFailureMemory: '失敗記憶',
-    pageSuccessPatterns: '成功模式',
-    pageToolingPreferences: '工具偏好',
-    pageWorkflowRules: '工作流程規則',
-    pageProjectIndex: '專案索引',
-    activeMemory: '活躍記憶',
-    pendingCandidates: '待處理候選',
-    recentBlackboxEvents: '最近黑箱事件',
-    preventionRules: '預防規則',
-    project: '專案',
-    status: '狀態',
-    errors: '錯誤',
-    warnings: '警告',
-    noIssuesFound: '未發現問題。'
-  },
-  ar: {
-    ...LOCALE_TEMPLATES['en-US'],
-    homeTitle: 'صفحة VibeBox الرئيسية',
-    contextTitle: 'حزمة سياق VibeBox',
-    pretaskTitle: 'موجز VibeBox قبل المهمة',
-    reportTitle: 'تقرير ذاكرة VibeBox',
-    blackboxTitle: 'تقرير الصندوق الأسود VibeBox',
-    doctorTitle: 'تشخيص VibeBox',
-    task: 'المهمة',
-    userTask: 'مهمة المستخدم',
-    userSuccessCriteria: 'معايير نجاح المستخدم',
-    aiFailureAvoidance: 'تجنب فشل الذكاء الاصطناعي',
-    aiSuccessfulApproaches: 'أساليب نجاح الذكاء الاصطناعي',
-    none: 'لا يوجد.',
-    pageUserPreferences: 'ميول المستخدم',
-    pageUserPatterns: 'أنماط المستخدم',
-    pageDesignPhilosophy: 'فلسفة التصميم',
-    pageValidationPatterns: 'أنماط التحقق',
-    pageProcessPatterns: 'أساليب المعالجة',
-    pageDecisionPatterns: 'أساليب الحكم',
-    pageTechnologyPreferences: 'تفضيلات التقنية',
-    pageAgentFailurePatterns: 'أنماط فشل الذكاء الاصطناعي',
-    pageAgentSuccessPatterns: 'أنماط نجاح الذكاء الاصطناعي',
-    pagePreventionRules: 'قواعد الوقاية',
-    pageGlobalAvoidRules: 'قواعد الحظر العامة',
-    pageFailureMemory: 'ذاكرة الفشل',
-    pageSuccessPatterns: 'أنماط النجاح',
-    pageToolingPreferences: 'تفضيلات الأدوات',
-    pageWorkflowRules: 'قواعد سير العمل',
-    pageProjectIndex: 'فهرس المشاريع',
-    activeMemory: 'الذاكرة النشطة',
-    pendingCandidates: 'المرشحون المعلقون',
-    recentBlackboxEvents: 'أحداث الصندوق الأسود الأخيرة',
-    preventionRules: 'قواعد الوقاية',
-    project: 'المشروع',
-    status: 'الحالة',
-    errors: 'الأخطاء',
-    warnings: 'التحذيرات',
-    noIssuesFound: 'لم يتم العثور على مشكلات.'
-  }
+const BASE_DISPLAY_TEMPLATE = Object.freeze({
+  homeTitle: 'VibeBox Home',
+  contextTitle: 'VibeBox Context Pack',
+  pretaskTitle: 'VibeBox Pre-Task Brief',
+  reportTitle: 'VibeBox Memory Report',
+  blackboxTitle: 'VibeBox Blackbox Report',
+  doctorTitle: 'VibeBox Doctor',
+  task: 'Task',
+  userTask: 'User Task',
+  relevantMemoryContext: 'Relevant Memory Context',
+  relevantUserPreferences: 'Relevant User Preferences',
+  relevantUserPatterns: 'Relevant User Patterns',
+  relevantProjectDecisions: 'Relevant Project Decisions',
+  relevantArchitectureRules: 'Relevant Architecture Rules',
+  relevantAvoidRules: 'Relevant Avoid Rules',
+  relevantFailureMemory: 'Relevant Failure Memory',
+  knownFailureRisks: 'Known Failure Risks',
+  knownSuccessPatterns: 'Known Success Patterns',
+  relevantSuccessPatterns: 'Relevant Success Patterns',
+  relevantValidationPatterns: 'Relevant Validation Patterns',
+  relevantProcessPatterns: 'Relevant Process Patterns',
+  relevantDesignPhilosophy: 'Relevant Design Philosophy',
+  relevantAgentFailurePatterns: 'Relevant Agent Failure Patterns',
+  relevantAgentSuccessPatterns: 'Relevant Agent Success Patterns',
+  relevantCorrectionPatterns: 'Relevant Correction Patterns',
+  relevantResponsePreferences: 'Relevant Response Preferences',
+  relevantCommunicationPatterns: 'Relevant Communication Patterns',
+  relevantQuestionPatterns: 'Relevant Question Patterns',
+  relevantDecisionPatterns: 'Relevant Decision Patterns',
+  relevantHandoffPatterns: 'Relevant Handoff Patterns',
+  userSuccessCriteria: 'User Success Criteria',
+  aiFailureAvoidance: 'AI Failure Avoidance',
+  aiSuccessfulApproaches: 'AI Successful Approaches',
+  projectGuardrails: 'Project Guardrails',
+  potentialConflicts: 'Potential Conflicts',
+  guidanceForAgent: 'Guidance for AI Agent',
+  instructionForAgent: 'Instruction for AI Agent',
+  prevention: 'Prevention',
+  alternative: 'Alternative',
+  none: 'None.',
+  pageUserPreferences: 'User Preferences',
+  pageUserPatterns: 'User Patterns',
+  pageDesignPhilosophy: 'Design Philosophy',
+  pageValidationPatterns: 'Validation Patterns',
+  pageProcessPatterns: 'Process Patterns',
+  pageDecisionPatterns: 'Decision Patterns',
+  pageTechnologyPreferences: 'Technology Preferences',
+  pageAgentFailurePatterns: 'Agent Failure Patterns',
+  pageAgentSuccessPatterns: 'Agent Success Patterns',
+  pagePreventionRules: 'Prevention Rules',
+  pageGlobalAvoidRules: 'Global Avoid Rules',
+  pageFailureMemory: 'Failure Memory',
+  pageSuccessPatterns: 'Success Patterns',
+  pageToolingPreferences: 'Tooling Preferences',
+  pageWorkflowRules: 'Workflow Rules',
+  pageProjectIndex: 'Project Index',
+  activeMemory: 'Active Memory',
+  pendingCandidates: 'Pending Candidates',
+  recentBlackboxEvents: 'Recent Blackbox Events',
+  candidateDiagnostics: 'Candidate Diagnostics',
+  noReusableMemoryCandidate: 'No reusable memory candidate',
+  taskTimeline: 'Task Timeline',
+  failedApproaches: 'Failed Approaches',
+  successfulApproaches: 'Successful Approaches',
+  rejectedDirections: 'Rejected Directions',
+  confirmedDecisions: 'Confirmed Decisions',
+  recurringFailureTypes: 'Recurring Failure Types',
+  frequentlyChangedFiles: 'Frequently Changed Files',
+  preventionRules: 'Prevention Rules',
+  project: 'Project',
+  status: 'Status',
+  globalStore: 'Global store',
+  currentProjectId: 'Current projectId',
+  errors: 'Errors',
+  warnings: 'Warnings',
+  noIssuesFound: 'No issues found.',
+  modelClass: 'Model class',
+  modelSubClass: 'Model',
+  idLabel: 'ID',
+  scopeLabel: 'Scope',
+  confidenceLabel: 'Confidence',
+  topicLabel: 'Topic',
+  summaryLabel: 'Summary',
+  appliesToLabel: 'Applies to',
+  failureTypeLabel: 'Failure type',
+  preventionRuleLabel: 'Prevention rule',
+  reuseWhenLabel: 'Reuse when',
+  patternTypeLabel: 'Pattern type',
+  situationLabel: 'Situation',
+  preferredBehaviorLabel: 'Preferred behavior',
+  forbiddenActionLabel: 'Forbidden action',
+  severityLabel: 'Severity',
+  decisionLabel: 'Decision',
+  alternativesRejectedLabel: 'Alternatives rejected',
+  notSpecified: 'Not specified',
+  wiki: 'Wiki',
+  recentActiveMemory: 'Recent Active Memory',
+  storage: 'Storage',
+  memoryNote: 'Memory note',
+  displayTextMissing: 'display text missing',
+  projectSection: 'Project',
+  activePatternGraph: 'Active Pattern Graph',
+  projectId: 'Project ID',
+  repository: 'Repository',
+  primaryDomain: 'Primary domain',
+  lastSeen: 'Last seen',
+  category: 'Category',
+  relatedMemory: 'Related memories',
+  relatedSuccessfulApproaches: 'Related Successful Approaches',
+  relatedFailureAvoidance: 'Related Failure Avoidance',
+  aiFailureMemory: 'AI Failure Memory',
+  aiSuccessfulApproach: 'AI Successful Approach',
+  taskContext: 'Task Context',
+  discardedDetail: 'Discarded Detail',
+  commandFailed: 'Command failed',
+  aiSuccessApproach: 'AI successful approach',
+  doNotRepeat: 'Do not repeat',
+  reviewPriorFailure: 'Review prior failure before repeating this approach.',
+  similarWork: 'Similar work appears.',
+  sameFailure: 'when the same failure appears.',
+  summarySection: 'Summary',
+  scopeSection: 'Applicability',
+  sourceSection: 'Observed Source',
+  relatedCategories: 'Related Categories',
+  observedUserSuccessCriteria: 'User Success Criteria Observed In This Project',
+  observedUserPatterns: 'User Tendencies And Patterns Observed In This Project',
+  observedAiFailures: 'AI Failures Observed In This Project',
+  observedAiSuccessfulApproaches: 'AI Successful Approaches Used In This Project',
+  observedValidationPreservation: 'Validation And Preservation Rules For This Project',
+  projectSpecificMemory: 'Project-Specific Decisions And Rules',
+  relatedProjectMemory: 'Other Memory Observed In This Project',
+  homeDescription: 'Global local-first memory store for AI coding agents.',
+  backTo: 'Back to',
+  storageJsonIndexes: 'JSON indexes live in `../index/`.',
+  storageRawEvents: 'Raw blackbox events live in `../logs/events.jsonl`.',
+  storagePendingCandidates: 'Pending memory candidates live in `../pending/memory-candidates.jsonl`.'
 });
 
+const REQUIRED_DISPLAY_TEMPLATE_KEYS = Object.freeze(Object.keys(BASE_DISPLAY_TEMPLATE));
+const ACTIVE_DISPLAY_TEMPLATES = new Map();
+
+export function displayTemplateSchema() {
+  return {
+    defaultLanguage: BASE_MEMORY_LANGUAGE,
+    requiredKeys: [...REQUIRED_DISPLAY_TEMPLATE_KEYS],
+    baseTemplate: { ...BASE_DISPLAY_TEMPLATE }
+  };
+}
+
+function parseDisplayTemplateJson(value, label = 'display template') {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') {
+    throw new Error(`${label} must be a JSON object.`);
+  }
+  const text = stripJsonFence(value);
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new Error(`${label} must be valid JSON: ${error.message}`);
+  }
+}
+
+function looksLikeDisplayTemplatePack(value = {}) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    && REQUIRED_DISPLAY_TEMPLATE_KEYS.some((key) => Object.prototype.hasOwnProperty.call(value, key));
+}
+
+function sanitizeDisplayTemplatePack(pack, locale, label = 'display template') {
+  if (!pack || typeof pack !== 'object' || Array.isArray(pack)) {
+    throw new Error(`${label} for ${locale} must be a JSON object of template keys to strings.`);
+  }
+  const normalized = {};
+  for (const [key, value] of Object.entries(pack)) {
+    if (typeof value !== 'string') {
+      throw new Error(`${label} value ${key} for ${locale} must be a string.`);
+    }
+    normalized[key] = value;
+  }
+  const missing = REQUIRED_DISPLAY_TEMPLATE_KEYS.filter((key) => !normalized[key]?.trim());
+  if (missing.length > 0) {
+    throw new Error(`${label} for ${locale} is missing required key(s): ${missing.join(', ')}.`);
+  }
+  return normalized;
+}
+
+function normalizeAgentDisplayTemplates(value, fallbackLocale = BASE_MEMORY_LANGUAGE, label = 'display template') {
+  const parsed = parseDisplayTemplateJson(value, label);
+  if (!parsed) return {};
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`${label} must be a JSON object.`);
+  }
+
+  const fallbackTag = normalizeConfigLanguageTag(
+    parsed.languageTag || parsed.locale || parsed.memoryLanguage || fallbackLocale,
+    fallbackLocale
+  );
+  let templateMap = null;
+  if (parsed.displayTemplates || parsed.templates) {
+    templateMap = parsed.displayTemplates || parsed.templates;
+  } else if (parsed.displayTemplate || parsed.template) {
+    templateMap = { [fallbackTag]: parsed.displayTemplate || parsed.template };
+  } else if (looksLikeDisplayTemplatePack(parsed)) {
+    templateMap = { [fallbackTag]: parsed };
+  } else if (Object.values(parsed).every((item) => item && typeof item === 'object' && !Array.isArray(item))) {
+    templateMap = parsed;
+  }
+
+  if (!templateMap || typeof templateMap !== 'object' || Array.isArray(templateMap)) {
+    throw new Error(`${label} must be either a template pack, { displayTemplate }, or { displayTemplates: { languageTag: pack } }.`);
+  }
+
+  const normalized = {};
+  for (const [rawLocale, pack] of Object.entries(templateMap)) {
+    const locale = normalizeConfigLanguageTag(rawLocale || fallbackTag, fallbackTag);
+    normalized[locale] = sanitizeDisplayTemplatePack(pack, locale, label);
+  }
+  return normalized;
+}
+
+function mergeDisplayTemplates(...templateSets) {
+  return Object.assign({}, ...templateSets.filter(Boolean));
+}
+
+function activateDisplayTemplates(config = {}) {
+  const targetLocale = config.memoryLanguage || config.outputLanguage || config.wikiLanguage || config.locale || BASE_MEMORY_LANGUAGE;
+  const templates = normalizeAgentDisplayTemplates(
+    config.displayTemplates ? { displayTemplates: config.displayTemplates } : config.displayTemplate ? { locale: targetLocale, displayTemplate: config.displayTemplate } : null,
+    targetLocale,
+    'configured display template'
+  );
+  for (const [locale, template] of Object.entries(templates)) {
+    ACTIVE_DISPLAY_TEMPLATES.set(locale, template);
+  }
+  return templates;
+}
+
+function requireDisplayTemplateForLocale(locale, templates = {}, label = 'display template') {
+  const tag = normalizeConfigLanguageTag(locale, BASE_MEMORY_LANGUAGE);
+  if (tag === BASE_MEMORY_LANGUAGE) return;
+  if (!templates[tag] && !ACTIVE_DISPLAY_TEMPLATES.has(tag)) {
+    throw new Error(`${label} for ${tag} is required. AI Agent must provide localized template text for the configured memoryLanguage; Core has no hardcoded locale pack for this language.`);
+  }
+}
+
 function resolveLocale(input = {}, config = {}) {
+  activateDisplayTemplates(config);
   const explicit = input.locale
     || input.language;
   const configured = config.memoryLanguage
@@ -963,25 +859,20 @@ function resolveLocale(input = {}, config = {}) {
     || config.reportLanguage
     || config.wikiLanguage
     || config.locale;
-  const selected = explicit || configured || process.env.VIBEBOX_LANGUAGE || process.env.VIBEBOX_LOCALE || detectLanguageFromText(languageDetectionText(input)) || detectSystemLocale();
+  const selected = explicit || configured || process.env.VIBEBOX_LANGUAGE || process.env.VIBEBOX_LOCALE || detectLanguageFromText(languageDetectionText(input)) || detectSystemLocale() || BASE_MEMORY_LANGUAGE;
   if (String(selected).toLowerCase() === 'auto') {
-    return defaultSupportedLanguageTag(detectLanguageFromText(languageDetectionText(input)) || config.locale || detectSystemLocale(), 'en-US');
+    return normalizeConfigLanguageTag(detectLanguageFromText(languageDetectionText(input)) || config.locale || detectSystemLocale() || BASE_MEMORY_LANGUAGE, BASE_MEMORY_LANGUAGE);
   }
-  return normalizeConfigLanguageTag(selected, 'en-US');
-}
-
-function localeTemplateKey(locale) {
-  const normalized = normalizeLocale(locale);
-  if (LOCALE_TEMPLATES[normalized]) return normalized;
-  return 'en-US';
+  return normalizeConfigLanguageTag(selected, BASE_MEMORY_LANGUAGE);
 }
 
 function localeTemplates(locale) {
-  return LOCALE_TEMPLATES[localeTemplateKey(locale)] || LOCALE_TEMPLATES['en-US'];
+  const normalized = normalizeConfigLanguageTag(locale || BASE_MEMORY_LANGUAGE, BASE_MEMORY_LANGUAGE);
+  return ACTIVE_DISPLAY_TEMPLATES.get(normalized) || BASE_DISPLAY_TEMPLATE;
 }
 
 function t(locale, key) {
-  return localeTemplates(locale)[key] || LOCALE_TEMPLATES['en-US'][key] || key;
+  return localeTemplates(locale)[key] || BASE_DISPLAY_TEMPLATE[key] || key;
 }
 
 function docDefinition(docKey) {
@@ -1024,7 +915,7 @@ function defaultRegistry() {
 }
 
 function defaultWikiDocRegistry(locale = 'en-US') {
-  const localeTag = normalizeConfigLanguageTag(locale, 'en-US');
+  const localeTag = normalizeConfigLanguageTag(locale, BASE_MEMORY_LANGUAGE);
   const language = languageFromLocale(localeTag);
   return {
     version: VIBEBOX_VERSION,
@@ -1352,8 +1243,8 @@ async function resolveProjectIdentityForRead(root = process.cwd()) {
   };
 }
 
-async function createDefaultConfig() {
-  return defaultConfig();
+async function createDefaultConfig(options = {}) {
+  return defaultConfig(options);
 }
 
 function defaultMemoryIndex() {
@@ -1466,10 +1357,10 @@ function initialProjectWikiPage(project, locale = 'en-US') {
   return `${renderProjectShell(project, locale)}\n\n${managedBlock(renderProjectManaged(project, [], locale))}\n`;
 }
 
-export async function initVibeBox(root = process.cwd()) {
+export async function initVibeBox(root = process.cwd(), options = {}) {
   const base = vibeboxPath(root);
   const created = [];
-  const config = await createDefaultConfig();
+  const config = await createDefaultConfig({ ...options, requireDisplayTemplate: true });
   const memoryLocale = configuredMemoryLocale(config);
 
   await ensureDir(vibeboxPath(root, 'registry'));
@@ -1547,7 +1438,10 @@ export async function initVibeBox(root = process.cwd()) {
 async function ensureConfigFields(root) {
   const configPath = vibeboxPath(root, 'config.json');
   const existing = await loadJson(configPath, {});
-  const defaults = await createDefaultConfig();
+  const defaults = await createDefaultConfig({
+    locale: existing.locale || existing.memoryLanguage,
+    displayTemplates: existing.displayTemplates
+  });
   const merged = { ...defaults, ...existing };
   let changed = false;
 
@@ -3342,339 +3236,8 @@ function stripVisibleMemoryIds(text) {
     .trim();
 }
 
-const WIKI_DISPLAY_TEXT = {
-  en: {
-    wiki: 'Wiki',
-    recentActiveMemory: 'Recent Active Memory',
-    storage: 'Storage',
-    memoryNote: 'Memory note',
-    displayTextMissing: 'display text missing',
-    projectSection: 'Project',
-    activePatternGraph: 'Active Pattern Graph',
-    projectId: 'Project ID',
-    repository: 'Repository',
-    primaryDomain: 'Primary domain',
-    lastSeen: 'Last seen',
-    category: 'Category',
-    relatedMemory: 'Related memories',
-    relatedSuccessfulApproaches: 'Related Successful Approaches',
-    relatedFailureAvoidance: 'Related Failure Avoidance',
-    userSuccessCriteria: 'User Success Criteria',
-    aiFailureMemory: 'AI Failure Memory',
-    aiSuccessfulApproach: 'AI Successful Approach',
-    taskContext: 'Task Context',
-    discardedDetail: 'Discarded Detail',
-    commandFailed: 'Command failed',
-    aiSuccessApproach: 'AI successful approach',
-    doNotRepeat: 'Do not repeat',
-    reviewPriorFailure: 'Review prior failure before repeating this approach.',
-    similarWork: 'Similar work appears.',
-    sameFailure: 'when the same failure appears.',
-    summarySection: 'Summary',
-    scopeSection: 'Applicability',
-    sourceSection: 'Observed Source',
-    relatedCategories: 'Related Categories',
-    observedUserSuccessCriteria: 'User Success Criteria Observed In This Project',
-    observedUserPatterns: 'User Tendencies And Patterns Observed In This Project',
-    observedAiFailures: 'AI Failures Observed In This Project',
-    observedAiSuccessfulApproaches: 'AI Successful Approaches Used In This Project',
-    observedValidationPreservation: 'Validation And Preservation Rules For This Project',
-    projectSpecificMemory: 'Project-Specific Decisions And Rules',
-    relatedProjectMemory: 'Other Memory Observed In This Project'
-  },
-  ko: {
-    wiki: '\uC704\uD0A4',
-    recentActiveMemory: '\uCD5C\uADFC \uD65C\uC131 \uBA54\uBAA8\uB9AC',
-    storage: '\uC800\uC7A5\uC18C',
-    memoryNote: '\uBA54\uBAA8\uB9AC \uB178\uD2B8',
-    displayTextMissing: '\uD45C\uC2DC \uBB38\uAD6C \uB204\uB77D',
-    projectSection: '\uD504\uB85C\uC81D\uD2B8',
-    activePatternGraph: '\uD65C\uC131 \uD328\uD134 \uADF8\uB798\uD504',
-    projectId: '\uD504\uB85C\uC81D\uD2B8 ID',
-    repository: '\uC800\uC7A5\uC18C',
-    primaryDomain: '\uC8FC\uC694 \uB3C4\uBA54\uC778',
-    lastSeen: '\uB9C8\uC9C0\uB9C9 \uD655\uC778',
-    category: '\uCE74\uD14C\uACE0\uB9AC',
-    relatedMemory: '\uAD00\uB828 \uBA54\uBAA8\uB9AC',
-    relatedSuccessfulApproaches: '\uAD00\uB828 AI \uC131\uACF5 \uC811\uADFC',
-    relatedFailureAvoidance: '\uAD00\uB828 AI \uC2E4\uD328 \uD68C\uD53C',
-    userSuccessCriteria: '\uC0AC\uC6A9\uC790 \uC131\uACF5 \uAE30\uC900',
-    aiFailureMemory: 'AI \uC2E4\uD328 \uBA54\uBAA8\uB9AC',
-    aiSuccessfulApproach: 'AI \uC131\uACF5 \uC811\uADFC',
-    taskContext: '\uC791\uC5C5 \uCEE8\uD14D\uC2A4\uD2B8',
-    discardedDetail: '\uD3D0\uAE30\uB41C \uC138\uBD80\uC0AC\uD56D',
-    commandFailed: '\uBA85\uB839 \uC2E4\uD589 \uC2E4\uD328',
-    aiSuccessApproach: 'AI \uC131\uACF5 \uC811\uADFC',
-    doNotRepeat: '\uBC18\uBCF5 \uAE08\uC9C0',
-    reviewPriorFailure: '\uAC19\uC740 \uC811\uADFC\uC744 \uBC18\uBCF5\uD558\uAE30 \uC804\uC5D0 \uC774\uC804 \uC2E4\uD328\uB97C \uD655\uC778\uD55C\uB2E4.',
-    similarWork: '\uC720\uC0AC \uC791\uC5C5\uC5D0\uC11C \uC7AC\uC0AC\uC6A9\uD55C\uB2E4.',
-    sameFailure: '\uAC19\uC740 \uC2E4\uD328\uAC00 \uB098\uD0C0\uB0A0 \uB54C',
-    summarySection: '\uC694\uC57D',
-    scopeSection: '\uC801\uC6A9 \uBC94\uC704',
-    sourceSection: '\uAD00\uCC30 \uCD9C\uCC98',
-    relatedCategories: '\uAD00\uB828 \uCE74\uD14C\uACE0\uB9AC',
-    observedUserSuccessCriteria: '\uC774 \uD504\uB85C\uC81D\uD2B8\uC5D0\uC11C \uAD00\uCC30\uB41C \uC0AC\uC6A9\uC790 \uC131\uACF5 \uAE30\uC900',
-    observedUserPatterns: '\uC774 \uD504\uB85C\uC81D\uD2B8\uC5D0\uC11C \uAD00\uCC30\uB41C \uC0AC\uC6A9\uC790 \uC131\uD5A5/\uD328\uD134',
-    observedAiFailures: '\uC774 \uD504\uB85C\uC81D\uD2B8\uC5D0\uC11C \uBC1C\uC0DD\uD55C AI \uC2E4\uD328',
-    observedAiSuccessfulApproaches: '\uC774 \uD504\uB85C\uC81D\uD2B8\uC5D0\uC11C \uC0AC\uC6A9\uB41C AI \uC131\uACF5 \uC811\uADFC',
-    observedValidationPreservation: '\uC774 \uD504\uB85C\uC81D\uD2B8\uC758 \uAC80\uC99D/\uBCF4\uC874 \uADDC\uCE59',
-    projectSpecificMemory: '\uD504\uB85C\uC81D\uD2B8 \uC804\uC6A9 \uACB0\uC815\uACFC \uADDC\uCE59',
-    relatedProjectMemory: '\uC774 \uD504\uB85C\uC81D\uD2B8\uC5D0\uC11C \uAD00\uCC30\uB41C \uAE30\uD0C0 \uBA54\uBAA8\uB9AC'
-  }
-};
-
-Object.assign(WIKI_DISPLAY_TEXT, {
-  ja: {
-    wiki: 'Wiki',
-    recentActiveMemory: '最近の有効メモリー',
-    storage: 'ストレージ',
-    memoryNote: 'メモリーノート',
-    projectSection: 'プロジェクト',
-    activePatternGraph: '有効パターングラフ',
-    projectId: 'プロジェクト ID',
-    repository: 'リポジトリ',
-    primaryDomain: '主要ドメイン',
-    lastSeen: '最終確認',
-    category: 'カテゴリ',
-    relatedMemory: '関連メモリー',
-    relatedSuccessfulApproaches: '関連する AI 成功アプローチ',
-    relatedFailureAvoidance: '関連する AI 失敗回避',
-    userSuccessCriteria: 'ユーザー成功基準',
-    aiFailureMemory: 'AI 失敗メモリー',
-    aiSuccessfulApproach: 'AI 成功アプローチ',
-    taskContext: 'タスクコンテキスト',
-    discardedDetail: '破棄された詳細',
-    commandFailed: 'コマンド失敗',
-    aiSuccessApproach: 'AI 成功アプローチ',
-    doNotRepeat: '繰り返し禁止',
-    reviewPriorFailure: '同じ手法を繰り返す前に過去の失敗を確認する。',
-    similarWork: '類似作業で再利用する。',
-    sameFailure: '同じ失敗が出た場合',
-    summarySection: '要約',
-    scopeSection: '適用範囲',
-    sourceSection: '観察元',
-    relatedCategories: '関連カテゴリ',
-    observedUserSuccessCriteria: 'このプロジェクトで観察されたユーザー成功基準',
-    observedUserPatterns: 'このプロジェクトで観察されたユーザー傾向/パターン',
-    observedAiFailures: 'このプロジェクトで発生した AI 失敗',
-    observedAiSuccessfulApproaches: 'このプロジェクトで使われた AI 成功アプローチ',
-    observedValidationPreservation: 'このプロジェクトの検証/保存ルール',
-    projectSpecificMemory: 'プロジェクト固有の決定とルール',
-    relatedProjectMemory: 'このプロジェクトで観察されたその他のメモリー'
-  },
-  'zh-CN': {
-    wiki: 'Wiki',
-    recentActiveMemory: '最近活跃记忆',
-    storage: '存储',
-    memoryNote: '记忆笔记',
-    projectSection: '项目',
-    activePatternGraph: '活跃模式图',
-    projectId: '项目 ID',
-    repository: '仓库',
-    primaryDomain: '主要领域',
-    lastSeen: '最后确认',
-    category: '分类',
-    relatedMemory: '相关记忆',
-    relatedSuccessfulApproaches: '相关 AI 成功做法',
-    relatedFailureAvoidance: '相关 AI 失败规避',
-    userSuccessCriteria: '用户成功标准',
-    aiFailureMemory: 'AI 失败记忆',
-    aiSuccessfulApproach: 'AI 成功做法',
-    taskContext: '任务上下文',
-    discardedDetail: '已丢弃细节',
-    commandFailed: '命令失败',
-    aiSuccessApproach: 'AI 成功做法',
-    doNotRepeat: '不要重复',
-    reviewPriorFailure: '重复同一做法前先检查过去的失败。',
-    similarWork: '在类似工作中复用。',
-    sameFailure: '出现相同失败时',
-    summarySection: '摘要',
-    scopeSection: '适用范围',
-    sourceSection: '观察来源',
-    relatedCategories: '相关分类',
-    observedUserSuccessCriteria: '此项目中观察到的用户成功标准',
-    observedUserPatterns: '此项目中观察到的用户倾向/模式',
-    observedAiFailures: '此项目中发生的 AI 失败',
-    observedAiSuccessfulApproaches: '此项目中使用的 AI 成功做法',
-    observedValidationPreservation: '此项目的验证/保留规则',
-    projectSpecificMemory: '项目专用决策和规则',
-    relatedProjectMemory: '此项目中观察到的其他记忆'
-  },
-  'zh-TW': {
-    wiki: 'Wiki',
-    recentActiveMemory: '最近活躍記憶',
-    storage: '儲存',
-    memoryNote: '記憶筆記',
-    projectSection: '專案',
-    activePatternGraph: '活躍模式圖',
-    projectId: '專案 ID',
-    repository: '儲存庫',
-    primaryDomain: '主要領域',
-    lastSeen: '最後確認',
-    category: '分類',
-    relatedMemory: '相關記憶',
-    relatedSuccessfulApproaches: '相關 AI 成功做法',
-    relatedFailureAvoidance: '相關 AI 失敗避免',
-    userSuccessCriteria: '使用者成功標準',
-    aiFailureMemory: 'AI 失敗記憶',
-    aiSuccessfulApproach: 'AI 成功做法',
-    taskContext: '任務脈絡',
-    discardedDetail: '已捨棄細節',
-    commandFailed: '命令失敗',
-    aiSuccessApproach: 'AI 成功做法',
-    doNotRepeat: '不要重複',
-    reviewPriorFailure: '重複同一做法前先檢查過去的失敗。',
-    similarWork: '在類似工作中重用。',
-    sameFailure: '出現相同失敗時',
-    summarySection: '摘要',
-    scopeSection: '適用範圍',
-    sourceSection: '觀察來源',
-    relatedCategories: '相關分類',
-    observedUserSuccessCriteria: '此專案中觀察到的使用者成功標準',
-    observedUserPatterns: '此專案中觀察到的使用者傾向/模式',
-    observedAiFailures: '此專案中發生的 AI 失敗',
-    observedAiSuccessfulApproaches: '此專案中使用的 AI 成功做法',
-    observedValidationPreservation: '此專案的驗證/保留規則',
-    projectSpecificMemory: '專案專用決策和規則',
-    relatedProjectMemory: '此專案中觀察到的其他記憶'
-  },
-  ar: {
-    wiki: 'ويكي',
-    recentActiveMemory: 'الذاكرة النشطة الأخيرة',
-    storage: 'التخزين',
-    memoryNote: 'ملاحظة ذاكرة',
-    projectSection: 'المشروع',
-    activePatternGraph: 'رسم الأنماط النشطة',
-    projectId: 'معرف المشروع',
-    repository: 'المستودع',
-    primaryDomain: 'المجال الأساسي',
-    lastSeen: 'آخر ظهور',
-    category: 'الفئة',
-    relatedMemory: 'ذاكرات مرتبطة',
-    relatedSuccessfulApproaches: 'أساليب نجاح AI المرتبطة',
-    relatedFailureAvoidance: 'تجنب فشل AI المرتبط',
-    userSuccessCriteria: 'معايير نجاح المستخدم',
-    aiFailureMemory: 'ذاكرة فشل AI',
-    aiSuccessfulApproach: 'أسلوب نجاح AI',
-    taskContext: 'سياق المهمة',
-    discardedDetail: 'تفصيل مستبعد',
-    commandFailed: 'فشل الأمر',
-    aiSuccessApproach: 'أسلوب نجاح AI',
-    doNotRepeat: 'لا تكرر',
-    reviewPriorFailure: 'راجع الفشل السابق قبل تكرار هذا الأسلوب.',
-    similarWork: 'يعاد استخدامه في عمل مشابه.',
-    sameFailure: 'عند ظهور الفشل نفسه',
-    summarySection: 'ملخص',
-    scopeSection: 'نطاق التطبيق',
-    sourceSection: 'مصدر الملاحظة',
-    relatedCategories: 'فئات مرتبطة',
-    observedUserSuccessCriteria: 'معايير نجاح المستخدم المرصودة في هذا المشروع',
-    observedUserPatterns: 'ميول/أنماط المستخدم المرصودة في هذا المشروع',
-    observedAiFailures: 'إخفاقات AI التي حدثت في هذا المشروع',
-    observedAiSuccessfulApproaches: 'أساليب نجاح AI المستخدمة في هذا المشروع',
-    observedValidationPreservation: 'قواعد التحقق/الحفظ لهذا المشروع',
-    projectSpecificMemory: 'قرارات وقواعد خاصة بالمشروع',
-    relatedProjectMemory: 'ذاكرات أخرى مرصودة في هذا المشروع'
-  }
-});
-
-Object.assign(WIKI_DISPLAY_TEXT.en, {
-  homeDescription: 'Global local-first memory store for AI coding agents.',
-  backTo: 'Back to',
-  storageJsonIndexes: 'JSON indexes live in `../index/`.',
-  storageRawEvents: 'Raw blackbox events live in `../logs/events.jsonl`.',
-  storagePendingCandidates: 'Pending memory candidates live in `../pending/memory-candidates.jsonl`.'
-});
-
-Object.assign(WIKI_DISPLAY_TEXT.ko, {
-  homeDescription: 'AI \ucf54\ub529 \uc5d0\uc774\uc804\ud2b8\ub97c \uc704\ud55c \ub85c\uceec \uc6b0\uc120 \uc804\uc5ed \uba54\ubaa8\ub9ac \uc800\uc7a5\uc18c.',
-  backTo: '\ub3cc\uc544\uac00\uae30',
-  storageJsonIndexes: 'JSON \uc778\ub371\uc2a4\ub294 `../index/`\uc5d0 \uc800\uc7a5\ub41c\ub2e4.',
-  storageRawEvents: '\uc6d0\uc2dc blackbox \uc774\ubca4\ud2b8\ub294 `../logs/events.jsonl`\uc5d0 \uc800\uc7a5\ub41c\ub2e4.',
-  storagePendingCandidates: '\ub300\uae30 \uc911\uc778 \uba54\ubaa8\ub9ac \ud6c4\ubcf4\ub294 `../pending/memory-candidates.jsonl`\uc5d0 \uc800\uc7a5\ub41c\ub2e4.'
-});
-
-Object.assign(WIKI_DISPLAY_TEXT.ja, {
-  wiki: '\u30a6\u30a3\u30ad',
-  homeDescription: 'AI \u30b3\u30fc\u30c7\u30a3\u30f3\u30b0\u30a8\u30fc\u30b8\u30a7\u30f3\u30c8\u5411\u3051\u306e\u30ed\u30fc\u30ab\u30eb\u512a\u5148\u30b0\u30ed\u30fc\u30d0\u30eb\u30e1\u30e2\u30ea\u30fc\u30b9\u30c8\u30a2\u3002',
-  backTo: '\u623b\u308b',
-  storageJsonIndexes: 'JSON \u30a4\u30f3\u30c7\u30c3\u30af\u30b9\u306f `../index/` \u306b\u4fdd\u5b58\u3055\u308c\u307e\u3059\u3002',
-  storageRawEvents: '\u751f\u306e blackbox \u30a4\u30d9\u30f3\u30c8\u306f `../logs/events.jsonl` \u306b\u4fdd\u5b58\u3055\u308c\u307e\u3059\u3002',
-  storagePendingCandidates: '\u4fdd\u7559\u4e2d\u306e\u30e1\u30e2\u30ea\u30fc\u5019\u88dc\u306f `../pending/memory-candidates.jsonl` \u306b\u4fdd\u5b58\u3055\u308c\u307e\u3059\u3002'
-});
-
-Object.assign(WIKI_DISPLAY_TEXT['zh-CN'], {
-  wiki: '\u7ef4\u57fa',
-  homeDescription: '\u9762\u5411 AI \u7f16\u7801\u4ee3\u7406\u7684\u672c\u5730\u4f18\u5148\u5168\u5c40\u8bb0\u5fc6\u5b58\u50a8\u3002',
-  backTo: '\u8fd4\u56de',
-  storageJsonIndexes: 'JSON \u7d22\u5f15\u4fdd\u5b58\u5728 `../index/`\u3002',
-  storageRawEvents: '\u539f\u59cb blackbox \u4e8b\u4ef6\u4fdd\u5b58\u5728 `../logs/events.jsonl`\u3002',
-  storagePendingCandidates: '\u5f85\u5904\u7406\u8bb0\u5fc6\u5019\u9009\u4fdd\u5b58\u5728 `../pending/memory-candidates.jsonl`\u3002'
-});
-
-Object.assign(WIKI_DISPLAY_TEXT['zh-TW'], {
-  wiki: '\u7dad\u57fa',
-  homeDescription: '\u9762\u5411 AI \u7de8\u78bc\u4ee3\u7406\u7684\u672c\u5730\u512a\u5148\u5168\u57df\u8a18\u61b6\u5132\u5b58\u3002',
-  backTo: '\u8fd4\u56de',
-  storageJsonIndexes: 'JSON \u7d22\u5f15\u5132\u5b58\u5728 `../index/`\u3002',
-  storageRawEvents: '\u539f\u59cb blackbox \u4e8b\u4ef6\u5132\u5b58\u5728 `../logs/events.jsonl`\u3002',
-  storagePendingCandidates: '\u5f85\u8655\u7406\u8a18\u61b6\u5019\u9078\u5132\u5b58\u5728 `../pending/memory-candidates.jsonl`\u3002'
-});
-
-Object.assign(WIKI_DISPLAY_TEXT.ar, {
-  homeDescription: '\u0645\u062e\u0632\u0646 \u0630\u0627\u0643\u0631\u0629 \u0639\u0627\u0645 \u0645\u062d\u0644\u064a \u0623\u0648\u0644\u0627 \u0644\u0648\u0643\u0644\u0627\u0621 \u0627\u0644\u0628\u0631\u0645\u062c\u0629 \u0628\u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a.',
-  backTo: '\u0639\u0648\u062f\u0629 \u0625\u0644\u0649',
-  storageJsonIndexes: '\u062a\u0648\u062c\u062f \u0641\u0647\u0627\u0631\u0633 JSON \u0641\u064a `../index/`.',
-  storageRawEvents: '\u062a\u0648\u062c\u062f \u0623\u062d\u062f\u0627\u062b blackbox \u0627\u0644\u062e\u0627\u0645 \u0641\u064a `../logs/events.jsonl`.',
-  storagePendingCandidates: '\u062a\u0648\u062c\u062f \u0645\u0631\u0634\u062d\u0627\u062a \u0627\u0644\u0630\u0627\u0643\u0631\u0629 \u0627\u0644\u0645\u0639\u0644\u0642\u0629 \u0641\u064a `../pending/memory-candidates.jsonl`.'
-});
-
-function wikiDisplayLanguage(locale = 'en-US') {
-  const tag = normalizeLanguageTag(locale);
-  if (tag === 'ko-KR') return 'ko';
-  if (tag === 'en-US') return 'en';
-  if (tag === 'ja-JP') return 'ja';
-  if (tag === 'zh-CN') return 'zh-CN';
-  if (tag === 'zh-TW') return 'zh-TW';
-  if (tag === 'ar') return 'ar';
-  return 'en';
-}
-
 function wd(locale, key) {
-  const language = wikiDisplayLanguage(locale);
-  return WIKI_DISPLAY_TEXT[language][key] || WIKI_DISPLAY_TEXT.en[key] || key;
-}
-
-const NON_EN_GENERIC_TEXT = {
-  ja: {
-    details: '詳細は canonical memory に保持されています。',
-    user_success_criteria: 'ユーザーが指定した成功条件をこの文脈で満たす。',
-    ai_failure_memory: '同じ AI 失敗を繰り返さない。',
-    ai_successful_approach: '検証済みの成功アプローチを再利用する。'
-  },
-  'zh-CN': {
-    details: '详细内容保留在 canonical memory 中。',
-    user_success_criteria: '在此上下文中满足用户指定的成功条件。',
-    ai_failure_memory: '不要重复相同的 AI 失败。',
-    ai_successful_approach: '复用已验证的成功做法。'
-  },
-  'zh-TW': {
-    details: '詳細內容保留在 canonical memory 中。',
-    user_success_criteria: '在此脈絡中滿足使用者指定的成功條件。',
-    ai_failure_memory: '不要重複相同的 AI 失敗。',
-    ai_successful_approach: '重用已驗證的成功做法。'
-  },
-  ar: {
-    details: 'تُحفظ التفاصيل في الذاكرة canonical.',
-    user_success_criteria: 'تلبية معيار النجاح الذي حدده المستخدم في هذا السياق.',
-    ai_failure_memory: 'لا تكرر فشل AI نفسه.',
-    ai_successful_approach: 'أعد استخدام أسلوب النجاح المتحقق منه.'
-  }
-};
-
-function localizedGenericText(locale, key = 'details') {
-  const language = wikiDisplayLanguage(locale);
-  return NON_EN_GENERIC_TEXT[language]?.[key] || NON_EN_GENERIC_TEXT[language]?.details || '';
+  return t(locale, key);
 }
 
 function localizeWikiDisplayText(text, locale = 'en-US') {
@@ -3699,15 +3262,7 @@ function memoryDisplayTitle(memory, locale = 'en-US') {
 
 function memoryDisplaySummary(memory, locale = 'en-US') {
   if (memory.displaySummary && memoryDisplayLanguageMatches(memory, locale)) return localizeWikiDisplayText(memory.displaySummary, locale);
-  const diagnostic = wd(locale, 'displayTextMissing');
-  const value = diagnostic || 'display text missing';
-  const language = wikiDisplayLanguage(locale);
-  if (!['en', 'ko'].includes(language)) {
-    const generic = localizedGenericText(locale, memory.memoryRole || memory.type);
-    const topic = stripVisibleMemoryIds(memory.topic || '').trim();
-    return [value, generic || wd(locale, 'memoryNote'), topic && !hasHangul(topic) ? `(${topic})` : ''].filter(Boolean).join(' ');
-  }
-  return localizeWikiDisplayText(value, locale);
+  return localizeWikiDisplayText(wd(locale, 'displayTextMissing') || BASE_DISPLAY_TEMPLATE.displayTextMissing, locale);
 }
 
 function memoryDisplayField(memory, field, locale = 'en-US', fallback = '') {
@@ -4229,7 +3784,7 @@ async function writeConceptWikiPages(root, memories, locale = 'en-US', notePathM
   const concepts = new Map();
   const reservedTitles = new Set([
     ...WIKI_PAGES.map(pageTitle),
-    ...WIKI_DOCS.flatMap((doc) => COMMON_MEMORY_LANGUAGE_EXAMPLES.map((tag) => localizedDocTitle(doc.docKey, tag)))
+    ...WIKI_DOCS.map((doc) => localizedDocTitle(doc.docKey, locale))
   ]);
   for (const memory of memories) {
     for (const concept of conceptsForMemory(memory)) {
@@ -4276,23 +3831,23 @@ ${wd(locale, 'backTo')} ${wikiLinkForDocKey('home', locale)}.`;
 }
 
 function shouldWriteConceptWikiPage(concept, locale = 'en-US') {
-  if (conceptDocKey(concept)) return true;
-  return languageFromLocale(locale) === 'en';
+  if (conceptDocKey(concept, locale)) return true;
+  return normalizeConfigLanguageTag(locale, BASE_MEMORY_LANGUAGE) === BASE_MEMORY_LANGUAGE;
 }
 
 function conceptWikiLink(concept, locale = 'en-US') {
-  const docKey = conceptDocKey(concept);
+  const docKey = conceptDocKey(concept, locale);
   if (docKey) return wikiLinkForDocKey(docKey, locale);
   const conceptTitle = conceptNameForTerm(concept) || safeWikiPageName(concept);
   return shouldWriteConceptWikiPage(conceptTitle, locale) ? wikiLink(safeWikiPageName(conceptTitle)) : '';
 }
 
-function conceptDocKey(concept) {
+function conceptDocKey(concept, locale = BASE_MEMORY_LANGUAGE) {
   const normalized = normalizeText(concept);
   for (const doc of WIKI_DOCS) {
     const matches = [
       pageTitle(doc.canonicalFileName),
-      ...COMMON_MEMORY_LANGUAGE_EXAMPLES.map((tag) => localizedDocTitle(doc.docKey, tag))
+      localizedDocTitle(doc.docKey, locale)
     ].map(normalizeText);
     if (matches.includes(normalized)) return doc.docKey;
   }
@@ -5212,7 +4767,7 @@ export async function restoreVibeBox(root = process.cwd(), options = {}) {
 function normalizeMemoryLanguage(memory, targetLanguage, locale) {
   const normalized = { ...memory };
   normalized.docKey = normalized.docKey || docKeyForType(normalized.type);
-  const targetLocale = normalizeConfigLanguageTag(locale || targetLanguage, 'en-US');
+  const targetLocale = normalizeConfigLanguageTag(locale || targetLanguage, BASE_MEMORY_LANGUAGE);
   if (normalized.displayLanguage && normalized.displayLanguage !== targetLocale) {
     normalized.displayLanguageDiagnostics = uniqueNonEmpty([
       ...(normalized.displayLanguageDiagnostics || []),
@@ -5223,12 +4778,15 @@ function normalizeMemoryLanguage(memory, targetLanguage, locale) {
   return normalized;
 }
 
-async function cleanupStaleLocalizedWikiDocs(root, locale) {
+async function cleanupStaleLocalizedWikiDocs(root, locale, staleDocFiles = []) {
   const wikiRoot = vibeboxPath(root, 'wiki');
   const activeFiles = new Set(currentWikiPages(locale));
+  const registry = await loadJson(vibeboxPath(root, 'registry/wiki-docs.json'), { docs: [] }).catch(() => ({ docs: [] }));
+  const registryFiles = (registry.docs || []).map((doc) => doc.fileName).filter(Boolean);
   const knownFiles = new Set(WIKI_DOCS.flatMap((doc) => [
     doc.canonicalFileName,
-    ...COMMON_MEMORY_LANGUAGE_EXAMPLES.map((tag) => localizedDocFileName(doc.docKey, tag))
+    ...registryFiles,
+    ...staleDocFiles
   ]));
   for (const wikiFile of await listMarkdownFiles(wikiRoot)) {
     const relative = path.relative(wikiRoot, wikiFile);
@@ -5245,8 +4803,9 @@ function isManagedOnlyWikiText(text) {
   if (!text.includes('vibebox: true') || !text.includes(MANAGED_BEGIN)) return false;
   const withoutFrontmatter = text.replace(/^---[\s\S]*?---\s*/u, '');
   const withoutManaged = withoutFrontmatter.replace(new RegExp(`${escapeRegExp(MANAGED_BEGIN)}[\\s\\S]*?${escapeRegExp(MANAGED_END)}`, 'u'), '');
-  const backLabels = new Set(['Back to', ...Object.values(WIKI_DISPLAY_TEXT).map((pack) => pack.backTo).filter(Boolean)]);
-  const homeDescriptions = new Set(Object.values(WIKI_DISPLAY_TEXT).map((pack) => pack.homeDescription).filter(Boolean));
+  const templatePacks = [BASE_DISPLAY_TEMPLATE, ...ACTIVE_DISPLAY_TEMPLATES.values()];
+  const backLabels = new Set(templatePacks.map((pack) => pack.backTo).filter(Boolean));
+  const homeDescriptions = new Set(templatePacks.map((pack) => pack.homeDescription).filter(Boolean));
   return withoutManaged.split(/\r?\n/u).every((line) => {
     const trimmed = line.trim();
     return trimmed === ''
@@ -5338,11 +4897,26 @@ export async function convertLanguage(root = process.cwd(), options = {}) {
   }
   const targetLocale = assertSupportedMemoryLanguageTag(options.to || options.language || options.target || '', 'target language');
   await ensureStoreForRead(root);
+  const configPath = vibeboxPath(root, 'config.json');
+  const config = await loadJson(configPath, defaultConfig());
+  const existingTemplates = activateDisplayTemplates(config);
+  const optionTemplates = normalizeAgentDisplayTemplates(
+    options.displayTemplates
+      ?? options.displayTemplate
+      ?? options.localizedDisplayTemplate
+      ?? options.localizedDisplayTemplates
+      ?? null,
+    targetLocale,
+    'convert-lang display template'
+  );
+  const displayTemplates = mergeDisplayTemplates(existingTemplates, optionTemplates);
+  activateDisplayTemplates({ memoryLanguage: targetLocale, displayTemplates });
+  requireDisplayTemplateForLocale(targetLocale, displayTemplates, 'convert-lang display template');
+  const previousRegistry = await loadJson(vibeboxPath(root, 'registry/wiki-docs.json'), { docs: [] }).catch(() => ({ docs: [] }));
+  const staleDocFiles = (previousRegistry.docs || []).map((doc) => doc.fileName).filter(Boolean);
   const localizedCandidates = localizedDisplayCandidatesFromOptions(options);
   const localizationResult = await applyLocalizedDisplayCandidates(root, targetLocale, localizedCandidates);
   const targetLanguage = languageFromLocale(targetLocale);
-  const configPath = vibeboxPath(root, 'config.json');
-  const config = await loadJson(configPath, defaultConfig());
   const updatedConfig = {
     ...config,
     locale: targetLocale,
@@ -5351,6 +4925,7 @@ export async function convertLanguage(root = process.cwd(), options = {}) {
     wikiLanguage: targetLocale,
     reportLanguage: targetLocale,
     contextLanguage: targetLocale,
+    displayTemplates,
     updatedAt: nowIso()
   };
   await saveJson(configPath, updatedConfig);
@@ -5358,7 +4933,7 @@ export async function convertLanguage(root = process.cwd(), options = {}) {
   await saveJson(vibeboxPath(root, 'registry/wiki-docs.json'), defaultWikiDocRegistry(targetLocale));
   await rebuildIndexes(root);
   await rebuildWiki(root);
-  await cleanupStaleLocalizedWikiDocs(root, targetLocale);
+  await cleanupStaleLocalizedWikiDocs(root, targetLocale, staleDocFiles);
   return { language: targetLocale, primaryLanguage: targetLanguage, locale: targetLocale, storeRoot: vibeboxPath(root), localizedCandidates: localizationResult };
 }
 
@@ -5376,11 +4951,15 @@ export async function rebuildVibeBox(root = process.cwd(), options = {}) {
       throw new Error('semantic rebuild requires agent-provided semantic data. Use --index-only for structural rebuilds. No files were changed.');
     }
     const configPath = vibeboxPath(root, 'config.json');
+    let existingConfig = {};
     if (await exists(configPath)) {
-      const existingConfig = await loadJson(configPath, {});
+      existingConfig = await loadJson(configPath, {});
       configuredMemoryLocale(existingConfig);
     }
-    await initVibeBox(root);
+    await initVibeBox(root, {
+      locale: existingConfig.locale || existingConfig.memoryLanguage,
+      displayTemplates: existingConfig.displayTemplates
+    });
     const config = await loadJson(configPath, defaultConfig());
     const locale = configuredMemoryLocale(config);
     if (localizedCandidates.length > 0) {
@@ -5451,12 +5030,14 @@ export async function runDoctor(root = process.cwd()) {
     : null;
   const config = await loadJson(vibeboxPath(root, 'config.json'), defaultConfig()).catch(() => defaultConfig());
   const locale = resolveLocale({}, config);
+  const wikiDocRegistry = await loadJson(vibeboxPath(root, 'registry/wiki-docs.json'), { docs: [] }).catch(() => ({ docs: [] }));
+  const registeredWikiPages = (wikiDocRegistry.docs || []).map((doc) => doc.fileName).filter(Boolean);
   const currentProjectId = currentProject?.projectId || detectedProject?.projectId || 'none';
   const requiredFiles = [
     'config.json',
     'registry/projects.json',
     'registry/wiki-docs.json',
-    ...currentWikiPages(locale).map((page) => `wiki/${page}`),
+    ...(registeredWikiPages.length > 0 ? registeredWikiPages : currentWikiPages(locale)).map((page) => `wiki/${page}`),
     'index/global-memory-index.json',
     'index/project-index.json',
     'index/keyword-index.json',
@@ -5656,12 +5237,14 @@ export async function runDoctor(root = process.cwd()) {
 
     const wikiFiles = await listMarkdownFiles(vibeboxPath(root, 'wiki'));
     const wikiFileNames = new Set(wikiFiles.map((file) => path.basename(file, '.md')));
-    const activeDocFiles = new Set(currentWikiPages(locale));
+    const activeDocFiles = new Set(registeredWikiPages.length > 0 ? registeredWikiPages : currentWikiPages(locale));
     for (const doc of WIKI_DOCS) {
+      const registeredDoc = (wikiDocRegistry.docs || []).find((item) => item.docKey === doc.docKey);
       const possibleFiles = [...new Set([
         doc.canonicalFileName,
-        ...COMMON_MEMORY_LANGUAGE_EXAMPLES.map((tag) => localizedDocFileName(doc.docKey, tag))
-      ])];
+        registeredDoc?.fileName,
+        localizedDocFileName(doc.docKey, locale)
+      ].filter(Boolean))];
       const present = [];
       for (const fileName of possibleFiles) {
         if (await exists(path.join(vibeboxPath(root, 'wiki'), fileName))) {
@@ -5671,7 +5254,7 @@ export async function runDoctor(root = process.cwd()) {
       if (present.length > 1) {
         warnings.push(`Duplicate localized wiki document for ${doc.docKey}: ${present.join(', ')}.`);
       }
-      const expected = localizedDocFileName(doc.docKey, locale);
+      const expected = registeredDoc?.fileName || localizedDocFileName(doc.docKey, locale);
       if (!activeDocFiles.has(expected)) {
         warnings.push(`Wiki registry has unexpected document mapping for ${doc.docKey}.`);
       }

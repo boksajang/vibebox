@@ -108,7 +108,7 @@ VibeBox does not create project-local `.vibebox` folders, workspace-local snapsh
 
 Internal memory stays canonical for agents: JSON field names, relation types, command names, enum values, paths, and raw logs remain stable.
 
-The Wiki is the user-facing display layer. Filenames, titles, headings, summaries, aliases, and link labels follow configured `memoryLanguage`. `memoryLanguage` must be a valid canonical BCP 47 language tag. Short aliases such as `ko`, `en`, `ja`, `cn`, or `tw` are not accepted. Common examples include `ko-KR`, `en-US`, `ja-JP`, `zh-CN`, `zh-TW`, and `ar`; these are examples, not the full language limit.
+The Wiki is the user-facing display layer. Filenames, titles, headings, summaries, aliases, and link labels follow configured `memoryLanguage`. `memoryLanguage` must be a valid canonical BCP 47 language tag. Core validates the tag generically and renders agent-provided display templates; it does not keep hardcoded locale packs, alias deny-lists, or supported-language examples.
 
 The AI agent must provide localized `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage`. Core validates the language tag and renders files; it does not translate missing display text.
 

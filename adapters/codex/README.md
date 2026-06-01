@@ -123,7 +123,7 @@ Codex is the semantic authority. It must decompose reusable meaning into structu
 
 If a complex request produces one candidate, include `whyOnlyOneCandidate`. If no reusable memory exists, submit `no_reusable_memory_candidate` with `noCandidateReason`.
 
-Wiki display fields must follow configured `memoryLanguage`. `memoryLanguage` must be a valid canonical BCP 47 language tag; short aliases such as `ko`, `en`, `ja`, `cn`, or `tw` are not accepted. `ko-KR`, `en-US`, `ja-JP`, `zh-CN`, `zh-TW`, and `ar` are common examples, not the full language limit. In a `ko-KR` store, `displayTitle`, `displaySummary`, and `displayRule` should be Korean, and `displayLanguage` should be `ko-KR`.
+Wiki display fields must follow configured `memoryLanguage`. `memoryLanguage` must be a valid canonical BCP 47 language tag. For non-default initial languages and conversion targets, Codex must pass an AI-agent localized display template for the exact configured tag; Core renders that template instead of using hardcoded locale packs. In a store configured with a Korean language tag, `displayTitle`, `displaySummary`, and `displayRule` should be Korean, and `displayLanguage` should match the configured tag.
 
 Core validates, stores, dedupes, safely replaces, indexes, links, and renders. It does not translate missing display text or backfill semantic memory from raw summaries. Without candidates, VibeBox records the event and warns instead of creating active memory.
 

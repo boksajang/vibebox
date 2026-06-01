@@ -78,7 +78,7 @@ Action summaries and technical failure text are evidence only. Active user memor
 
 ## Language
 
-The Obsidian Wiki is the display layer. Filenames, headings, summaries, aliases, and link labels follow configured `memoryLanguage`. `memoryLanguage` must be a valid canonical BCP 47 language tag. Short aliases such as `ko`, `en`, `ja`, `cn`, or `tw` are not accepted. Common examples include `ko-KR`, `en-US`, `ja-JP`, `zh-CN`, `zh-TW`, and `ar`; these are examples, not the full language limit.
+The Obsidian Wiki is the display layer. Filenames, headings, summaries, aliases, and link labels follow configured `memoryLanguage`. `memoryLanguage` must be a valid canonical BCP 47 language tag. For non-default initial languages and conversion targets, the adapter must pass an AI-agent localized display template for the exact configured tag; Core renders that template instead of using hardcoded locale packs.
 
 Adapters must not call external translation APIs from Core. Language conversion and semantic rebuild require an adapter runtime marker such as `VIBEBOX_AGENT_RUNTIME` and agent-provided localized or semantic data. Core does not translate, summarize, or generate missing user-facing display text.
 

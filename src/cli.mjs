@@ -146,6 +146,18 @@ async function readCandidateInput(flags = {}, fallback = '') {
   return fallback;
 }
 
+async function readDisplayTemplateInput(flags = {}) {
+  if (flags['display-template-file'] || flags.displayTemplateFile || flags['template-file'] || flags.templateFile) {
+    return readFile(flags['display-template-file'] || flags.displayTemplateFile || flags['template-file'] || flags.templateFile, 'utf8');
+  }
+  return flags['display-template']
+    || flags.displayTemplate
+    || flags.template
+    || flags['locale-template']
+    || flags.localeTemplate
+    || '';
+}
+
 function isPermissionDeniedError(error) {
   const code = String(error?.code || '').toUpperCase();
   const message = String(error?.message || '');
@@ -195,7 +207,7 @@ function help() {
   return `VibeBox
 
 Usage:
-  vibebox init [--store <path>]
+  vibebox init [--store <path>] [--language <canonical-bcp47>] [--display-template-file <path>]
   vibebox capture --request <text> --summary <text> [--command <text>] [--command-result <text>] [--changed-files a,b] [--feedback <text>] [--outcome success|failure|partial|unknown] [--technical-outcome success|failure|partial|unknown] [--user-acceptance accepted|rejected|mixed|unknown]
   vibebox extract --candidates <agent-candidate-json> [--manual-review]
   vibebox review  (debug/manual override only)
@@ -210,13 +222,14 @@ Usage:
   vibebox doctor
   vibebox backup [--output <path>] [--include-logs|--exclude-logs]
   vibebox restore --from <path> --confirm-replace
-  vibebox convert-lang <from> <to>
-  vibebox language convert <from> <to>
+  vibebox convert-lang <from> <to> [--display-template-file <path>]
+  vibebox language convert <from> <to> [--display-template-file <path>]
   vibebox rebuild [--index-only]
 
 Global store:
   Defaults to ~/.vibebox and can be overridden with VIBEBOX_HOME or --store <path>.
-  Obsidian Wiki display uses the configured BCP 47 memoryLanguage. VIBEBOX_LANGUAGE/--language can seed a new store; VIBEBOX_LOCALE/--locale is an environment hint and does not rewrite an existing store.
+  Obsidian Wiki display uses the configured canonical BCP 47 memoryLanguage. VIBEBOX_LANGUAGE/--language can seed a new store; VIBEBOX_LOCALE/--locale is an environment hint and does not rewrite an existing store.
+  For non-default initial languages, the AI Agent must pass a localized display template with --display-template/--display-template-file or VIBEBOX_DISPLAY_TEMPLATE.
   Active memory requires AI-agent structured candidates. Core does not semantically interpret userRequest, headings, bullets, keywords, raw action summaries, or command output.
   If userRequest is present without candidates, aftertask stores the raw event, warns, and creates no active memory.
   If userRequest is captured with exactly one candidate, aftertask emits a contract warning unless the AI Agent includes whyOnlyOneCandidate.
@@ -244,7 +257,9 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
 
   switch (command) {
     case 'init': {
-      const result = await initVibeBox(root);
+      const result = await initVibeBox(root, {
+        displayTemplate: await readDisplayTemplateInput(flags)
+      });
       const projectId = result.projectId || '(none)';
       return [
         `VibeBox global store initialized at ${result.storeRoot}`,
@@ -390,8 +405,13 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
     case 'convert-lang': {
       const from = args[0] || flags.from || '';
       const to = args[1] || flags.to || flags.language || flags.target || '';
-      if (!to) throw new Error('convert-lang requires source and target BCP 47 language tags, for example: vibebox convert-lang ko-KR en-US');
-      const result = await convertLanguage(root, { from, to, localizedCandidates: await readCandidateInput(flags, '') });
+      if (!to) throw new Error('convert-lang requires source and target canonical BCP 47 language tags.');
+      const result = await convertLanguage(root, {
+        from,
+        to,
+        localizedCandidates: await readCandidateInput(flags, ''),
+        displayTemplate: await readDisplayTemplateInput(flags)
+      });
       return `VibeBox language converted to ${result.language} (${result.locale}). Raw logs were not changed.`;
     }
 
@@ -400,11 +420,12 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
         throw new Error(`Unknown language command: ${args[0] || ''}\n\n${help()}`);
       }
       const to = args[2] || flags.to || flags.language || flags.target || '';
-      if (!to) throw new Error('language convert requires source and target BCP 47 language tags, for example: vibebox language convert ko-KR en-US');
+      if (!to) throw new Error('language convert requires source and target canonical BCP 47 language tags.');
       const result = await convertLanguage(root, {
         from: args[1] || flags.from || '',
         to,
-        localizedCandidates: await readCandidateInput(flags, '')
+        localizedCandidates: await readCandidateInput(flags, ''),
+        displayTemplate: await readDisplayTemplateInput(flags)
       });
       return `VibeBox language converted to ${result.language} (${result.locale}). Raw logs were not changed.`;
     }

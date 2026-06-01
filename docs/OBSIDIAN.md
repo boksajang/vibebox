@@ -43,7 +43,7 @@ The AI agent is responsible for user-facing semantic display text:
 - `displayRule`
 - `displayLanguage`
 
-For a `ko-KR` store, these display fields should be Korean. Technical literals such as `npm.cmd test`, package names, paths, API names, and error codes may remain unchanged inside localized sentences.
+For a store configured with a Korean language tag, these display fields should be Korean. Technical literals such as `npm.cmd test`, package names, paths, API names, and error codes may remain unchanged inside localized sentences.
 
 Core validates canonical BCP 47 tags and renders the files. It does not translate, summarize, infer categories, or rewrite raw requests and action summaries into localized prose.
 
@@ -70,18 +70,9 @@ Wiki display follows configured `memoryLanguage`:
 - Recent Active Memory
 - project and category pages
 
-`memoryLanguage` must be a valid canonical BCP 47 language tag. Short aliases such as `ko`, `en`, `ja`, `cn`, or `tw` are not accepted.
+`memoryLanguage` must be a valid canonical BCP 47 language tag. Core validates the tag generically and does not keep a hardcoded alias deny-list or a hardcoded supported-language list.
 
-Common examples:
-
-- `ko-KR`
-- `en-US`
-- `ja-JP`
-- `zh-CN`
-- `zh-TW`
-- `ar`
-
-These are examples, not the full language limit.
+For non-default initial languages and conversion targets, the AI Agent must provide a complete display template for the exact configured tag. Core stores that template in `config.displayTemplates`; Core does not translate or synthesize localized template text.
 
 ## Document Identity
 
@@ -180,7 +171,7 @@ Doctor is read-only. It should not mutate the project registry or create project
 Language conversion:
 
 ```bash
-VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko-KR en-US
+VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang <from-bcp47> <to-bcp47> --display-template-file <agent-template.json>
 ```
 
 Semantic rebuild:

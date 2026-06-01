@@ -162,7 +162,7 @@ Internal memory remains canonical for agents. The Wiki display layer follows con
 Language conversion and semantic rebuild require an adapter runtime marker:
 
 ```bash
-VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko-KR en-US
+VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang <from-bcp47> <to-bcp47> --display-template-file <agent-template.json>
 VIBEBOX_AGENT_RUNTIME=adapter vibebox rebuild
 ```
 

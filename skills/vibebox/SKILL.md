@@ -94,7 +94,7 @@ After meaningful coding, design, documentation, packaging, or review work:
    - `discarded_detail`
 4. Consider pattern categories such as validation, response preference, process, design philosophy, decision, workflow, prevention, tooling, AI failure, and AI success.
 5. Include fields such as `memoryRole`, `type`, `modelClass`, `modelSubClass`, `scope`, `primaryCategory`, `relatedCategories`, `title`, `summary`, `rule`, `displayTitle`, `displaySummary`, `displayRule`, `displayLanguage`, `evidence`, `confidence`, `sourceType`, `relationCandidates`, and `replaces` when applicable.
-6. Write display fields in configured `memoryLanguage`; for `ko-KR`, write Korean display text.
+6. Write display fields in configured `memoryLanguage`; for a Korean configured tag, write Korean display text.
 7. Use `--candidates-file` or `--structured-candidates-file` for long JSON, especially on Windows shells.
 8. Run:
 
@@ -128,7 +128,7 @@ Do not call aftertask with only an AI action summary. Summary-only `aftertask` a
 
 VibeBox uses one global store as the single source of truth. Project memory lives under `projects/{projectId}/`; user-wide rules live under `global/`; Wiki, index, logs, pending/debug records, and registry data live under the global store.
 
-The Obsidian-compatible Wiki is a display layer for user review. Filenames, headings, summaries, aliases, and link labels follow configured `memoryLanguage`. `memoryLanguage` must be a valid canonical BCP 47 language tag. Short aliases such as `ko`, `en`, `ja`, `cn`, or `tw` are not accepted. Common examples include `ko-KR`, `en-US`, `ja-JP`, `zh-CN`, `zh-TW`, and `ar`; these are examples, not the full language limit.
+The Obsidian-compatible Wiki is a display layer for user review. Filenames, headings, summaries, aliases, and link labels follow configured `memoryLanguage`. `memoryLanguage` must be a valid canonical BCP 47 language tag. For non-default initial languages and conversion targets, the AI Agent must provide a complete localized display template for the exact configured tag; Core renders that template instead of using hardcoded locale packs, alias deny-lists, or supported-language examples.
 
 Language conversion and semantic rebuild require an adapter-provided runtime marker such as `VIBEBOX_AGENT_RUNTIME` and agent-provided localized/semantic data. Core does not translate, summarize, or generate missing user-facing display text.
 

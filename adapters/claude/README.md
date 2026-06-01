@@ -58,7 +58,7 @@ Claude is the semantic authority. It decides success criteria, corrections, AI f
 
 If a complex request produces only one candidate, include `whyOnlyOneCandidate`. If no reusable memory exists, submit `no_reusable_memory_candidate` with `noCandidateReason`.
 
-Display fields should follow configured `memoryLanguage`. `memoryLanguage` must be a valid canonical BCP 47 language tag; short aliases such as `ko`, `en`, `ja`, `cn`, or `tw` are not accepted. `ko-KR`, `en-US`, `ja-JP`, `zh-CN`, `zh-TW`, and `ar` are common examples, not the full language limit. A `ko-KR` store needs Korean `displayTitle`, `displaySummary`, and `displayRule`, plus `displayLanguage: "ko-KR"`.
+Display fields should follow configured `memoryLanguage`. `memoryLanguage` must be a valid canonical BCP 47 language tag. For non-default initial languages and conversion targets, Claude must pass an AI-agent localized display template for the exact configured tag; Core renders that template instead of using hardcoded locale packs. A store configured with a Korean language tag needs Korean `displayTitle`, `displaySummary`, and `displayRule`, plus matching `displayLanguage`.
 
 Core validates, stores, dedupes, safely replaces, indexes, links, and renders. It does not infer memory from raw user requests, keywords, headings, bullets, action summaries, command output, or missing display text.
 
