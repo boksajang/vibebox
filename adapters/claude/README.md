@@ -1,14 +1,14 @@
 # VibeBox Claude Adapter
 
-VibeBox is agent-neutral. This adapter is a Claude-compatible packaging guide or skeleton for using the shared VibeBox skill instructions with the local VibeBox CLI.
+This is a Claude-compatible guide for using the shared VibeBox skill with the local VibeBox CLI.
+
+VibeBox memory behavior comes from Core and the shared skill, not from an adapter-specific fork.
 
 ## Shared Skill
 
-Use the shared skill source:
-
 - `skills/vibebox/SKILL.md`
 
-Reference details are in:
+References:
 
 - `skills/vibebox/references/COMMANDS.md`
 - `skills/vibebox/references/WORKFLOW.md`
@@ -22,39 +22,47 @@ Preferred:
 vibebox <command>
 ```
 
-Windows PowerShell fallback:
+Windows fallback:
 
 ```bash
 vibebox.cmd <command>
 ```
 
-Fallback inside the VibeBox repository:
+Repository fallback:
 
 ```bash
 node bin/vibebox.mjs <command>
 ```
 
-## Workflow Summary
+## Workflow
 
-Before non-trivial work, run:
+Before meaningful work:
 
 ```bash
 vibebox pretask --task "<task description>"
 ```
 
-Claude-compatible agents should read and apply the `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` sections before planning or editing. Do not merely paste the memory into a response; use it to shape the plan, validation, avoided approaches, and final report.
+Claude-compatible agents should apply `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` before planning or editing.
 
-After meaningful work, run:
+After meaningful work:
 
 ```bash
-vibebox aftertask --request "<original user request or faithful summary>" --summary "..." --candidates "<agent-candidate-json>" --technical-outcome success --user-acceptance accepted
+vibebox aftertask --request "<original user request or faithful summary>" --summary "..." --candidates-file structured-candidates.json --technical-outcome success --user-acceptance unknown
 ```
 
-The `--request` value preserves the user success criteria source. Active memory requires Claude to provide structured candidates with its semantic judgment; do not send only an action summary. Use `--request` directly or include `User request:` and `Structured memory candidates:` in a `--from-file` payload for long records. If VibeBox warns that userRequest is present but structured candidates are missing, Claude must rewrite the capture with structured candidates or an explicit no-reusable-memory diagnostic; Core will not infer active memory from the raw request, summary, headings, bullets, or command output.
+The `--request` value preserves the source of user success criteria. Active memory requires Claude to provide structured candidates with its semantic judgment. Do not send only an action summary when active memory should be created.
 
-Claude is the semantic authority. It decides success criteria, corrections, AI failure signals, successful approaches, task-only details, model class, scope, categories, relations, replacements, and localized display text. It should split separate success, validation, reporting, preference, project, failure-avoidance, and approach meanings into separate candidates when they are reusable. If a complex request produces only one candidate, include `whyOnlyOneCandidate`; if no reusable memory exists, submit `no_reusable_memory_candidate` with `noCandidateReason`. Display fields should follow the configured `memoryLanguage`, so a `ko-KR` store needs Korean `displayTitle`, `displaySummary`, and `displayRule`, plus `displayLanguage: "ko-KR"`.
+If using a long file payload, include `User request:` and `Structured memory candidates:`.
 
-Core validates, stores, dedupes, safely replaces, indexes, and renders the candidates; it does not infer memory from raw user requests, keywords, headings, bullets, action summaries, fixture terms, or missing display text. The user's request is success criteria, user corrections update those criteria, and user dissatisfaction is an AI failure signal. Confirmed and inferred AI successful approaches can become active when Claude submits them; inferred success must not be described as user-confirmed. Preserve command, permission, environment, and tool failure evidence, and submit active AI failure memory only when Claude has made that structured candidate. Manual review is for debugging or override, not the normal promotion path:
+Claude is the semantic authority. It decides success criteria, corrections, AI failure signals, successful approaches, task-only details, model class, scope, categories, relations, replacements, confidence, and localized display text.
+
+If a complex request produces only one candidate, include `whyOnlyOneCandidate`. If no reusable memory exists, submit `no_reusable_memory_candidate` with `noCandidateReason`.
+
+Display fields should follow configured `memoryLanguage`. `memoryLanguage` must be a valid canonical BCP 47 language tag; short aliases such as `ko`, `en`, `ja`, `cn`, or `tw` are not accepted. `ko-KR`, `en-US`, `ja-JP`, `zh-CN`, `zh-TW`, and `ar` are common examples, not the full language limit. A `ko-KR` store needs Korean `displayTitle`, `displaySummary`, and `displayRule`, plus `displayLanguage: "ko-KR"`.
+
+Core validates, stores, dedupes, safely replaces, indexes, links, and renders. It does not infer memory from raw user requests, keywords, headings, bullets, action summaries, command output, or missing display text.
+
+Manual review is for debugging or override:
 
 ```bash
 vibebox review
@@ -62,16 +70,22 @@ vibebox approve <candidate-id>
 vibebox reject <candidate-id>
 ```
 
-## Current Limitations
+## Store Access
 
-- This is a compatibility guide and local skeleton, not a claim of registry availability.
-- VibeBox memory behavior comes from the Core CLI and shared skill, not from this adapter.
-- Agents should not treat pending memory as active memory.
-- VibeBox uses one global user store at `~/.vibebox` by default, overrideable with `VIBEBOX_HOME`.
-- VibeBox does not create project-local `.vibebox` folders, workspace-local memory snapshots, copied memory stores, pointer files, or hidden metadata in work projects.
-- Sandboxed hosts may need approved read access for `pretask`/`context` and approved write access for `aftertask`. If read access is denied, report guidance unavailable; if aftertask write access is denied, report that capture, project registration, active memory, and wiki updates were not completed.
-- `pretask` and `context` do not create project registry entries. A new project is registered by `init`, `aftertask`, or `capture` when global store write access is available.
-- Claude performs semantic extraction and supplies structured candidates; action summaries and technical failure text are evidence only until represented in a candidate.
-- `backup` and `restore` are normal CLI maintenance commands; restore is destructive replace and requires confirmation.
-- `convert-lang` and semantic `rebuild` require an agent runtime marker such as `VIBEBOX_AGENT_RUNTIME` and Claude-provided localized/semantic data; Core applies file operations and integrity checks but does not translate or reclassify meaning.
-- Obsidian filenames, category folders, headings, aliases, links, Recent Active Memory, and category-based memory notes follow the configured memory language; internal JSON fields, enum values, relation types, command names, file paths, and raw logs stay canonical. Visible note names are meaning-based; `mem_...` ids stay in frontmatter.
+VibeBox uses one global user store:
+
+```text
+<USER_HOME>/.vibebox
+```
+
+or `VIBEBOX_HOME` when configured.
+
+Sandboxed hosts may need approved read-only global VibeBox store access for `pretask`/`context` and approved global VibeBox store write access for `aftertask`. If read access is denied, report guidance unavailable. If aftertask write access is denied, report that capture, project registration, active memory, and wiki updates were not completed.
+
+VibeBox does not create project-local `.vibebox` folders, workspace-local snapshots, copied stores, pointer files, or hidden metadata in work projects.
+
+## Language And Maintenance
+
+`convert-lang` and semantic `rebuild` require an agent runtime marker such as `VIBEBOX_AGENT_RUNTIME` and Claude-provided localized or semantic data. Core applies file operations and integrity checks but does not translate, summarize, generate missing display text, or reclassify meaning.
+
+`backup` and `restore` are normal CLI maintenance commands. Restore is destructive replacement, not merge, and requires confirmation.

@@ -649,13 +649,12 @@ async function listMemoryNoteFiles(root) {
 }
 
 const LANGUAGE_CONFIG_KEYS = ['locale', 'memoryLanguage', 'outputLanguage', 'wikiLanguage', 'reportLanguage', 'contextLanguage'];
-const SUPPORTED_TEST_LANGUAGE_TAGS = ['ko-KR', 'en-US', 'ja-JP', 'zh-CN', 'zh-TW', 'ar'];
+const COMMON_TEST_LANGUAGE_EXAMPLES = ['ko-KR', 'en-US', 'ja-JP', 'zh-CN', 'zh-TW', 'ar'];
 
 function assertBcp47Tag(value, label = 'language tag') {
   assert.equal(typeof value, 'string', `${label} should be a string`);
   assert.notEqual(value.toLowerCase(), 'auto', `${label} should not store the non-BCP47 auto sentinel`);
   assert.doesNotThrow(() => Intl.getCanonicalLocales(value), `${label} should be a valid BCP 47 tag`);
-  assert.ok(SUPPORTED_TEST_LANGUAGE_TAGS.includes(value), `${label} should use a supported strict BCP 47 tag`);
 }
 
 function assertConfigLanguageTags(config, expected = null) {
@@ -4117,7 +4116,7 @@ test('adaptive language policy preserves Japanese, Chinese, Arabic, and mixed me
 
 test('BCP 47 strict language settings reject aliases before writing config', async () => {
   const bin = path.resolve('bin/vibebox.mjs');
-  for (const tag of SUPPORTED_TEST_LANGUAGE_TAGS) {
+  for (const tag of [...COMMON_TEST_LANGUAGE_EXAMPLES, 'fr-FR', 'de-DE']) {
     const root = await makeWorkspace();
     const result = spawnSync(process.execPath, [bin, 'init', '--language', tag], {
       cwd: root,
@@ -4134,12 +4133,12 @@ test('BCP 47 strict language settings reject aliases before writing config', asy
       encoding: 'utf8'
     });
     assert.notEqual(result.status, 0, tag);
-    assert.match(result.stderr, /supported BCP 47 tags/i);
+    assert.match(result.stderr, /valid canonical BCP 47 language tag/i);
     await assert.rejects(() => readFile(storePath(root, 'config.json'), 'utf8'), /ENOENT/);
   }
 });
 
-test('convert-lang accepts only supported BCP 47 tags and leaves files unchanged on invalid input', async () => {
+test('convert-lang accepts valid BCP 47 tags and leaves files unchanged on aliases', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
   const configBefore = await readFile(storePath(root, 'config.json'), 'utf8');
@@ -4155,7 +4154,7 @@ test('convert-lang accepts only supported BCP 47 tags and leaves files unchanged
     ['ar', 'ja'],
     ['zh', 'cn']
   ]) {
-    await assert.rejects(() => convertLanguage(root, { from: pair[0], to: pair[1] }), /supported BCP 47 tags/i);
+    await assert.rejects(() => convertLanguage(root, { from: pair[0], to: pair[1] }), /valid canonical BCP 47 language tag/i);
     assert.equal(await readFile(storePath(root, 'config.json'), 'utf8'), configBefore);
     const wikiAfter = Object.fromEntries(await Promise.all((await listMarkdownFiles(storePath(root, 'wiki'))).map(async (file) => [
       wikiRelative(root, file),
@@ -4165,7 +4164,7 @@ test('convert-lang accepts only supported BCP 47 tags and leaves files unchanged
   }
 
   let current = 'en-US';
-  for (const target of ['ko-KR', 'en-US', 'ja-JP', 'zh-CN', 'zh-TW', 'ar']) {
+  for (const target of ['ko-KR', 'en-US', 'ja-JP', 'zh-CN', 'zh-TW', 'ar', 'fr-FR']) {
     await convertLanguage(root, { from: current, to: target, localizedCandidates: await localizedDisplayCandidates(root, target) });
     assertConfigLanguageTags(await loadJson(storePath(root, 'config.json')), target);
     const registry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));

@@ -303,8 +303,8 @@ const CATEGORY_AXIS_DOC_KEYS = [
   'agent_failure_patterns'
 ];
 
-const SUPPORTED_MEMORY_LANGUAGE_TAGS = ['ko-KR', 'en-US', 'ja-JP', 'zh-CN', 'zh-TW', 'ar'];
-const SUPPORTED_MEMORY_LANGUAGE_SET = new Set(SUPPORTED_MEMORY_LANGUAGE_TAGS);
+const COMMON_MEMORY_LANGUAGE_EXAMPLES = ['ko-KR', 'en-US', 'ja-JP', 'zh-CN', 'zh-TW', 'ar'];
+const DISALLOWED_MEMORY_LANGUAGE_ALIASES = new Set(['ko', 'en', 'ja', 'zh', 'cn', 'tw', 'jp', 'kor', 'eng', 'jpn', 'korean', 'english']);
 
 const STOP_WORDS = new Set([
   'about',
@@ -494,13 +494,13 @@ function localeFromLanguage(language = 'en-US') {
 }
 
 function languageValidationError(value, label = 'memoryLanguage') {
-  return new Error(`${label} must be one of these supported BCP 47 tags: ${SUPPORTED_MEMORY_LANGUAGE_TAGS.join(', ')}. Short aliases such as ko, en, ja, zh, cn, tw, jp, kor, eng, jpn, korean, and english are not supported.`);
+  return new Error(`${label} must be a valid canonical BCP 47 language tag. Short aliases such as ko, en, ja, zh, cn, tw, jp, kor, eng, jpn, korean, and english are not supported. Common examples include ${COMMON_MEMORY_LANGUAGE_EXAMPLES.join(', ')}; these are examples, not the full language limit.`);
 }
 
 function assertSupportedMemoryLanguageTag(value, label = 'memoryLanguage') {
   const raw = String(value || '').trim();
   const canonical = normalizeLanguageTag(raw);
-  if (!raw || raw.toLowerCase() === 'auto' || !canonical || canonical !== raw || !SUPPORTED_MEMORY_LANGUAGE_SET.has(canonical)) {
+  if (!raw || raw.toLowerCase() === 'auto' || DISALLOWED_MEMORY_LANGUAGE_ALIASES.has(raw.toLowerCase()) || !canonical || canonical !== raw) {
     throw languageValidationError(raw || '(empty)', label);
   }
   return canonical;
@@ -508,7 +508,7 @@ function assertSupportedMemoryLanguageTag(value, label = 'memoryLanguage') {
 
 function defaultSupportedLanguageTag(value = '', fallback = 'en-US') {
   const canonical = normalizeLanguageTag(value);
-  if (SUPPORTED_MEMORY_LANGUAGE_SET.has(canonical)) return canonical;
+  if (canonical && canonical !== 'auto' && !DISALLOWED_MEMORY_LANGUAGE_ALIASES.has(canonical.toLowerCase())) return canonical;
   const primary = languageFromLocale(canonical || '');
   if (primary === 'ko') return 'ko-KR';
   if (primary === 'en') return 'en-US';
@@ -4218,7 +4218,7 @@ async function writeConceptWikiPages(root, memories, locale = 'en-US', notePathM
   const concepts = new Map();
   const reservedTitles = new Set([
     ...WIKI_PAGES.map(pageTitle),
-    ...WIKI_DOCS.flatMap((doc) => SUPPORTED_MEMORY_LANGUAGE_TAGS.map((tag) => localizedDocTitle(doc.docKey, tag)))
+    ...WIKI_DOCS.flatMap((doc) => COMMON_MEMORY_LANGUAGE_EXAMPLES.map((tag) => localizedDocTitle(doc.docKey, tag)))
   ]);
   for (const memory of memories) {
     for (const concept of conceptsForMemory(memory)) {
@@ -4281,7 +4281,7 @@ function conceptDocKey(concept) {
   for (const doc of WIKI_DOCS) {
     const matches = [
       pageTitle(doc.canonicalFileName),
-      ...SUPPORTED_MEMORY_LANGUAGE_TAGS.map((tag) => localizedDocTitle(doc.docKey, tag))
+      ...COMMON_MEMORY_LANGUAGE_EXAMPLES.map((tag) => localizedDocTitle(doc.docKey, tag))
     ].map(normalizeText);
     if (matches.includes(normalized)) return doc.docKey;
   }
@@ -5147,7 +5147,7 @@ async function cleanupStaleLocalizedWikiDocs(root, locale) {
   const activeFiles = new Set(currentWikiPages(locale));
   const knownFiles = new Set(WIKI_DOCS.flatMap((doc) => [
     doc.canonicalFileName,
-    ...SUPPORTED_MEMORY_LANGUAGE_TAGS.map((tag) => localizedDocFileName(doc.docKey, tag))
+    ...COMMON_MEMORY_LANGUAGE_EXAMPLES.map((tag) => localizedDocFileName(doc.docKey, tag))
   ]));
   for (const wikiFile of await listMarkdownFiles(wikiRoot)) {
     const relative = path.relative(wikiRoot, wikiFile);
@@ -5579,7 +5579,7 @@ export async function runDoctor(root = process.cwd()) {
     for (const doc of WIKI_DOCS) {
       const possibleFiles = [...new Set([
         doc.canonicalFileName,
-        ...SUPPORTED_MEMORY_LANGUAGE_TAGS.map((tag) => localizedDocFileName(doc.docKey, tag))
+        ...COMMON_MEMORY_LANGUAGE_EXAMPLES.map((tag) => localizedDocFileName(doc.docKey, tag))
       ])];
       const present = [];
       for (const fileName of possibleFiles) {

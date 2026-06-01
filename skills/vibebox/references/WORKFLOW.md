@@ -1,62 +1,53 @@
 # VibeBox Workflow Reference
 
-VibeBox is agent-neutral. Any AI coding agent that can read files and run shell commands can use the same workflow.
+This reference describes the standard agent workflow. It applies to Codex, Claude-compatible agents, and any CLI agent that can run VibeBox.
 
 ## Default Agent Workflow
 
 1. Receive the user task.
-2. Judge whether it is meaningful repository work.
-3. Check whether VibeBox is available, whether the global store exists or can be initialized, whether sandbox approval may be needed for global-store read/write access, and whether the current working directory is a usable project workspace rather than user home, global store, cache, or tool-internal path.
-4. If memory could affect the task, run read-only `pretask` before planning or editing, after requesting read access when the host requires it.
+2. Decide whether prior memory could affect meaningful repository work.
+3. Check VibeBox availability and global store access.
+4. Run read-only `pretask` before planning or editing when memory could matter.
 5. Read `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`.
-6. Use the Pre-Task Brief to reduce wrong assumptions, apply current user patterns, avoid repeated failures, and reuse relevant successful approaches.
-7. Perform the task within the current user request.
-8. After meaningful work, capture the result with `aftertask --request "<original user request or faithful summary>" --candidates "<agent-candidate-json>"` unless the user opted out.
-9. Let VibeBox validate the agent's structured candidates, dedupe, apply replacement safety, index, and render active memory.
-10. Treat active memory as the latest optimized pattern graph, not as a permanent history list.
+6. Apply relevant guidance while inspecting and editing the repository.
+7. Validate the result according to the user's request and repository norms.
+8. Run `aftertask` with `--request` and structured candidates unless the user opted out.
+9. Let Core validate, dedupe, safely replace, index, link, and render active memory.
 
-This is an auto-intervention policy, not a hardcoded trigger list. The agent should consider repository context, change risk, prior memory value, and user preference before deciding whether VibeBox should intervene.
+The current user request wins over past memory.
 
-## Standard CLI Workflow
+## Access Preflight
 
-1. Initialize the global user store once with `vibebox init`.
-2. Run read-only `pretask` before memory-relevant repository work, using direct `vibebox.cmd` on Windows/Codex.
-3. Read the Pre-Task Brief and inspect the repository.
-4. Perform the requested coding, design, or review work.
-5. Run `vibebox aftertask --request "<original user request or faithful summary>" --candidates "<agent-candidate-json>" ...` after meaningful work unless the user opted out.
-6. Allow Core to validate and apply the agent's structured candidates: active memory, replacement, discard, quarantine, indexes, relations, and wiki rendering.
-7. Use `vibebox review`, `vibebox approve <candidate-id>`, `vibebox approve --safe`, or `vibebox reject <candidate-id>` only for debugging, audits, or manual override.
-8. Inspect project health with `vibebox report`, `vibebox blackbox`, and `vibebox doctor`.
+VibeBox uses one global store as the single source of truth:
 
-VibeBox uses the global user store as the single source of truth. Sandboxed hosts can block access to `~/.vibebox` or `$VIBEBOX_HOME` because that store is outside the current workspace. Agents should request approved global-store access when needed, not create workspace-local memory snapshots, copied stores, or project-local `.vibebox` fallbacks.
+```text
+<USER_HOME>/.vibebox
+%USERPROFILE%\.vibebox
+```
 
-## VibeBox Access Preflight
+or `VIBEBOX_HOME` when configured.
 
-Before meaningful work in Codex App or another sandboxed host, perform a quick access preflight:
+Sandboxed hosts may block this store because it is outside the workspace.
 
-1. Identify the global store path (`~/.vibebox` by default, or `$VIBEBOX_HOME` / `--store <path>` when configured).
-2. Explain that `pretask` and `context` are read-only retrieval commands but still require read access to the global store.
-3. Explain that `aftertask` is a global-store write/capture command and may need write access for project registration, raw event capture, active memory, indexes, and wiki updates.
-4. If approval is available, request the narrow access needed for the command being run.
-5. If read access is denied, report VibeBox guidance unavailable before proceeding.
-6. If write access is denied, report VibeBox capture unavailable and state that project registration, active memory, and wiki updates were not completed.
-7. Preserve the aftertask payload in the completion report when useful so the same capture can be rerun after approval.
+- `pretask` and `context` are read-only retrieval commands but still require global-store read access.
+- `pretask` and `context` do not create project registry entries.
+- `aftertask` is a global-store write/capture operation.
+- `init`, `aftertask`, and `capture` can register the current project when write access is available.
+- If read access is denied, request approved read-only global VibeBox store access or report VibeBox guidance unavailable.
+- If write access is denied, request approved global VibeBox store write access or report capture unavailable and state that project registration, active memory, and wiki updates were not completed.
+- Do not create workspace-local memory snapshots, copied stores, project-local `.vibebox` folders, pointer files, or hidden metadata as a fallback.
 
-Recommended wording: `VibeBox uses one global store as the single source of truth. This sandboxed session may need approval to read and write ~/.vibebox. pretask/context require read access. aftertask requires write access for memory capture. No workspace-local memory snapshot will be created.`
+Recommended wording: `VibeBox uses one global store as the single source of truth. This sandboxed session may need approval to read or write the global VibeBox store. pretask/context require read access. aftertask requires write access for memory capture. No workspace-local memory snapshot will be created.`
 
-`pretask` and `context` are read-only and do not create project registry entries. A new project is registered by `init`, `aftertask`, or `capture` when write access is available.
+## Pre-Task Retrieval
 
-## Pre-Task Brief Workflow
-
-Use this before planning or editing when repository memory could affect the task and VibeBox is available for the current working directory:
-
-Windows/Codex direct invocation:
+Windows/Codex:
 
 ```bash
 vibebox.cmd pretask --task "Fix dashboard table scrolling"
 ```
 
-Cross-platform installed command:
+Installed command:
 
 ```bash
 vibebox pretask --task "Fix dashboard table scrolling"
@@ -68,128 +59,85 @@ Repository fallback:
 node bin/vibebox.mjs pretask --task "Fix dashboard table scrolling"
 ```
 
-`pretask` is read-only memory retrieval for repository files: it prints active guidance and should not modify repository files, but it still reads the global VibeBox store. Do not wrap it in `powershell.exe -Command` unless no direct invocation is possible. If a host approval layer blocks a wrapper-style command, retry direct `vibebox.cmd pretask --task "..."`, then `vibebox pretask --task "..."`, then the Node fallback. If a sandbox blocks the global store, request read-only global VibeBox store access. If all attempts fail, report that VibeBox guidance was unavailable and continue only when the current task can proceed safely.
+Do not use `powershell.exe -Command` as a normal workflow example. If a wrapper-style attempt is blocked, retry direct `vibebox.cmd`, then `vibebox`, then the Node fallback.
 
-The brief should guide attention, not replace codebase analysis. Apply active memory as constraints, risk warnings, project context, validation style, process guidance, and failure-prevention rules.
+The brief has been consumed only when it changes the agent's plan, implementation, validation, or reporting.
 
-The brief has been consumed only when it changes the agent's plan or execution. A complete plan should identify:
+## After-Task Capture
 
-- success criteria to satisfy
-- failure approaches to avoid
-- successful approaches to reuse when applicable
-
-## After-Task Blackbox Workflow
-
-Capture meaningful work after it happens:
+Use aftertask after meaningful work with the original user request or faithful summary:
 
 ```bash
-vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-based scrolling and kept package.json unchanged." --files "src/table.mjs" --commands "npm.cmd test" --candidates "<agent-candidate-json>" --technical-outcome success --user-acceptance accepted
+vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-level scrolling and ran tests." --files "src/table.mjs" --commands "npm.cmd test" --candidates-file structured-candidates.json --technical-outcome success --user-acceptance unknown
 ```
 
-For longer records, keep the original request explicit:
+Windows/Codex:
 
 ```bash
-vibebox aftertask --request "Fix dashboard table scrolling" --from-file task-result.txt
+vibebox.cmd aftertask --request "Fix dashboard table scrolling" --summary "Updated table scrolling." --candidates-file structured-candidates.json
 ```
 
-`task-result.txt` must include `User request:` and `Structured memory candidates:` when active memory should be created; otherwise it is only a raw evidence capture.
+For long records:
 
-The file must include `Structured memory candidates:` when reusable memory should be stored, and should include `User request:`, `AI action summary:`, `Changed files:`, `Commands:`, and `Errors:` sections when present. Do not use `--summary` or `--from-file` alone for active memory. Without structured candidates, VibeBox records the event and warns; it does not create active user success criteria, active successful approaches, or active AI failure memory by itself.
+```bash
+vibebox aftertask --from-file task-result.txt
+```
 
-Aftertask is a global store write/capture operation: it writes a blackbox event and ingests AI-agent structured candidates. The agent is responsible for decomposing structured user requests into reusable success criteria, project rules, user/domain patterns, validation/preservation expectations, scope limits, AI failure-prevention rules, and task context before capture. Core validates schema and BCP 47 fields, preserves raw evidence, dedupes, applies replacement safety, builds relation/category/project indexes, and renders the wiki. If sandbox permissions block aftertask, request global VibeBox store write access for aftertask capture or report that capture was unavailable. Skip capture when the user explicitly opts out.
+When active memory should be created, `task-result.txt` must include `User request:` and `Structured memory candidates:`. A file wrapper without structured candidates is raw evidence only. Without candidates, VibeBox records the event and warns instead of creating active memory.
 
-Before running `aftertask`, scan the user request and task outcome across these candidate lanes:
+Before capture, scan the request and outcome for:
 
-- `user_success_criteria` for success conditions, style, scope limits, preservation rules, validation expectations, and reporting requirements.
-- `ai_failure_memory` for user dissatisfaction, missed instructions, technical/tool/environment failures, and explicit avoid rules.
-- `ai_successful_approach` for validated reusable approaches, workarounds, command sequences, or recovery methods.
-- `task_context` for task-only files, local state, and temporary scope details that should not become durable guidance.
-- `discarded_detail` or `no_reusable_memory_candidate` for details that were considered but should not become active memory, with a short reason.
+- `user_success_criteria`
+- `ai_failure_memory`
+- `ai_successful_approach`
+- `task_context`
+- `discarded_detail`
+- validation patterns
+- response and reporting preferences
+- process, design, and decision patterns
+- workflow and prevention rules
+- tooling and technology preferences
 
-Also scan the category axis for each meaning unit: user preferences, user patterns, design philosophy, validation patterns, process patterns, decision patterns, workflow rules, global avoid rules, prevention rules, tooling/technology preferences, AI failure patterns, AI success patterns, success patterns, and failure memory. Do not collapse separate validation, reporting, style, and failure-avoidance meanings into one summary-shaped candidate. If only one candidate is truly enough, include `whyOnlyOneCandidate`. If no reusable memory exists, include `no_reusable_memory_candidate` with `noCandidateReason`.
+Do not collapse separate validation, reporting, preservation, and failure-avoidance meanings into one summary-shaped candidate. If only one candidate is truly enough, include `whyOnlyOneCandidate`. If no reusable memory exists, include `no_reusable_memory_candidate` with `noCandidateReason`.
 
-The agent must write Wiki display fields in the configured `memoryLanguage`. For example, in a `ko-KR` store, `displayTitle`, `displaySummary`, and `displayRule` should be Korean even if canonical `summary` remains English. Core does not translate missing display fields.
+The agent must write Wiki display fields in configured `memoryLanguage`. Core validates BCP 47 tags and renders files; it does not translate missing display text.
 
-## Manual Review And Override Workflow
+## Manual Debug And Override
 
-Normal workflows are auto-curated. Use review commands for debugging, audits, or manual override:
+Normal workflows are auto-curated. Use these only for debugging, audits, or manual override:
 
 ```bash
 vibebox review
 vibebox approve <candidate-id>
+vibebox approve --safe
 vibebox reject <candidate-id>
 ```
 
-Use safe batch approval only when appropriate:
+Safe approval skips candidates with direct conflicts, supersedes, exceptions, duplicates, low confidence, or review-needed status.
 
-```bash
-vibebox approve --safe
-```
+## Context Pack
 
-Safe approval skips candidates with direct conflicts, supersedes, exceptions, duplicate status, low confidence, or review-needed status.
-
-Activating a replacement, correction, or same-subject refinement removes the older active memory from normal retrieval, Context Packs, Pre-Task Briefs, namespace files, active relations, and active wiki sections. Activating a scoped exception keeps the broader memory active only when the exception has a clear condition. Rejected, discarded, quarantined, and legacy pending memory stays out of normal retrieval and active graph outputs.
-
-A durable memory can link to multiple categories. VibeBox writes one canonical note under the memory's primary category and links that same note from related category pages and the source project page.
-
-Technical success and user acceptance are separate. Passing commands or completed edits do not justify a `success_pattern` when the user rejected the outcome. User rejection means the AI missed the user's success criteria. The user's correction becomes the latest success criteria, while the rejected AI result becomes AI failure memory. Passing validation plus a reusable approach and no rejection signal can become inferred AI successful approach automatically, but inferred success must not be described as confirmed by the user.
-
-## Context Pack Usage
-
-Use `context` when a compact memory pack is enough:
+Use `context` when compact retrieval is enough:
 
 ```bash
 vibebox.cmd context --task "Update dashboard dependency handling"
 ```
 
-`context` is read-only memory retrieval for repository files. It prints a compact active-memory pack and should not modify repository files, but it still reads the global VibeBox store. On non-Windows systems, `vibebox context --task "..."` is the normal installed command.
+`context` is read-only and should not modify repository files, but it still needs global-store read access.
 
-Use `pretask` when an agent is about to act, because it includes more direct instructions and risks.
-Pretask should consider both failure memory and success patterns when relevant: failure memory is prevention guidance, while success memory is reusable approach guidance.
-
-`context` and `pretask` should both expose the same core lanes when relevant:
-
-- User Success Criteria
-- AI Failure Avoidance
-- AI Successful Approaches
-
-## Report And Blackbox Usage
-
-Use `report` for current memory state:
+## Reports And Diagnostics
 
 ```bash
 vibebox report
-```
-
-Use `blackbox` for recent task history:
-
-```bash
 vibebox blackbox --limit 10
+vibebox doctor
 ```
 
-Neither command should be treated as a raw transcript dump.
+Reports and blackbox output summarize active graph and diagnostic task history without dumping raw logs. Doctor checks global store health, registry, JSON parsing, indexes, localized Wiki links, suspicious raw secrets, and legacy project-local stores.
 
-Reports and blackbox output summarize the active graph and meaningful task outcomes. Raw logs remain diagnostic and should not be pasted wholesale into prompts.
+## Legacy / Manual Debugging Only
 
-## Agent-Neutral Usage Pattern
-
-Adapters should call the same VibeBox CLI and read the same shared skill. They should not fork memory behavior or create agent-specific memory stores.
-
-Windows/Codex direct command order:
-
-```bash
-vibebox.cmd <command>
-vibebox <command>
-node bin/vibebox.mjs <command>
-```
-
-Preferred command outside Windows:
-
-```bash
-vibebox <command>
-```
-
-Do not use `powershell.exe -Command` as a normal workflow example. It is only a last-resort wrapper when direct invocation is impossible, and agents should report when they had to proceed without VibeBox guidance.
+Summary-only `aftertask` and raw-text `extract --text` are raw evidence/debug paths only. They do not create active memory because Core does not semantically interpret user requests, headings, bullets, keywords, raw action summaries, or command output. If an agent receives a missing-candidates warning, it must prepare structured candidates and capture again.
 
 ## External Project Workflow
 
@@ -198,41 +146,24 @@ After `npm link`, run VibeBox from another project:
 ```bash
 vibebox init
 vibebox pretask --task "Check project memory before editing"
-vibebox aftertask --request "Check project memory before editing" --summary "Inspected project state." --candidates "<agent-candidate-json>" --technical-outcome success --user-acceptance accepted
-vibebox extract --candidates "<agent-candidate-json>"
+vibebox aftertask --request "Check project memory before editing" --summary "Inspected project state." --candidates-file structured-candidates.json --technical-outcome success --user-acceptance unknown
 vibebox context --task "Change dependency handling"
 vibebox report
 vibebox blackbox --limit 5
 vibebox doctor
-vibebox backup --output ./vibebox-backup
-vibebox restore --from ./vibebox-backup --confirm-replace
 ```
 
-For manual debugging or override, add `vibebox review`, `vibebox approve <candidate-id>`, or `vibebox reject <candidate-id>`.
+These commands use the global store. They do not create project-local `.vibebox` folders, workspace-local snapshots, copied stores, pointer files, or hidden metadata in that project.
 
-These commands use the global user store at `~/.vibebox` by default, or `VIBEBOX_HOME` when configured. They do not create project-local `.vibebox` folders, workspace-local memory snapshots, copied memory stores, pointer files, or hidden metadata in that project.
+## Language Operations
 
-Summary-only `aftertask` and raw-text `extract --text` are raw evidence/debug paths only. They do not create active memory because Core does not semantically interpret user requests, headings, bullets, keywords, raw action summaries, or command output. If an agent receives a missing-candidates warning, it must prepare structured candidates and capture again.
+Internal memory remains canonical for agents. The Wiki display layer follows configured `memoryLanguage`.
 
-## Current User Request Priority Rule
-
-The current explicit user request has priority over past memory. If past memory conflicts with the current request, mention the conflict and follow the current request.
-
-## Project Memory Vs Global Memory
-
-For the current repository, project memory should guide work before global memory. If project and global memory conflict, treat it as a potential conflict and avoid silently resolving it.
-
-Project identity is derived from the current AI working directory. Git remote `origin` and `package.json` name are preferred when present; otherwise VibeBox uses the current folder name. Static HTML/PHP folders, JSON-only folders, document folders, and plain folders are valid project workspaces unless they are excluded internal paths. Project memory lives under `projects/{projectId}/` in the global store; global preferences and rules live under `global/`.
-
-## Adaptive Language Rule
-
-Internal memory stays canonical for agents: JSON field names, enum values, relation types, command names, file paths, errors, and raw logs remain stable. The Obsidian wiki is the user display layer: filenames, category folders, headings, aliases, links, Recent Active Memory, category pages, project pages, and category-based memory notes follow the configured memory language. Visible note names are meaning-based; `mem_...` ids stay in frontmatter. Adapters must not call external translation APIs.
-
-Language conversion and semantic rebuild are explicit agent-runtime operations:
+Language conversion and semantic rebuild require an adapter runtime marker:
 
 ```bash
 VIBEBOX_AGENT_RUNTIME=adapter vibebox convert-lang ko-KR en-US
 VIBEBOX_AGENT_RUNTIME=adapter vibebox rebuild
 ```
 
-Without an agent runtime marker, those commands intentionally stop before modifying files.
+Without an agent runtime marker, these commands stop before changing files.

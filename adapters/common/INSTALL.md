@@ -1,11 +1,11 @@
-# Common VibeBox Install And Invocation Guide
+# Common VibeBox Install And Invocation
 
 ## Requirements
 
 - Node.js `>=20`
-- npm for `npm install` and `npm link`
+- npm
 
-## Local CLI Usage
+## Local CLI
 
 From this repository:
 
@@ -13,9 +13,9 @@ From this repository:
 node bin/vibebox.mjs <command>
 ```
 
-## Linked CLI Usage
+## Linked CLI
 
-To make `vibebox` available as a global development command:
+Create a development command:
 
 ```bash
 npm install
@@ -23,12 +23,13 @@ npm link
 vibebox <command>
 ```
 
-This uses the `bin.vibebox` entry in `package.json`.
-On Windows PowerShell, if the npm `.ps1` shim is blocked by execution policy, use `vibebox.cmd <command>` or the direct `node bin/vibebox.mjs <command>` fallback.
+On Windows PowerShell, if the npm `.ps1` shim is blocked, use:
 
-## Project Initialization
+```bash
+vibebox.cmd <command>
+```
 
-Initialize the global VibeBox user store:
+## Initialize Store
 
 ```bash
 vibebox init
@@ -40,20 +41,29 @@ Fallback:
 node bin/vibebox.mjs init
 ```
 
-## How An Agent Should Locate VibeBox
+`vibebox init` creates or updates the single global user store:
 
-1. Start from the current working directory.
-2. Check whether VibeBox is available through `vibebox`, `vibebox.cmd`, or the local Node fallback.
-3. Let VibeBox treat the current AI working directory as the project workspace. Git remote `origin` and `package.json` name are identity hints when present; otherwise the current folder name is used.
-4. Run pre-task retrieval before meaningful repository work when memory could matter.
-5. Apply the returned `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` to the actual plan and execution.
-6. Prefer `vibebox <command>`.
-7. Fall back to `node bin/vibebox.mjs <command>` inside the VibeBox repository.
+```text
+<USER_HOME>/.vibebox
+%USERPROFILE%\.vibebox
+```
 
-## Avoid Storing Secrets
+Use `VIBEBOX_HOME` or `--store <path>` for a different store.
 
-Do not include API keys, tokens, passwords, bearer credentials, or private connection strings in memory summaries. If command output includes a suspicious value, summarize the outcome without repeating the secret.
+VibeBox does not create project-local `.vibebox` folders, workspace-local snapshots, copied stores, pointer files, or hidden metadata in work projects.
 
-## Runtime State
+## Agent Invocation
 
-`vibebox init` creates the global user store at `~/.vibebox` by default, or under `VIBEBOX_HOME` when configured. VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects.
+Before meaningful work:
+
+```bash
+vibebox pretask --task "<task description>"
+```
+
+After meaningful work:
+
+```bash
+vibebox aftertask --request "<original request or faithful summary>" --summary "..." --candidates-file structured-candidates.json
+```
+
+The agent, not Core, creates structured memory candidates.

@@ -1,12 +1,22 @@
 # VibeBox Memory Policy
 
-VibeBox memory is auto-curated local context for AI coding work. It is not a replacement for the current user request or the repository's actual state.
+VibeBox memory is local active context for AI coding work. It is not a replacement for the current user request or repository reality.
 
 ## Semantic Authority
 
-The AI agent is the semantic authority. It decides user intent, success criteria, corrections, AI failure signals, technical failure meaning, successful approaches, task-only details, model class, scope, categories, relations, replacement/refinement/exception meaning, and localized display text. VibeBox Core validates and manages the resulting structured candidates; it does not infer meaning from raw `userRequest`, headings, bullets, keywords, fixture terms, or `aiActionSummary`.
+The AI agent is the semantic authority. It decides intent, success criteria, corrections, AI failure signals, technical failure meaning, successful approaches, task-only details, model class, scope, categories, relations, replacement meaning, confidence, and localized display text.
 
-If a `userRequest` is captured without structured memory candidates, Core records the raw event and warns that agent semantic candidates are missing. It creates no active user memory. If only `aiActionSummary` is provided, Core preserves raw evidence but creates no active memory. Command, permission, environment, path, API, browser, and tool failures become active `ai_failure_memory` only when the agent submits a structured candidate.
+VibeBox Core validates and manages structured candidates. It does not infer meaning from raw `userRequest`, headings, bullets, keywords, `aiActionSummary`, command output, or raw logs.
+
+If `userRequest` is captured without structured candidates, Core records the raw event and warns. It creates no active user memory. If only `aiActionSummary` is provided, Core preserves evidence but creates no active memory.
+
+## Memory Roles
+
+- `user_success_criteria`: what success means for the user.
+- `ai_failure_memory`: AI mistakes, rejected directions, and technical/tool/environment failures to avoid.
+- `ai_successful_approach`: reusable approaches that worked or plausibly worked.
+- `task_context`: current task details with no durable guidance value.
+- `discarded_detail`: one-off, duplicate, noisy, or low-value details.
 
 ## Memory Types
 
@@ -35,38 +45,96 @@ If a `userRequest` is captured without structured memory candidates, Core record
 - `task_context`
 - `discarded_detail`
 
-Each record can also carry `modelClass`, `modelSubClass`, and `docKey`. `modelClass` separates `user_model`, `domain_model`, `project_model`, `task_context`, and `discarded_detail` so project facts do not leak into global guidance.
+## Scopes
 
-## Memory Scopes
+- `global`: broad user preference or rule.
+- `domain`: domain-specific guidance.
+- `project`: current repository guidance.
+- `task`: current task only.
+- `temporary`: short-lived allowance or experiment.
 
-- `global`: broad user preference across projects.
-- `domain`: applies to a domain such as dashboards, apps, UI, backend, or dependency management.
-- `project`: applies to the current repository.
-- `task`: applies to the current task only.
-- `temporary`: time-limited or experimental context.
+Project memory should guide the current repository before global memory. The current explicit user request still wins.
 
-Project memory should be considered before global memory for the current repository.
+## Active Vs Inactive
 
-## Confidence Levels
+Only active memory guides normal pretask/context output.
 
-- `low`: weak, inferred, tentative, or incomplete context.
-- `medium`: likely preference or rule with some supporting context.
-- `high`: explicit, confirmed, repeated, or strict context.
+Inactive states:
 
-Low-confidence memory must not be treated as final fact.
+- pending legacy/manual debug candidates
+- rejected memory
+- discarded memory
+- quarantined memory
+- replaced memory
+- older superseded or archived records from previous stores
 
-## Active Vs Pending Memory
+## Auto-Curated Policy
 
-- `active`: optimized current memory available for Context Packs and Pre-Task Briefs.
-- `pending`: legacy/manual debug candidate state.
-- `rejected`: manually declined and inactive.
-- `discarded`: replaced or declined and inactive.
-- `quarantined`: held out of normal use because it is risky, conflicting, or unclear.
+Normal flow:
 
-Pending, rejected, discarded, quarantined, and replaced memory must not be treated as active memory.
-Older `superseded` or `archived` records from previous stores are inactive and must not guide normal work.
+```text
+event captured
+-> agent structured candidates supplied
+-> Core validates / dedupes / replaces safely / indexes / renders
+-> active graph, Wiki, and context updated
+```
 
-## Conflict Statuses
+Manual review commands are for debugging, audits, and override:
+
+```bash
+vibebox review
+vibebox approve <candidate-id>
+vibebox approve --safe
+vibebox reject <candidate-id>
+```
+
+## Candidate Breadth
+
+The agent should review meaningful work across:
+
+- success criteria
+- validation patterns
+- response and reporting preferences
+- process patterns
+- design philosophy
+- decision patterns
+- workflow rules
+- prevention and avoid rules
+- tooling and technology preferences
+- AI failure memory
+- AI successful approaches
+- task context
+- discarded details
+
+Separate meanings should become separate candidates. If a complex request yields only one candidate, include `whyOnlyOneCandidate`. If nothing reusable exists, submit `no_reusable_memory_candidate` with `noCandidateReason`.
+
+## User Feedback
+
+User instructions are success criteria. User corrections are more precise success criteria. User dissatisfaction is an AI failure signal, not user failure.
+
+Passing tests or finishing edits can support inferred AI successful approach memory when the approach is reusable and there is no rejection signal. Inferred success must not be described as user-confirmed.
+
+If the user rejects an outcome, route it to AI failure memory, correction guidance, or refined success criteria, not `success_pattern`.
+
+## Failure Memory
+
+AI failure memory can include:
+
+- preference mismatch
+- instruction misread
+- overgeneralization
+- example overfit
+- command failure
+- permission failure
+- environment failure
+- path failure
+- browser/API/plugin/tool failure
+
+Technical failure evidence becomes active AI failure memory only when represented by a structured candidate. Recovery methods that work should be captured as AI successful approaches.
+
+## Conflict And Replacement
+
+Conflict statuses:
 
 - `no_conflict`
 - `duplicate`
@@ -76,89 +144,48 @@ Older `superseded` or `archived` records from previous stores are inactive and m
 - `supersedes`
 - `needs_user_review`
 
-Direct conflicts, supersedes, exceptions, duplicate records, and unclear candidates are handled by the Auto Curator. Risky or unclear candidates are discarded, quarantined, or left in legacy/manual debug pending state instead of becoming active guidance.
+Replacement or same-subject refinement removes older competing memory from active retrieval, active relations, namespace files, Context Packs, Pre-Task Briefs, and active Wiki sections when replacement safety passes.
 
-## Active Replacement Policy
+Scoped exceptions can coexist with broader rules only when the condition is clear.
 
-VibeBox maintains the latest optimized active graph, not a pile of competing rules.
+## Language Policy
 
-- Replacement or correction: activating the new memory removes the older same-subject memory from active retrieval, active wiki sections, namespace files, and active relations.
-- Refinement: when the agent marks the new memory as a refinement and replacement-safety checks pass for the same subject and scope, keep the refined memory and remove the explicitly related older memory.
-- Exception: keep the broader memory only when the exception has a clear `activeCondition`.
-- Ambiguous candidates are quarantined or left in legacy/manual debug pending state.
-- Raw logs can preserve diagnostic events, but raw logs are not normal retrieval context.
+Configured `memoryLanguage` controls Obsidian Wiki display text.
 
-## Pattern Memory Policy
+`memoryLanguage` must be a valid canonical BCP 47 language tag. Short aliases such as `ko`, `en`, `ja`, `cn`, or `tw` are not accepted.
 
-User instructions are success criteria. User corrections are more precise success criteria. User dissatisfaction is an AI failure signal, not user failure. User patterns may describe question style, response preference, process habits, validation requirements, design philosophy, decision style, communication style, correction patterns, agent failure patterns, agent success patterns, and handoff style. A single vague statement should be discarded, quarantined, or marked low confidence; explicit or repeated behavior can become active through auto-curation or manual override.
+Common examples:
 
-Structured user requests should be analyzed by the AI agent as meaning units before AI action summaries are considered. Reference baselines, consistency requirements, target lists, validation or preservation conditions, scope limits, workflow requirements, and AI failure-prevention signals can produce separate agent candidates from the same request. Core does not infer any of that from headings, bullets, keywords, or summary text. Each active candidate should carry explicit role/type/class/scope/category fields plus localized `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage`. A single durable memory can have one `primaryCategory` and multiple `relatedCategories`; related category pages should link to the same canonical note instead of duplicating it.
+- `ko-KR`
+- `en-US`
+- `ja-JP`
+- `zh-CN`
+- `zh-TW`
+- `ar`
 
-The agent should review every meaningful task against these candidate roles and pattern kinds: `user_success_criteria`, `ai_failure_memory`, `ai_successful_approach`, `task_context`, `discarded_detail`, user model, domain model, project model, validation pattern, response preference, process pattern, design philosophy, decision pattern, prevention/avoid rule, and no-reusable-memory diagnostic. Not every lane must produce a memory, but every lane should be considered. If a complex request yields only one candidate, the agent must include `whyOnlyOneCandidate`; if nothing reusable exists, include `no_reusable_memory_candidate` with `noCandidateReason`.
+These are examples, not the full language limit.
 
-Wiki display text is not Core translation. The agent must provide `displayTitle`, `displaySummary`, and `displayRule` in the configured `memoryLanguage` such as `ko-KR`. If a display field is missing, Core may render a display-text-missing diagnostic rather than promoting canonical English summary text as user-facing Wiki prose.
+The AI Agent writes `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage` in the configured language. VibeBox Core validates the BCP 47 tag and renders files from the agent-provided display fields. Core does not translate, summarize, or generate missing user-facing display text.
 
-Failure memory must include prevention guidance when possible. Success patterns should describe when to reuse the successful approach and whether the evidence is confirmed by the user or inferred from validation.
-Pretask/context retrieval should consider relevant failure and success nodes together, not only one side.
+`convert-lang` and semantic `rebuild` require an AI Agent runtime marker and agent-provided localized/semantic data.
 
-Pre-task output is organized for consumption:
+## Runtime State
 
-- User Success Criteria: the active criteria the agent should satisfy.
-- AI Failure Avoidance: the active failure/prevention memory the agent should avoid repeating.
-- AI Successful Approaches: the active reusable methods the agent can apply when they fit the current task.
-
-The agent should reflect relevant guidance in its plan and execution. Merely printing the memory without applying it is not a complete VibeBox workflow.
-
-Technical success and user acceptance are separate. User acceptance is the user's reaction to the result, not memory approval. Passing tests, clean command output, or completed edits can support inferred AI successful approach when the approach is reusable and no rejection signal exists, but a user-rejected result means the AI missed the user's criteria and must become AI failure/correction/prevention memory.
-
-AI failure memory includes preference mismatch, instruction misread, overgeneralization, example overfit, technical failure, environment failure, permission failure, and tool failure. Recovery or workaround methods that succeed should be stored as AI successful approaches, without replacing user success criteria.
-
-Success evidence:
-
-- `confirmed`: user accepted, confirmed, or asked to keep the result.
-- `inferred`: validation passed, no rejection signal exists, and the approach is reusable.
-- `rejected`: technical success was rejected by the user; route to failure/correction/prevention.
-- `unknown`: insufficient evidence for success memory.
-
-Never describe inferred success as confirmed by the user.
-
-## Auto-Curated Policy
-
-New memory candidates are never authority by default. The normal flow is:
+VibeBox uses one global user store:
 
 ```text
-event captured
--> agent structured candidates supplied
--> Core validates / dedupes / replaces safely / indexes / renders
--> active graph, wiki, and context updated
+<USER_HOME>/.vibebox
 ```
 
-If a captured event has `userRequest` but no structured candidates, Core records the raw event, prints a missing-candidates warning, and creates no active memory. The agent should prepare explicit candidates and rerun capture when reusable memory should be stored. Action summaries and command/tool failure evidence are evidence only until represented by an agent candidate.
+or `VIBEBOX_HOME` when configured.
 
-Manual commands remain available for debugging, audits, and override:
+Global preferences and rules live under `global/`; project memory lives under `projects/{projectId}/`; Wiki, index, logs, pending/debug records, backup/restore material, and registry data live under the global store.
 
-Use:
+VibeBox does not create project-local `.vibebox` folders, workspace-local snapshots, copied stores, pointer files, or hidden metadata in work projects. Old project-local stores are legacy; `doctor` warns about them and migration remains explicit and non-destructive.
 
-```bash
-vibebox review
-vibebox approve <candidate-id>
-vibebox approve --safe
-vibebox reject <candidate-id>
-```
+## Sensitive Data
 
-Fallback:
-
-```bash
-node bin/vibebox.mjs <command>
-```
-
-On Windows PowerShell, use `vibebox.cmd <command>` if the npm `.ps1` shim is blocked.
-
-## Sensitive Data Policy
-
-Sensitive data must not enter active memory, wiki pages, or Context Packs.
-
-Treat these as sensitive:
+Do not store secrets in active memory, Wiki pages, or Context Packs:
 
 - API keys
 - tokens
@@ -167,50 +194,4 @@ Treat these as sensitive:
 - private connection strings
 - secrets printed in command output
 
-If suspicious data appears in raw task material, avoid repeating it and prefer `[REDACTED]`.
-
-## Context-Based Classification Policy
-
-Memory classification should consider context, not just isolated words.
-
-Use these judgment axes:
-
-- Source priority: userRequest, userFeedback, prior active success/failure, project context, AI action summary, command result, changed files.
-- Permanence: one-off instruction, temporary allowance, repeatable rule, or long-term preference.
-- Scope: current task, current project, domain, or global.
-- Certainty: weak opinion, preference, confirmed decision, or strict rule.
-- Intent: instruction, correction, rejection, confirmation, exception, or replacement.
-- Evidence: explicit user statement, result-based inference, repeated observation, or single event.
-- Relation to existing memory: duplicate, refinement, exception, direct conflict, supersedes, or unclear.
-
-## Why Keyword-Only Classification Is Not Enough
-
-The same word can mean different things depending on intent and context. For example, a sentence may mention a database as a failed experiment, an approved decision, a temporary exception, or a broad preference. VibeBox should preserve that distinction.
-Input length and fixed keyword examples are not authority. A short user correction can be important feedback when connected to the previous result, while a long instruction may mostly contain task-only details that should be discarded.
-
-## Handling Uncertain Memory
-
-When uncertain:
-
-- Quarantine the candidate or leave it in legacy/manual debug pending state.
-- Mark low confidence when appropriate.
-- Use `needs_user_review` for unclear conflicts.
-- Do not include it as an active constraint in normal pre-task output.
-
-## Current Request Vs Past Memory
-
-The user's current explicit request wins over past memory. If active memory warns against the current request, mention the warning and follow the user's current instruction unless it creates a safety or feasibility issue.
-
-## Runtime State Exclusion Policy
-
-VibeBox runtime state lives in one global user store at `~/.vibebox` by default, or under `VIBEBOX_HOME` when configured. Global preferences and rules live under `global/`; project memory lives under `projects/{projectId}/`; wiki, index, logs, manual-debug pending, backup/restore material, and registry data live under the global store.
-
-The project id is derived from the current AI working directory. Git remote `origin` and `package.json` name are preferred identity hints when present; otherwise VibeBox uses the current folder name. Plain folders, static sites, PHP folders, JSON-only app folders, and document folders are valid project workspaces unless the path is user home, the global store, a drive root, `.codex`, `.agents`, plugin cache, `node_modules`, or another tool/cache/internal folder.
-
-VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects. Old project-local stores are legacy; `doctor` warns about them, and migration remains explicit and non-destructive.
-
-## Adaptive Language Policy
-
-Internal memory stays canonical for agent processing: JSON field names, enum values, relation types, command names, file paths, errors, and raw logs remain stable. The Obsidian wiki is the user display layer: visible filenames, category folders, headings, aliases, links, Recent Active Memory, managed summaries, category pages, project pages, and category-based memory notes follow the configured memory language. Visible note names are meaning-based; `mem_...` ids stay in frontmatter. VibeBox does not use external translation APIs.
-
-`convert-lang` and semantic `rebuild` require an AI agent runtime marker. `backup` and `restore` do not. Restore is destructive replace, not merge, and requires explicit confirmation.
+If suspicious data appears, use `[REDACTED]` or omit it.
