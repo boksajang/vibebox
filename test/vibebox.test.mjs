@@ -1081,6 +1081,37 @@ test('init migrates legacy review-mode config to auto-curation by default', asyn
   assert.equal(migrated.curationMode, 'auto');
 });
 
+test('init reuses existing display templates for a non-default configured language', async () => {
+  const root = await makeWorkspace();
+  await mkdir(storePath(root), { recursive: true });
+  await writeFile(storePath(root, 'config.json'), `${JSON.stringify({
+    version: VIBEBOX_VERSION,
+    locale: 'ko-KR',
+    memoryLanguage: 'ko-KR',
+    outputLanguage: 'ko-KR',
+    wikiLanguage: 'ko-KR',
+    reportLanguage: 'ko-KR',
+    contextLanguage: 'ko-KR',
+    displayTemplates: agentDisplayTemplateInput('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES).displayTemplates
+  }, null, 2)}\n`, 'utf8');
+  process.env.VIBEBOX_LOCALE = 'ko-KR';
+  delete process.env.VIBEBOX_DISPLAY_TEMPLATE;
+
+  const result = await afterTask(root, {
+    userRequest: '기존 ko-KR store에서 템플릿 재사용을 확인한다.',
+    structuredMemoryCandidates: [{
+      type: 'no_reusable_memory_candidate',
+      no_reusable_memory_candidate: true,
+      noCandidateReason: 'Regression check only.'
+    }]
+  });
+
+  assert.equal(result.candidates.length, 0);
+  const config = await loadJson(storePath(root, 'config.json'));
+  assert.equal(config.displayTemplates['ko-KR'].pageUserPreferences, '사용자 성향');
+  assert.equal((await runDoctor(root)).errors.length, 0);
+});
+
 test('project identity prefers git remote names and falls back to package or folder names', async () => {
   const remoteRoot = await makeWorkspace();
   await mkdir(path.join(remoteRoot, '.git'), { recursive: true });

@@ -1360,7 +1360,17 @@ function initialProjectWikiPage(project, locale = 'en-US') {
 export async function initVibeBox(root = process.cwd(), options = {}) {
   const base = vibeboxPath(root);
   const created = [];
-  const config = await createDefaultConfig({ ...options, requireDisplayTemplate: true });
+  const existingConfig = await loadJson(vibeboxPath(root, 'config.json'), {});
+  const configOptions = { ...options };
+  if (Object.keys(existingConfig).length > 0) {
+    if (!configOptions.locale && !configOptions.language) {
+      configOptions.locale = existingConfig.locale || existingConfig.memoryLanguage;
+    }
+    if (configOptions.displayTemplates === undefined && configOptions.displayTemplate === undefined) {
+      configOptions.displayTemplates = existingConfig.displayTemplates ?? existingConfig.displayTemplate;
+    }
+  }
+  const config = await createDefaultConfig({ ...configOptions, requireDisplayTemplate: true });
   const memoryLocale = configuredMemoryLocale(config);
 
   await ensureDir(vibeboxPath(root, 'registry'));
