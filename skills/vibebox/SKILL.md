@@ -25,6 +25,7 @@ Pending memory must not be treated as active memory.
 - If no reusable memory exists, submit `no_reusable_memory_candidate` with `noCandidateReason`.
 - If one candidate represents a complex request, include `whyOnlyOneCandidate`.
 - Wiki display fields must follow configured `memoryLanguage`; Core does not translate missing display text.
+- User-centered memory is first-priority semantic work for the agent. Personal preferences, recurring feedback, answer/reporting style, correction style, question style, collaboration habits, and repeated user patterns must be considered before technical workflow, validation, or prevention categories. The current explicit request still wins, but durable user-centered signals should not be buried only under project or process categories.
 
 Load references only when needed:
 
@@ -92,18 +93,26 @@ After meaningful coding, design, documentation, packaging, or review work:
    - `ai_successful_approach`
    - `task_context`
    - `discarded_detail`
-4. Consider pattern categories such as validation, response preference, process, design philosophy, decision, workflow, prevention, tooling, AI failure, and AI success.
-5. Include fields such as `memoryRole`, `type`, `modelClass`, `modelSubClass`, `scope`, `primaryCategory`, `relatedCategories`, `title`, `summary`, `rule`, `displayTitle`, `displaySummary`, `displayRule`, `displayLanguage`, `evidence`, `confidence`, `sourceType`, `relationCandidates`, and `replaces` when applicable.
-6. Write display fields in configured `memoryLanguage`; for a Korean configured tag, write Korean display text.
-7. Use `--candidates-file` or `--structured-candidates-file` for long JSON, especially on Windows shells.
-8. Run:
+4. First audit for user-centered candidates:
+   - personal preferences and durable success criteria: `type: "user_preference"` with `primaryCategory: "user_preferences"`
+   - answer/reporting/collaboration style: `type: "response_preference"` or `communication_pattern` with `primaryCategory: "user_patterns"`
+   - recurring corrections, repeated feedback, question style, and modification patterns: `correction_pattern`, `question_pattern`, or `communication_pattern` with `primaryCategory: "user_patterns"`
+   - repeated procedural instructions from the user, such as "analyze before modifying", "report before changing", "commit and push after validation", or recurring final-response requirements, are user patterns because they describe how the user wants the agent to work. Use `primaryCategory: "user_patterns"` and add `workflow_rules`, `process_patterns`, or `validation_patterns` as `relatedCategories` when useful.
+   - workflow, validation, or process behavior discovered by the agent or required only by a specific project is not automatically a user pattern. Keep those memories under technical categories unless the repeated durable signal is the user's personal working preference.
+   - if the same memory is both user-centered and technical, keep the user-centered primary category when the user behavior is the durable signal, and add the technical categories as `relatedCategories`.
+5. Then consider other pattern categories such as validation, process, design philosophy, decision, workflow, prevention, tooling, AI failure, and AI success.
+6. Do not mark `no_reusable_memory_candidate` until the user-centered audit above has been performed. Repeated user wording such as "always", "prefer", "do not", "next time", "again", corrections after dissatisfaction, and repeated final-answer requirements should normally produce a user-centered candidate unless it is clearly one-off.
+7. Include fields such as `memoryRole`, `type`, `modelClass`, `modelSubClass`, `scope`, `primaryCategory`, `relatedCategories`, `title`, `summary`, `rule`, `displayTitle`, `displaySummary`, `displayRule`, `displayLanguage`, `evidence`, `confidence`, `sourceType`, `relationCandidates`, and `replaces` when applicable.
+8. Write display fields in configured `memoryLanguage`; for a Korean configured tag, write Korean display text.
+9. Use `--candidates-file` or `--structured-candidates-file` for long JSON, especially on Windows shells.
+10. Run:
 
 ```bash
 vibebox.cmd aftertask --request "<request>" --summary "..." --candidates-file structured-candidates.json --technical-outcome success --user-acceptance unknown
 ```
 
-9. If aftertask write access is blocked, request approved global VibeBox store write access or report that capture, project registration, active memory, and wiki updates were not completed.
-10. If VibeBox warns that candidates are missing or `whyOnlyOneCandidate` is missing, rewrite the capture input and rerun when reusable memory should be stored.
+11. If aftertask write access is blocked, request approved global VibeBox store write access or report that capture, project registration, active memory, and wiki updates were not completed.
+12. If VibeBox warns that candidates are missing or `whyOnlyOneCandidate` is missing, rewrite the capture input and rerun when reusable memory should be stored.
 
 `aftertask` is a global-store write/capture operation.
 

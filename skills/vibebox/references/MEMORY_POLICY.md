@@ -92,6 +92,8 @@ vibebox reject <candidate-id>
 
 The agent should review meaningful work across:
 
+- user personal preferences and durable success criteria
+- recurring user feedback, answer/reporting style, correction style, question style, and collaboration habits
 - success criteria
 - validation patterns
 - response and reporting preferences
@@ -107,6 +109,23 @@ The agent should review meaningful work across:
 - discarded details
 
 Separate meanings should become separate candidates. If a complex request yields only one candidate, include `whyOnlyOneCandidate`. If nothing reusable exists, submit `no_reusable_memory_candidate` with `noCandidateReason`.
+
+## User-Centered Priority
+
+User-centered memory has first priority in semantic extraction. Before routing a candidate to workflow, validation, process, prevention, project, or technical categories, the agent must decide whether the durable signal is really about the user.
+
+Use these canonical categories:
+
+- `primaryCategory: "user_preferences"` for personal preferences, durable success criteria, and stable likes/dislikes.
+- `primaryCategory: "user_patterns"` for recurring feedback, answer/reporting style, communication style, correction patterns, question patterns, collaboration habits, repeated modification patterns, and repeated procedural instructions from the user about how the agent should work.
+
+Repeated procedural instructions from the user, such as "analyze before modifying", "report before changing", "commit and push after validation", or recurring final-answer requirements, are user patterns because they describe how the user wants the agent to work. Use `primaryCategory: "user_patterns"` and add technical categories such as `validation_patterns`, `workflow_rules`, `process_patterns`, or `prevention_rules` as `relatedCategories`.
+
+Workflow, validation, or process behavior discovered by the agent or required only by a specific project is not automatically a user pattern. Keep those memories under technical categories unless the repeated durable signal is the user's personal working preference.
+
+When a user-centered signal also affects implementation, validation, or workflow, keep the user-centered category as primary if the repeated user behavior is the durable lesson. Add technical categories as `relatedCategories` instead of burying the memory outside the user-centered Wiki.
+
+Do not submit `no_reusable_memory_candidate` until this user-centered audit has been performed. Repeated wording such as "always", "prefer", "do not", "next time", "again", direct corrections, dissatisfaction, and recurring final-answer requirements should normally create a user-centered candidate unless the signal is clearly one-off.
 
 ## User Feedback
 

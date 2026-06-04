@@ -3294,6 +3294,82 @@ test('category-based memory notes hide ids and link categories, source projects,
   await assertWikiLinksResolve(root);
 });
 
+test('legacy response preference fallback renders under user patterns', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const memoryIndexPath = storePath(root, 'index', 'global-memory-index.json');
+  const memoryIndex = await loadJson(memoryIndexPath);
+  memoryIndex.memories.push({
+    id: 'mem_abcd1234abcd1234',
+    type: 'response_preference',
+    scope: 'global',
+    topic: 'final report style',
+    title: 'Final reports include files and validation',
+    rule: 'Final responses should include changed files and validation results.',
+    summary: 'The user prefers final reports that include changed files and validation results.',
+    details: '',
+    modelClass: 'user_model',
+    modelSubClass: 'response_preference_model',
+    memoryRole: 'user_success_criteria',
+    successCriterion: '',
+    docKey: 'user_patterns',
+    primaryCategory: null,
+    relatedCategories: [],
+    tags: [],
+    domains: [],
+    appliesTo: [],
+    projectId: null,
+    sourceProjectId: null,
+    sourceProjectRoot: null,
+    repositoryName: '',
+    source: { kind: 'legacy_import' },
+    evidence: [{ kind: 'legacy_fixture', summary: 'Legacy memory did not have primaryCategory.' }],
+    confidence: 'high',
+    status: 'active',
+    curationDecision: 'approve',
+    curationReason: 'Legacy active memory.',
+    conflictStatus: 'no_conflict',
+    supersedes: [],
+    related: [],
+    replaces: [],
+    replacedBy: null,
+    activeCondition: null,
+    createdAt: '2026-06-04T00:00:00.000Z',
+    updatedAt: '2026-06-04T00:00:00.000Z',
+    lastUsedAt: null,
+    displayTitle: 'Final report style',
+    displaySummary: 'The user prefers final reports that include changed files and validation results.',
+    displayRule: 'Include changed files and validation results in final responses.',
+    displayLanguage: 'en-US',
+    displayTextDiagnostics: [],
+    displayLanguageDiagnostics: [],
+    sourceType: 'legacy_import'
+  });
+  await writeFile(memoryIndexPath, JSON.stringify(memoryIndex, null, 2), 'utf8');
+
+  process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
+  try {
+    await rebuildVibeBox(root, { agentSemanticData: { reviewed: true, changes: [] }, cleanup: false });
+  } finally {
+    delete process.env.VIBEBOX_AGENT_RUNTIME;
+  }
+
+  const registry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+  const folderFor = (docKey) => path.basename(registry.docs.find((doc) => doc.docKey === docKey).fileName, '.md');
+  const noteFiles = await listMemoryNoteFiles(root);
+  const noteFile = noteFiles.find((file) => wikiRelative(root, file).startsWith(`${folderFor('user_patterns')}/`));
+  assert.ok(noteFile);
+  const noteText = await readFile(noteFile, 'utf8');
+  assert.match(noteText, /^id:\s*"?mem_abcd1234abcd1234"?\s*$/mu);
+
+  const userPatternsPage = await readFile(storePath(root, 'wiki', registry.docs.find((doc) => doc.docKey === 'user_patterns').fileName), 'utf8');
+  const userPreferencesPage = await readFile(storePath(root, 'wiki', registry.docs.find((doc) => doc.docKey === 'user_preferences').fileName), 'utf8');
+  assert.match(userPatternsPage, /Final report style/);
+  assert.doesNotMatch(userPreferencesPage, /Final report style/);
+  await assertWikiLinksResolve(root);
+});
+
 test('visible wiki memory note names strip memory id tokens from source text', async () => {
   const root = await makeWorkspace();
   process.env.VIBEBOX_LOCALE = 'ko-KR';

@@ -3321,7 +3321,7 @@ function memoryCategoryDocKey(memory) {
   if (memory.type === 'avoid_rule') return 'global_avoid_rules';
   if (memory.memoryRole === 'ai_successful_approach') return 'agent_success_patterns';
   if (memory.memoryRole === 'ai_failure_memory') return 'agent_failure_patterns';
-  if (memory.type === 'response_preference') return 'user_preferences';
+  if (memory.type === 'response_preference') return 'user_patterns';
   if (memory.type === 'process_pattern' || memory.type === 'handoff_pattern') return 'process_patterns';
   if (memory.type === 'validation_pattern') return 'validation_patterns';
   if (memory.type === 'design_philosophy') return 'design_philosophy';

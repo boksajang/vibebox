@@ -45,6 +45,14 @@ Structured candidates use one of these roles:
 
 The normal pretask/context output prioritizes the first three roles as guidance lanes.
 
+## User-Centered Extraction Priority
+
+User-centered memory is first-priority semantic work for the AI agent. Personal preferences, durable success criteria, recurring feedback, answer/reporting style, correction style, question style, collaboration habits, repeated modification patterns, and repeated procedural instructions from the user should be reviewed before technical workflow, validation, process, or prevention categories.
+
+Use `primaryCategory: "user_preferences"` for personal preferences and durable success criteria. Use `primaryCategory: "user_patterns"` for recurring feedback, answer/reporting style, communication style, correction patterns, question patterns, collaboration habits, repeated modification patterns, and repeated procedural instructions from the user. If the same memory also affects implementation, validation, or workflow, keep the user-centered category primary when the durable signal is about the user, and add the technical categories as `relatedCategories`.
+
+Workflow, validation, or process behavior discovered by the agent or required only by a specific project is not automatically a user pattern. It becomes a user pattern when the repeated durable lesson is the user's preferred way for the agent to work.
+
 ## Memory Types
 
 Active memory can use these types:
