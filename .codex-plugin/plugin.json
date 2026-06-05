@@ -29,6 +29,7 @@
     "defaultPrompt": [
       "Before meaningful work in Codex App, check whether VibeBox global store read/write access may need approval.",
       "Generate a VibeBox pre-task brief.",
+      "Run vibebox schema --format json before writing structured memory candidates.",
       "Capture this task with userRequest and structured candidates for each reusable meaning unit.",
       "If global store write approval is denied, report that aftertask capture, project registration, active memory, and wiki updates were not completed.",
       "Explain why there is only one candidate, or include no_reusable_memory_candidate with noCandidateReason.",

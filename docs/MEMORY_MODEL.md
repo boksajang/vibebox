@@ -165,6 +165,8 @@ For meaningful work, the agent should consider every applicable lane:
 
 If the request contains separate reusable meanings, split them into separate candidates. If one candidate is truly enough, include `whyOnlyOneCandidate`. If no reusable memory exists, submit a `no_reusable_memory_candidate` diagnostic with `noCandidateReason`.
 
+Agents should run `vibebox schema --format json` before authoring candidate JSON. The schema output is generated from Core enum constants and is the single source of truth for `type`, `modelClass`, `sourceType`, category keys, defaults, and the candidate skeleton.
+
 ## Action Summaries Are Evidence
 
 `aiActionSummary`, changed files, command results, and errors are evidence. They do not create active memory by themselves.

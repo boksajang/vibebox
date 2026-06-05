@@ -100,11 +100,22 @@ Before capture, scan the request and outcome for:
 - workflow and prevention rules
 - tooling and technology preferences
 
+Before writing candidate JSON, run:
+
+```bash
+vibebox.cmd schema --format json
+vibebox schema --format json
+```
+
+Use the schema output as the single source of truth for `type`, `modelClass`, `sourceType`, `primaryCategory`, `relatedCategories`, defaults, and the candidate skeleton. Do not copy enum lists into agent prompts or invent values from prose.
+
 User-centered signals are first-priority candidates. Use `primaryCategory: "user_preferences"` for personal preferences and durable success criteria. Use `primaryCategory: "user_patterns"` for recurring feedback, answer/reporting style, communication style, correction patterns, question patterns, collaboration habits, repeated modification patterns, and repeated procedural instructions from the user. If the same memory is also technical, put technical categories in `relatedCategories` instead of losing the user-centered primary category.
 
 Do not confuse agent-discovered workflow with user pattern memory. A workflow, validation, or process behavior belongs in a technical category unless the repeated durable signal is the user's preferred way for the agent to work.
 
 Do not collapse separate validation, reporting, preservation, and failure-avoidance meanings into one summary-shaped candidate. If only one candidate is truly enough, include `whyOnlyOneCandidate`. If no reusable memory exists, include `no_reusable_memory_candidate` with `noCandidateReason`.
+
+If VibeBox rejects a candidate for an invalid enum, rerun `vibebox schema --format json`, replace the invalid value with one from the schema output, and resubmit once. Repeated guessing is a contract failure.
 
 The agent must write Wiki display fields in configured `memoryLanguage`. Core validates BCP 47 tags and renders files; it does not translate missing display text.
 

@@ -102,17 +102,19 @@ After meaningful coding, design, documentation, packaging, or review work:
    - if the same memory is both user-centered and technical, keep the user-centered primary category when the user behavior is the durable signal, and add the technical categories as `relatedCategories`.
 5. Then consider other pattern categories such as validation, process, design philosophy, decision, workflow, prevention, tooling, AI failure, and AI success.
 6. Do not mark `no_reusable_memory_candidate` until the user-centered audit above has been performed. Repeated user wording such as "always", "prefer", "do not", "next time", "again", corrections after dissatisfaction, and repeated final-answer requirements should normally produce a user-centered candidate unless it is clearly one-off.
-7. Include fields such as `memoryRole`, `type`, `modelClass`, `modelSubClass`, `scope`, `primaryCategory`, `relatedCategories`, `title`, `summary`, `rule`, `displayTitle`, `displaySummary`, `displayRule`, `displayLanguage`, `evidence`, `confidence`, `sourceType`, `relationCandidates`, and `replaces` when applicable.
-8. Write display fields in configured `memoryLanguage`; for a Korean configured tag, write Korean display text.
-9. Use `--candidates-file` or `--structured-candidates-file` for long JSON, especially on Windows shells.
-10. Run:
+7. Before writing candidate JSON, run `vibebox.cmd schema --format json` or `vibebox schema --format json` and use the returned Core enum values, category model, defaults, and skeleton. Do not invent `type`, `modelClass`, `sourceType`, `primaryCategory`, or `relatedCategories` values from prose.
+8. Include fields such as `memoryRole`, `type`, `modelClass`, `modelSubClass`, `scope`, `primaryCategory`, `relatedCategories`, `title`, `summary`, `rule`, `displayTitle`, `displaySummary`, `displayRule`, `displayLanguage`, `evidence`, `confidence`, `sourceType`, `relationCandidates`, and `replaces` when applicable.
+9. Write display fields in configured `memoryLanguage`; for a Korean configured tag, write Korean display text.
+10. Use `--candidates-file` or `--structured-candidates-file` for long JSON, especially on Windows shells.
+11. Run:
 
 ```bash
 vibebox.cmd aftertask --request "<request>" --summary "..." --candidates-file structured-candidates.json --technical-outcome success --user-acceptance unknown
 ```
 
-11. If aftertask write access is blocked, request approved global VibeBox store write access or report that capture, project registration, active memory, and wiki updates were not completed.
-12. If VibeBox warns that candidates are missing or `whyOnlyOneCandidate` is missing, rewrite the capture input and rerun when reusable memory should be stored.
+12. If aftertask write access is blocked, request approved global VibeBox store write access or report that capture, project registration, active memory, and wiki updates were not completed.
+13. If VibeBox rejects a candidate for an invalid enum, rerun `vibebox schema --format json`, replace the invalid value with one from the schema output, and resubmit once. Do not repeatedly guess values.
+14. If VibeBox warns that candidates are missing or `whyOnlyOneCandidate` is missing, rewrite the capture input and rerun when reusable memory should be stored.
 
 `aftertask` is a global-store write/capture operation.
 

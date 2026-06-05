@@ -119,6 +119,14 @@ Do not call aftertask with only an AI action summary when active memory should b
 
 ## Candidate File Shape
 
+Before writing `structured-candidates.json`, ask Core for the current schema:
+
+```bash
+vibebox schema --format json
+```
+
+Use that output as the single source of truth for candidate enum values, category keys, defaults, and the skeleton. Do not copy enum lists into agent prompts or guess values from prose.
+
 Example `structured-candidates.json`:
 
 ```json

@@ -36,8 +36,9 @@ Read-only or inspection commands:
 - `vibebox report`
 - `vibebox blackbox`
 - `vibebox doctor` when used for inspection
+- `vibebox schema`
 
-These commands read the global store. `pretask` and `context` do not create project registry entries.
+These commands are safe inspection commands. `schema` only prints Core's structured candidate contract and does not read or write the global store. The other commands read the global store. `pretask` and `context` do not create project registry entries.
 
 Write or maintenance commands:
 
@@ -133,6 +134,7 @@ Supported candidate inputs:
 Notes:
 
 - Always pass the original user request or a faithful semantic summary with `--request` when active memory should connect to the user criteria.
+- Before writing candidate JSON, run `vibebox schema --format json` and use the returned Core enum values, category model, defaults, and candidate skeleton.
 - Do not call aftertask with only an AI action summary.
 - Without candidates, VibeBox records the event and warns instead of creating active memory.
 - Without structured candidates, Core records raw evidence and warns instead of creating active memory.
@@ -140,6 +142,20 @@ Notes:
 - If one candidate represents a captured complex request, include `whyOnlyOneCandidate`.
 - If there is no reusable memory, submit `no_reusable_memory_candidate` with `noCandidateReason`.
 - Wiki display fields must match configured `memoryLanguage`.
+
+## `vibebox schema`
+
+Purpose: print the structured candidate schema generated from VibeBox Core enum constants.
+
+Examples:
+
+```bash
+vibebox.cmd schema --format json
+vibebox schema --format json
+vibebox schema --format text
+```
+
+Notes: this command does not read or write the global store. Agents should use it before creating `--candidates-file` JSON instead of copying enum lists into prompts or guessing `type`, `modelClass`, `sourceType`, `primaryCategory`, or `relatedCategories`.
 
 ## `vibebox capture`
 

@@ -284,6 +284,34 @@ const CANDIDATE_SOURCE_TYPE_VALUES = new Set([
   'manual_override',
   'legacy_import'
 ]);
+const DEFAULT_AGENT_SOURCE_TYPE = 'agent_semantic_extraction';
+
+const STRUCTURED_CANDIDATE_TITLE_FIELDS = ['title', 'canonicalTitle'];
+const STRUCTURED_CANDIDATE_SUMMARY_FIELDS = ['summary', 'canonicalSummary'];
+const STRUCTURED_CANDIDATE_REQUIRED_FIELDS = [
+  'memoryRole',
+  'type',
+  'modelClass',
+  'modelSubClass',
+  'scope',
+  'primaryCategory',
+  STRUCTURED_CANDIDATE_TITLE_FIELDS.join(' or '),
+  STRUCTURED_CANDIDATE_SUMMARY_FIELDS.join(' or '),
+  'displayLanguage',
+  'confidence',
+  'sourceType'
+];
+const STRUCTURED_CANDIDATE_RECOMMENDED_FIELDS = [
+  'relatedCategories',
+  'rule',
+  'displayTitle',
+  'displaySummary',
+  'displayRule',
+  'evidence',
+  'relationCandidates',
+  'replaces',
+  'whyOnlyOneCandidate'
+];
 
 const CATEGORY_AXIS_DOC_KEYS = [
   'validation_patterns',
@@ -750,6 +778,115 @@ export function displayTemplateSchema() {
     requiredKeys: [...REQUIRED_DISPLAY_TEMPLATE_KEYS],
     baseTemplate: { ...BASE_DISPLAY_TEMPLATE }
   };
+}
+
+function firstAllowedValue(values) {
+  return [...values][0] || '';
+}
+
+function structuredCandidateSkeleton(locale = 'en-US') {
+  const memoryRole = firstAllowedValue(MEMORY_ROLE_VALUES);
+  const type = firstAllowedValue([...MEMORY_TYPES].filter((candidateType) => CATEGORY_AXIS_DOC_KEYS.includes(TYPE_TO_DOC_KEY[candidateType])));
+  const modelClass = firstAllowedValue(MODEL_CLASS_VALUES);
+  const scope = firstAllowedValue(CANDIDATE_SCOPE_VALUES);
+  const confidence = firstAllowedValue(Object.keys(CONFIDENCE_PRIORITY));
+  const primaryCategory = TYPE_TO_DOC_KEY[type];
+  return {
+    memoryRole,
+    type,
+    modelClass,
+    modelSubClass: `${type}_model`,
+    scope,
+    primaryCategory,
+    relatedCategories: [],
+    title: '<canonical English title>',
+    summary: '<canonical English reusable memory summary>',
+    rule: '<canonical English rule or guidance>',
+    displayTitle: '<localized title in configured memoryLanguage>',
+    displaySummary: '<localized summary in configured memoryLanguage>',
+    displayRule: '<localized rule in configured memoryLanguage>',
+    displayLanguage: locale,
+    confidence,
+    sourceType: DEFAULT_AGENT_SOURCE_TYPE,
+    evidence: [
+      {
+        kind: 'user_request',
+        summary: '<evidence summary>'
+      }
+    ]
+  };
+}
+
+export function structuredCandidateSchema(options = {}) {
+  const locale = options.locale || 'en-US';
+  return {
+    schemaName: 'vibebox.structuredMemoryCandidate',
+    version: VIBEBOX_VERSION,
+    source: 'VibeBox Core constants',
+    requiredFields: STRUCTURED_CANDIDATE_REQUIRED_FIELDS,
+    recommendedFields: STRUCTURED_CANDIDATE_RECOMMENDED_FIELDS,
+    enums: {
+      memoryRole: [...MEMORY_ROLE_VALUES],
+      type: [...MEMORY_TYPES],
+      modelClass: [...MODEL_CLASS_VALUES],
+      scope: [...CANDIDATE_SCOPE_VALUES],
+      primaryCategory: [...CATEGORY_AXIS_DOC_KEYS],
+      relatedCategories: [...CATEGORY_AXIS_DOC_KEYS],
+      confidence: Object.keys(CONFIDENCE_PRIORITY),
+      sourceType: [...CANDIDATE_SOURCE_TYPE_VALUES],
+      status: [...CANDIDATE_STATUS_VALUES]
+    },
+    categoryModel: {
+      docKeys: WIKI_DOCS.map((doc) => doc.docKey),
+      categoryDocKeys: [...CATEGORY_AXIS_DOC_KEYS],
+      typeToDocKey: { ...TYPE_TO_DOC_KEY },
+      typeToWikiPage: { ...TYPE_TO_PAGE }
+    },
+    defaults: {
+      sourceType: DEFAULT_AGENT_SOURCE_TYPE,
+      status: 'active',
+      displayLanguage: locale
+    },
+    candidateSkeleton: structuredCandidateSkeleton(locale),
+    noReusableMemoryCandidate: {
+      type: 'no_reusable_memory_candidate',
+      no_reusable_memory_candidate: true,
+      noCandidateReason: '<why no durable reusable memory exists>'
+    },
+    notes: [
+      'The AI Agent chooses semantic type/category from these enums; Core only validates and renders.',
+      'Do not invent enum values. If unsure, rerun `vibebox schema --format json` and rebuild the candidate.',
+      'Use primaryCategory for the canonical category and relatedCategories for additional category links.'
+    ]
+  };
+}
+
+export function formatStructuredCandidateSchema(schema = structuredCandidateSchema()) {
+  const enums = schema.enums || {};
+  const categoryModel = schema.categoryModel || {};
+  const lines = [
+    `${schema.schemaName || 'vibebox.structuredMemoryCandidate'} v${schema.version || VIBEBOX_VERSION}`,
+    '',
+    'Required fields:',
+    ...((schema.requiredFields || []).map((field) => `- ${field}`)),
+    '',
+    'Enums:',
+    ...Object.entries(enums).map(([key, values]) => `- ${key}: ${(values || []).join(', ')}`),
+    '',
+    'Category model:',
+    `- categoryDocKeys: ${(categoryModel.categoryDocKeys || []).join(', ')}`,
+    `- typeToDocKey: ${JSON.stringify(categoryModel.typeToDocKey || {})}`,
+    '',
+    'Default agent semantic sourceType:',
+    `- ${schema.defaults?.sourceType || DEFAULT_AGENT_SOURCE_TYPE}`,
+    '',
+    'Candidate skeleton:',
+    JSON.stringify(schema.candidateSkeleton || {}, null, 2),
+    '',
+    'No reusable memory diagnostic:',
+    JSON.stringify(schema.noReusableMemoryCandidate || {}, null, 2)
+  ];
+  return lines.join('\n');
 }
 
 function parseDisplayTemplateJson(value, label = 'display template') {
@@ -1962,7 +2099,7 @@ function optionalCandidateStringAny(raw, fieldNames) {
 function requiredCandidateEnum(raw, fieldName, allowed, candidateLabel) {
   const value = requiredCandidateString(raw, fieldName, candidateLabel);
   if (!allowed.has(value)) {
-    throw new Error(`Structured memory candidate ${candidateLabel} has invalid ${fieldName}: ${value}.`);
+    throw new Error(`Structured memory candidate ${candidateLabel} has invalid ${fieldName}: ${value}. Allowed ${fieldName} values: ${[...allowed].join(', ')}.`);
   }
   return value;
 }
@@ -1993,8 +2130,8 @@ function normalizeStructuredMemoryCandidate(rawCandidate, context = {}) {
   const scope = requiredCandidateEnum(raw, 'scope', CANDIDATE_SCOPE_VALUES, candidateLabel);
   const confidence = requiredCandidateEnum(raw, 'confidence', new Set(Object.keys(CONFIDENCE_PRIORITY)), candidateLabel);
   const sourceType = requiredCandidateEnum(raw, 'sourceType', CANDIDATE_SOURCE_TYPE_VALUES, candidateLabel);
-  const title = requiredCandidateStringAny(raw, ['title', 'canonicalTitle'], candidateLabel);
-  const summary = requiredCandidateStringAny(raw, ['summary', 'canonicalSummary'], candidateLabel);
+  const title = requiredCandidateStringAny(raw, STRUCTURED_CANDIDATE_TITLE_FIELDS, candidateLabel);
+  const summary = requiredCandidateStringAny(raw, STRUCTURED_CANDIDATE_SUMMARY_FIELDS, candidateLabel);
   const displayTitle = optionalCandidateString(raw, 'displayTitle');
   const displaySummary = optionalCandidateString(raw, 'displaySummary');
   const displayRule = optionalCandidateString(raw, 'displayRule');
@@ -2015,12 +2152,12 @@ function normalizeStructuredMemoryCandidate(rawCandidate, context = {}) {
     : [];
   const primaryCategory = normalizeCategoryDocKeys([rawPrimaryCategory])[0];
   if (!primaryCategory) {
-    throw new Error(`Structured memory candidate ${candidateLabel} has invalid primaryCategory: ${rawPrimaryCategory}.`);
+    throw new Error(`Structured memory candidate ${candidateLabel} has invalid primaryCategory: ${rawPrimaryCategory}. Allowed primaryCategory values: ${CATEGORY_AXIS_DOC_KEYS.join(', ')}.`);
   }
   const rawRelatedCategories = normalizeStringArray(raw.relatedCategories || []);
   const relatedCategories = normalizeCategoryDocKeys(rawRelatedCategories);
   if (rawRelatedCategories.length && relatedCategories.length !== rawRelatedCategories.length) {
-    throw new Error(`Structured memory candidate ${candidateLabel} has one or more invalid relatedCategories.`);
+    throw new Error(`Structured memory candidate ${candidateLabel} has one or more invalid relatedCategories. Allowed relatedCategories values: ${CATEGORY_AXIS_DOC_KEYS.join(', ')}.`);
   }
 
   const project = context.project || {};

@@ -7,6 +7,7 @@ import {
   captureEvent,
   convertLanguage,
   extractMemoryCandidates,
+  formatStructuredCandidateSchema,
   generateBlackboxReport,
   getVibeBoxHome,
   formatDoctorReport,
@@ -18,7 +19,8 @@ import {
   rebuildVibeBox,
   restoreVibeBox,
   reviewPending,
-  runDoctor
+  runDoctor,
+  structuredCandidateSchema
 } from './core.mjs';
 
 function parseArgs(argv) {
@@ -167,7 +169,7 @@ function isPermissionDeniedError(error) {
 
 function commandAccessKind(command = '') {
   const normalized = String(command || '').toLowerCase();
-  if (['pretask', 'context', 'report', 'blackbox', 'doctor', 'review'].includes(normalized)) {
+  if (['pretask', 'context', 'report', 'blackbox', 'doctor', 'review', 'schema'].includes(normalized)) {
     return 'read';
   }
   if (['aftertask', 'capture', 'extract', 'approve', 'reject', 'init', 'backup', 'restore', 'convert-lang', 'language', 'rebuild'].includes(normalized)) {
@@ -216,6 +218,7 @@ Usage:
   vibebox reject <candidate-id>  (debug/manual override only)
   vibebox context --task <text>
   vibebox pretask --task <text>
+  vibebox schema [--format json|text]
   vibebox aftertask --request <text> --summary <text> --candidates <agent-candidate-json> [--candidates-file <path>] [--structured-candidates-file <path>] [--files a,b] [--commands <text>] [--command-results <text>] [--errors <text>] [--technical-outcome success|failure|partial|unknown] [--user-acceptance accepted|rejected|mixed|unknown]
   vibebox report
   vibebox blackbox [--limit 10] [--type success|failure|task_summary] [--since YYYY-MM-DD]
@@ -231,6 +234,7 @@ Global store:
   Obsidian Wiki display uses the configured canonical BCP 47 memoryLanguage. VIBEBOX_LANGUAGE/--language can seed a new store; VIBEBOX_LOCALE/--locale is an environment hint and does not rewrite an existing store.
   For non-default initial languages, the AI Agent must pass a localized display template with --display-template/--display-template-file or VIBEBOX_DISPLAY_TEMPLATE.
   Active memory requires AI-agent structured candidates. Core does not semantically interpret userRequest, headings, bullets, keywords, raw action summaries, or command output.
+  Run vibebox schema --format json before authoring structured candidates. The schema is generated from Core enum constants so agents do not need copied enum lists.
   If userRequest is present without candidates, aftertask stores the raw event, warns, and creates no active memory.
   If userRequest is captured with exactly one candidate, aftertask emits a contract warning unless the AI Agent includes whyOnlyOneCandidate.
   If no reusable memory exists, include a no_reusable_memory_candidate item with noCandidateReason so Core records the diagnostic without active memory.
@@ -334,6 +338,20 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
     case 'pretask': {
       const task = flags.task || args.join(' ') || await readStdin();
       return generatePreTaskBrief(root, { task, debug: Boolean(flags.debug) });
+    }
+
+    case 'schema': {
+      const schema = structuredCandidateSchema({
+        locale: flags.locale || flags.language || 'en-US'
+      });
+      const format = String(flags.format || args[0] || 'json').toLowerCase();
+      if (format === 'text') {
+        return formatStructuredCandidateSchema(schema);
+      }
+      if (format !== 'json') {
+        throw new Error('schema --format must be json or text.');
+      }
+      return JSON.stringify(schema, null, 2);
     }
 
     case 'aftertask': {

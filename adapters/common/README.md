@@ -21,10 +21,11 @@ The adapter or agent must:
 3. Apply `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` while planning and editing.
 4. Inspect the repository; VibeBox memory does not replace codebase reality.
 5. Run `aftertask` after meaningful work unless the user opts out.
-6. Provide `userRequest` plus AI-agent structured memory candidates.
-7. Submit `whyOnlyOneCandidate` for a one-candidate complex request, or `no_reusable_memory_candidate` with `noCandidateReason` when nothing reusable exists.
-8. Write `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage` for the configured `memoryLanguage`.
-9. Use manual review commands only for debugging, audits, or override.
+6. Run `vibebox schema --format json` before writing candidate JSON.
+7. Provide `userRequest` plus AI-agent structured memory candidates that use the schema output.
+8. Submit `whyOnlyOneCandidate` for a one-candidate complex request, or `no_reusable_memory_candidate` with `noCandidateReason` when nothing reusable exists.
+9. Write `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage` for the configured `memoryLanguage`.
+10. Use manual review commands only for debugging, audits, or override.
 
 Core validates, stores, dedupes, safely replaces, indexes, links, and renders. Core does not infer active memory from raw requests, summaries, headings, bullets, command output, or raw logs.
 
@@ -73,6 +74,8 @@ Do not wrap VibeBox commands in `powershell.exe -Command` as the normal adapter 
 
 - `--request` or a `User request:` section
 - `--candidates`, `--candidates-file`, `--structured-candidates-file`, or `Structured memory candidates:`
+
+Before creating candidates, run `vibebox schema --format json` and use that output as the single source of truth for candidate enum values, category keys, defaults, and the skeleton. Do not copy enum lists into adapter prompts or guess values from prose.
 
 Action summaries and technical failure text are evidence only. Active user memory, AI failure memory, and AI successful approaches require structured candidates supplied by the agent.
 

@@ -116,10 +116,13 @@ Codex must read and apply `User Success Criteria`, `AI Failure Avoidance`, and `
 After meaningful work:
 
 ```bash
+vibebox.cmd schema --format json
 vibebox.cmd aftertask --request "<original user request or faithful summary>" --summary "..." --candidates-file structured-candidates.json --technical-outcome success --user-acceptance unknown
 ```
 
 Codex is the semantic authority. It must decompose reusable meaning into structured candidates for success criteria, validation rules, reporting preferences, preservation rules, project/domain/user patterns, AI failure-prevention rules, successful approaches, task context, categories, relations, replacements, and localized display text.
+
+The schema command is the single source of truth for candidate enum values and the candidate skeleton. Codex must use it before authoring `structured-candidates.json` and must not invent enum values from prose.
 
 If a complex request produces one candidate, include `whyOnlyOneCandidate`. If no reusable memory exists, submit `no_reusable_memory_candidate` with `noCandidateReason`.
 

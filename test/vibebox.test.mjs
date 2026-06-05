@@ -37,9 +37,10 @@ import {
   restoreVibeBox,
   reviewPending,
   runDoctor,
+  structuredCandidateSchema,
   VIBEBOX_VERSION
 } from '../src/core.mjs';
-import { formatCliError } from '../src/cli.mjs';
+import { formatCliError, runCli } from '../src/cli.mjs';
 
 async function makeWorkspace() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vibebox-test-'));
@@ -4914,6 +4915,51 @@ test('universal agent skill package files exist and declare shared skill metadat
   assert.equal(packageJson.bin.vibebox, './bin/vibebox.mjs');
 });
 
+test('schema command exposes structured candidate enums from core without touching the store', async () => {
+  const root = await makeWorkspace();
+  const output = await runCli(['schema', '--format', 'json'], root);
+  const schema = JSON.parse(output);
+  const direct = structuredCandidateSchema();
+
+  assert.deepEqual(schema.enums, direct.enums);
+  assert.deepEqual(schema.categoryModel, direct.categoryModel);
+  assert.equal(schema.defaults.sourceType, 'agent_semantic_extraction');
+  assert.equal(schema.candidateSkeleton.sourceType, schema.defaults.sourceType);
+  assert.ok(schema.enums.type.includes(schema.candidateSkeleton.type));
+  assert.ok(schema.enums.modelClass.includes(schema.candidateSkeleton.modelClass));
+  assert.ok(schema.enums.primaryCategory.includes(schema.candidateSkeleton.primaryCategory));
+  assert.equal(schema.categoryModel.typeToDocKey.response_preference, 'user_patterns');
+  await assert.rejects(
+    () => access(storePath(root, 'registry/projects.json')),
+    /ENOENT/
+  );
+
+  const text = await runCli(['schema', '--format', 'text'], root);
+  assert.match(text, /Required fields:/);
+  assert.match(text, /Candidate skeleton:/);
+});
+
+test('structured candidate enum errors include allowed values from core schema', async () => {
+  const root = await makeWorkspace();
+  const invalidType = candidateFixture({ type: 'success_memory' });
+  await assert.rejects(
+    () => extractMemoryCandidates(root, { structuredMemoryCandidates: [invalidType] }),
+    /invalid type: success_memory\. Allowed type values: .*success_pattern/u
+  );
+
+  const invalidModelClass = candidateFixture({ modelClass: 'project_memory' });
+  await assert.rejects(
+    () => extractMemoryCandidates(root, { structuredMemoryCandidates: [invalidModelClass] }),
+    /invalid modelClass: project_memory\. Allowed modelClass values: .*project_model/u
+  );
+
+  const invalidSourceType = candidateFixture({ sourceType: 'test_fixture' });
+  await assert.rejects(
+    () => extractMemoryCandidates(root, { structuredMemoryCandidates: [invalidSourceType] }),
+    /invalid sourceType: test_fixture\. Allowed sourceType values: .*agent_semantic_extraction/u
+  );
+});
+
 test('agent packaging docs list real CLI commands and fallback strategy without overclaiming distribution', async () => {
   const commandReference = await readFile(path.resolve('skills/vibebox/references/COMMANDS.md'), 'utf8');
   for (const command of [
@@ -4926,6 +4972,7 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
     'reject',
     'context',
     'pretask',
+    'schema',
     'aftertask',
     'report',
     'blackbox',
@@ -4955,6 +5002,7 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /vibebox <command>/);
   assert.match(combined, /vibebox\.cmd <command>/);
   assert.match(combined, /vibebox\.cmd pretask --task/);
+  assert.match(combined, /vibebox(?:\.cmd)? schema --format json/);
   assert.match(combined, /node bin\/vibebox\.mjs <command>/);
   assert.match(combined, /pretask[\s\S]{0,220}read-only|read-only[\s\S]{0,220}pretask/i);
   assert.match(combined, /context[\s\S]{0,220}read-only|read-only[\s\S]{0,220}context/i);
@@ -4973,6 +5021,7 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /original user request or faithful summary/i);
   assert.match(combined, /without (?:structured )?candidates, VibeBox records the event and warns|userRequest[\s\S]{0,120}structured candidates are missing/i);
   assert.match(combined, /Structured memory candidates/i);
+  assert.match(combined, /single source of truth[\s\S]{0,220}candidate enum values|candidate enum values[\s\S]{0,220}single source of truth/i);
   assert.match(combined, /Do not call aftertask with only an AI action summary/i);
   assert.match(combined, /AI Agent must provide|agent must provide|must submit structured candidates/i);
   assert.match(combined, /Core does not semantically interpret|Core will not infer active memory/i);
@@ -5070,7 +5119,7 @@ test('CLI --language overrides environment locale for new store configuration', 
   assertConfigLanguageTags(config, 'ja-JP');
 });
 
-test('CLI exposes init, capture, extract, review, approve, context, pretask, aftertask, report, blackbox, doctor, backup, restore, convert-lang, and rebuild commands', async () => {
+test('CLI exposes init, capture, extract, review, approve, context, pretask, schema, aftertask, report, blackbox, doctor, backup, restore, convert-lang, and rebuild commands', async () => {
   const root = await makeWorkspace();
   const bin = path.resolve('bin/vibebox.mjs');
 
@@ -5118,6 +5167,10 @@ test('CLI exposes init, capture, extract, review, approve, context, pretask, aft
   const pretask = run(['pretask', 'Update package dependencies for dashboard work.']);
   assert.equal(pretask.status, 0);
   assert.match(pretask.stdout, /VibeBox Pre-Task Brief/);
+
+  const schema = run(['schema', '--format', 'json']);
+  assert.equal(schema.status, 0);
+  assert.equal(JSON.parse(schema.stdout).schemaName, 'vibebox.structuredMemoryCandidate');
 
   const aftertask = run(['aftertask', '--request', 'Update package dependencies.', '--summary', 'Kept package.json unchanged.', '--files', 'src/app.mjs', '--commands', 'npm.cmd test', '--outcome', 'success']);
   assert.equal(aftertask.status, 0);

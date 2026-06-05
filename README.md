@@ -54,6 +54,7 @@ Use it around meaningful repository work:
 
 ```bash
 vibebox pretask --task "Fix dashboard table scrolling"
+vibebox schema --format json
 vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-level scrolling and ran tests." --candidates-file structured-candidates.json --technical-outcome success --user-acceptance unknown
 ```
 
@@ -61,10 +62,11 @@ On Windows or Codex App, prefer the command shim:
 
 ```bash
 vibebox.cmd pretask --task "Fix dashboard table scrolling"
+vibebox.cmd schema --format json
 vibebox.cmd aftertask --request "Fix dashboard table scrolling" --summary "Updated table scrolling." --candidates-file structured-candidates.json
 ```
 
-`aftertask` needs structured candidates when active memory should be created. An action summary alone is raw evidence only.
+`schema` prints the current structured candidate enum values and skeleton from VibeBox Core. `aftertask` needs structured candidates when active memory should be created. An action summary alone is raw evidence only.
 
 ## Codex Plugin Use
 

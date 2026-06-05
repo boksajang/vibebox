@@ -47,10 +47,13 @@ Claude-compatible agents should apply `User Success Criteria`, `AI Failure Avoid
 After meaningful work:
 
 ```bash
+vibebox schema --format json
 vibebox aftertask --request "<original user request or faithful summary>" --summary "..." --candidates-file structured-candidates.json --technical-outcome success --user-acceptance unknown
 ```
 
 The `--request` value preserves the source of user success criteria. Active memory requires Claude to provide structured candidates with its semantic judgment. Do not send only an action summary when active memory should be created.
+
+The schema command is the single source of truth for candidate enum values, category keys, defaults, and the skeleton. Claude-compatible agents should use it before authoring `structured-candidates.json` and should not invent enum values from prose.
 
 If using a long file payload, include `User request:` and `Structured memory candidates:`.
 

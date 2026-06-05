@@ -63,7 +63,8 @@ vibebox pretask --task "<task description>"
 After meaningful work:
 
 ```bash
+vibebox schema --format json
 vibebox aftertask --request "<original request or faithful summary>" --summary "..." --candidates-file structured-candidates.json
 ```
 
-The agent, not Core, creates structured memory candidates.
+The agent, not Core, creates structured memory candidates. Use `vibebox schema --format json` as the single source of truth for candidate enum values, category keys, defaults, and the skeleton before writing the candidates file.
