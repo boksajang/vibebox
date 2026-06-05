@@ -39,7 +39,26 @@ Requirements:
 - Node.js 20 or newer
 - npm
 
-Install from a checkout:
+### Agent Plugin Or Skill Use
+
+Install or enable VibeBox through the AI agent surface you use, then start a new agent session.
+
+After the VibeBox plugin or skill is installed, users should not need to run `pretask`, `schema`, or `aftertask` by hand. Ask for coding work normally. The installed agent contract handles the VibeBox workflow:
+
+- before meaningful repository work, the agent retrieves active guidance from the global VibeBox store;
+- before writing memory candidates, the agent reads the Core-generated structured candidate schema;
+- after meaningful work, the agent captures the original user request, outcome, validation evidence, and AI-agent structured memory candidates;
+- VibeBox Core validates, stores, dedupes, indexes, links, and renders the Wiki automatically when capture succeeds.
+
+This applies to Codex plugin use and Claude-compatible skill use. The AI agent remains the semantic authority: it decides which reusable memories to submit, and Core manages those submitted candidates.
+
+Sandboxed hosts may still ask for permission to read or write the single global VibeBox store. That approval is for automatic memory retrieval and capture, not for a manual user workflow.
+
+On first use, the agent or adapter should bootstrap the global store and provide any required localized display template for the configured `memoryLanguage`. Users should not need to craft VibeBox workflow commands or candidate JSON manually.
+
+### Local CLI Development
+
+Use the CLI commands directly only when developing, debugging, or validating VibeBox itself:
 
 ```bash
 git clone https://github.com/boksajang/vibebox.git
@@ -50,23 +69,7 @@ vibebox init
 vibebox doctor
 ```
 
-Use it around meaningful repository work:
-
-```bash
-vibebox pretask --task "Fix dashboard table scrolling"
-vibebox schema --format json
-vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-level scrolling and ran tests." --candidates-file structured-candidates.json --technical-outcome success --user-acceptance unknown
-```
-
-On Windows or Codex App, prefer the command shim:
-
-```bash
-vibebox.cmd pretask --task "Fix dashboard table scrolling"
-vibebox.cmd schema --format json
-vibebox.cmd aftertask --request "Fix dashboard table scrolling" --summary "Updated table scrolling." --candidates-file structured-candidates.json
-```
-
-`schema` prints the current structured candidate enum values and skeleton from VibeBox Core. `aftertask` needs structured candidates when active memory should be created. An action summary alone is raw evidence only.
+`vibebox init` and `vibebox doctor` are maintenance checks for a bare CLI checkout. In normal plugin or skill use, the agent invokes VibeBox during the coding workflow and no additional user setup commands are part of day-to-day memory capture.
 
 ## Codex Plugin Use
 
