@@ -59,6 +59,8 @@ If using a long file payload, include `User request:` and `Structured memory can
 
 Claude is the semantic authority. It decides success criteria, corrections, AI failure signals, successful approaches, task-only details, model class, scope, categories, relations, replacements, confidence, and localized display text.
 
+Claude-compatible agents must choose candidate `scope` semantically. Prefer `scope: "global"` for durable user personal preferences, repeated procedural instructions, tool preferences, validation preferences, and response/reporting preferences unless the memory is explicitly tied to one repository, product, dataset, artifact format, UI flow, local path/cache state, test suite, or project name. Use `sourceProjectId`/`sourceProjectRoot` as provenance for global memories learned during project work; reserve `projectId` for memories whose active guidance is project-bound.
+
 If a complex request produces only one candidate, include `whyOnlyOneCandidate`. If no reusable memory exists, submit `no_reusable_memory_candidate` with `noCandidateReason`.
 
 Display fields should follow configured `memoryLanguage`. `memoryLanguage` must be a valid canonical BCP 47 language tag. For non-default initial languages and conversion targets, Claude must pass an AI-agent localized display template for the exact configured tag; Core renders that template instead of using hardcoded locale packs. A store configured with a Korean language tag needs Korean `displayTitle`, `displaySummary`, and `displayRule`, plus matching `displayLanguage`.

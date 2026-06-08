@@ -1,6 +1,6 @@
 {
   "name": "vibebox",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Universal local-first memory middleware where AI agents provide structured memory candidates and Core manages them.",
   "author": {
     "name": "Boksajang"
@@ -17,7 +17,7 @@
   "interface": {
     "displayName": "VibeBox",
     "shortDescription": "Local structured memory for AI coding agents.",
-    "longDescription": "Use VibeBox's local CLI and shared skill instructions to retrieve active guidance before coding, then capture the original userRequest with AI-agent structured memory candidates after work. The agent decomposes reusable success criteria, validation rules, reporting preferences, failure-prevention rules, successful approaches, task context, categories, relations, replacements, and localized display text. VibeBox Core does not infer active memory from raw requests or summaries; it validates, stores, dedupes, indexes, links, and renders the candidates supplied by the agent. In Codex App or any sandboxed host, pretask/context are read-only retrieval commands but still require read access to the single global store at <USER_HOME>/.vibebox, %USERPROFILE%\\.vibebox, or VIBEBOX_HOME. Aftertask is a global-store write/capture operation and may need write approval for project registration, active memory, indexes, and wiki updates. If approval is denied, report VibeBox guidance or capture unavailable; do not create workspace-local snapshots, copied stores, project-local .vibebox folders, pointer files, or hidden metadata fallbacks.",
+    "longDescription": "Use VibeBox's local CLI and shared skill instructions to retrieve active guidance before coding, then capture the original userRequest with AI-agent structured memory candidates after work. The agent decomposes reusable success criteria, validation rules, reporting preferences, failure-prevention rules, successful approaches, task context, categories, relations, replacements, and localized display text. Agents prefer global scope for durable user-centered preferences unless the memory is clearly project-bound. VibeBox Core does not infer active memory from raw requests or summaries; it validates, stores, dedupes, indexes, links, and renders the candidates supplied by the agent. In Codex App or any sandboxed host, pretask/context are read-only retrieval commands but still require read access to the single global store at <USER_HOME>/.vibebox, %USERPROFILE%\\.vibebox, or VIBEBOX_HOME. Aftertask is a global-store write/capture operation and may need write approval for project registration, active memory, indexes, and wiki updates. If approval is denied, report VibeBox guidance or capture unavailable; do not create workspace-local snapshots, copied stores, project-local .vibebox folders, pointer files, or hidden metadata fallbacks.",
     "developerName": "Boksajang",
     "category": "Productivity",
     "brandColor": "#0891B2",
@@ -30,6 +30,7 @@
       "Before meaningful work in Codex App, check whether VibeBox global store read/write access may need approval.",
       "Generate a VibeBox pre-task brief.",
       "Run vibebox schema --format json before writing structured memory candidates.",
+      "Prefer scope global for user personal preferences, repeated procedures, tool, validation, and response/reporting preferences unless they are clearly project-bound.",
       "Capture this task with userRequest and structured candidates for each reusable meaning unit.",
       "If global store write approval is denied, report that aftertask capture, project registration, active memory, and wiki updates were not completed.",
       "Explain why there is only one candidate, or include no_reusable_memory_candidate with noCandidateReason.",

@@ -77,6 +77,8 @@ Do not wrap VibeBox commands in `powershell.exe -Command` as the normal adapter 
 
 Before creating candidates, run `vibebox schema --format json` and use that output as the single source of truth for candidate enum values, category keys, defaults, and the skeleton. Do not copy enum lists into adapter prompts or guess values from prose.
 
+Choose `scope` semantically. User personal preferences, repeated user procedures, tool preferences, validation preferences, and response/reporting preferences should normally be `scope: "global"` when they are not explicitly tied to the current repository. Use `scope: "project"` only for repository-specific product rules, data/schema/API contracts, artifact formats, UI flows, local paths/cache state, test suites, or explicit project names. Keep `sourceProjectId` as provenance for global memories learned during a project.
+
 Action summaries and technical failure text are evidence only. Active user memory, AI failure memory, and AI successful approaches require structured candidates supplied by the agent.
 
 ## Language

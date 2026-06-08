@@ -53,6 +53,12 @@ If `userRequest` is captured without structured candidates, Core records the raw
 - `task`: current task only.
 - `temporary`: short-lived allowance or experiment.
 
+The agent must not treat the current repository as the default scope just because the memory was observed while working in that repository. Prefer `scope: "global"` for durable user personal preferences, repeated procedural instructions, tool preferences, validation preferences, and response/reporting preferences unless the memory is explicitly tied to one repository, product, dataset, artifact, local path, local cache state, or test suite.
+
+Use `scope: "project"` when a rule depends on repository-specific product behavior, data/schema/API contracts, artifact format, UI flow, business rule, local setup, cache path, or explicit project name. A global memory can still keep `sourceProjectId` and `sourceProjectRoot` as provenance; do not set `projectId` only because the memory was learned during a project.
+
+If the signal is user-centered and the only project-specific detail is the example where it was observed, prefer global and put the project detail in evidence or source provenance. If user wording or repository reality clearly narrows it, keep it project-scoped.
+
 Project memory should guide the current repository before global memory. The current explicit user request still wins.
 
 ## Active Vs Inactive
@@ -126,6 +132,8 @@ Workflow, validation, or process behavior discovered by the agent or required on
 When a user-centered signal also affects implementation, validation, or workflow, keep the user-centered category as primary if the repeated user behavior is the durable lesson. Add technical categories as `relatedCategories` instead of burying the memory outside the user-centered Wiki.
 
 Do not submit `no_reusable_memory_candidate` until this user-centered audit has been performed. Repeated wording such as "always", "prefer", "do not", "next time", "again", direct corrections, dissatisfaction, and recurring final-answer requirements should normally create a user-centered candidate unless the signal is clearly one-off.
+
+For user-centered candidates, run the scope audit before writing JSON: personal preferences, repeated procedures, and tool/validation/response preferences should normally be `scope: "global"` unless a concrete repository boundary is part of the durable rule.
 
 ## User Feedback
 

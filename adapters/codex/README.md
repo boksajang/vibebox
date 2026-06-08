@@ -49,14 +49,14 @@ Codex App can read installed plugin cache files instead of the repository workin
 Cache placeholder:
 
 ```text
-%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.1\
+%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.2\
 ```
 
-This `0.1.1` folder is the cache-busting installed version. Stale plugin cache content can make Codex App behave as if older skill files are still installed. After `git pull`, reinstall, or source updates, compare the installed cache against the repository:
+This `0.1.2` folder is the cache-busting installed version. Stale plugin cache content can make Codex App behave as if older skill files are still installed. After `git pull`, reinstall, or source updates, compare the installed cache against the repository:
 
 ```powershell
 $repo = (Get-Location).Path
-$cache = "$env:USERPROFILE\.codex\plugins\cache\personal\vibebox\0.1.1"
+$cache = "$env:USERPROFILE\.codex\plugins\cache\personal\vibebox\0.1.2"
 Test-Path $cache
 Get-FileHash "$repo\.codex-plugin\plugin.json", "$cache\.codex-plugin\plugin.json"
 Get-FileHash "$repo\skills\vibebox\SKILL.md", "$cache\skills\vibebox\SKILL.md"
@@ -121,6 +121,8 @@ vibebox.cmd aftertask --request "<original user request or faithful summary>" --
 ```
 
 Codex is the semantic authority. It must decompose reusable meaning into structured candidates for success criteria, validation rules, reporting preferences, preservation rules, project/domain/user patterns, AI failure-prevention rules, successful approaches, task context, categories, relations, replacements, and localized display text.
+
+Codex must choose candidate `scope` semantically. Prefer `scope: "global"` for durable user personal preferences, repeated procedural instructions, tool preferences, validation preferences, and response/reporting preferences unless the memory is explicitly tied to one repository, product, dataset, artifact format, UI flow, local path/cache state, test suite, or project name. Use `sourceProjectId`/`sourceProjectRoot` as provenance for global memories learned during project work; reserve `projectId` for memories whose active guidance is project-bound.
 
 The schema command is the single source of truth for candidate enum values and the candidate skeleton. Codex must use it before authoring `structured-candidates.json` and must not invent enum values from prose.
 

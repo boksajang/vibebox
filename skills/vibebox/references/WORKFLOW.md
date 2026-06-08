@@ -113,6 +113,13 @@ User-centered signals are first-priority candidates. Use `primaryCategory: "user
 
 Do not confuse agent-discovered workflow with user pattern memory. A workflow, validation, or process behavior belongs in a technical category unless the repeated durable signal is the user's preferred way for the agent to work.
 
+Choose `scope` after the user-centered audit:
+
+- Prefer `scope: "global"` for user personal preferences, repeated user procedures, tool preferences, validation preferences, and response/reporting preferences when they can guide work outside the current repository.
+- Use `scope: "project"` when the durable rule depends on the current repository's product, data/schema/API contract, artifact format, UI flow, business rule, local path/cache state, test suite, or explicit project name.
+- Keep `sourceProjectId` and `sourceProjectRoot` as provenance for global memories learned in a project. Do not set `projectId` just because the lesson was observed in one repository.
+- If uncertain between global and project for a user-centered preference, prefer global unless the user wording or repository reality clearly narrows it.
+
 Do not collapse separate validation, reporting, preservation, and failure-avoidance meanings into one summary-shaped candidate. If only one candidate is truly enough, include `whyOnlyOneCandidate`. If no reusable memory exists, include `no_reusable_memory_candidate` with `noCandidateReason`.
 
 If VibeBox rejects a candidate for an invalid enum, rerun `vibebox schema --format json`, replace the invalid value with one from the schema output, and resubmit once. Repeated guessing is a contract failure.

@@ -18,6 +18,7 @@ Pending memory must not be treated as active memory.
 - The agent interprets user requests, corrections, failures, outcomes, categories, relations, replacements, and localized display text.
 - The agent submits structured memory candidates after meaningful work.
 - The agent must provide structured candidates when reusable active memory should be created.
+- The agent must choose `scope` semantically. Prefer `scope: "global"` for durable user personal preferences, repeated procedural instructions, tool preferences, validation preferences, and response/reporting preferences unless the memory is explicitly tied to one repository, product, dataset, artifact, or local environment.
 - VibeBox Core validates, stores, dedupes, safely replaces, indexes, links, and renders those candidates.
 - Core will not infer active memory from raw `userRequest`, headings, bullets, keywords, `aiActionSummary`, command output, or raw logs.
 - Action summaries, changed files, errors, and commands are evidence until the agent turns them into structured candidates.
@@ -101,20 +102,25 @@ After meaningful coding, design, documentation, packaging, or review work:
    - workflow, validation, or process behavior discovered by the agent or required only by a specific project is not automatically a user pattern. Keep those memories under technical categories unless the repeated durable signal is the user's personal working preference.
    - if the same memory is both user-centered and technical, keep the user-centered primary category when the user behavior is the durable signal, and add the technical categories as `relatedCategories`.
 5. Then consider other pattern categories such as validation, process, design philosophy, decision, workflow, prevention, tooling, AI failure, and AI success.
-6. Do not mark `no_reusable_memory_candidate` until the user-centered audit above has been performed. Repeated user wording such as "always", "prefer", "do not", "next time", "again", corrections after dissatisfaction, and repeated final-answer requirements should normally produce a user-centered candidate unless it is clearly one-off.
-7. Before writing candidate JSON, run `vibebox.cmd schema --format json` or `vibebox schema --format json` and use the returned Core enum values, category model, defaults, and skeleton. Do not invent `type`, `modelClass`, `sourceType`, `primaryCategory`, or `relatedCategories` values from prose.
-8. Include fields such as `memoryRole`, `type`, `modelClass`, `modelSubClass`, `scope`, `primaryCategory`, `relatedCategories`, `title`, `summary`, `rule`, `displayTitle`, `displaySummary`, `displayRule`, `displayLanguage`, `evidence`, `confidence`, `sourceType`, `relationCandidates`, and `replaces` when applicable.
-9. Write display fields in configured `memoryLanguage`; for a Korean configured tag, write Korean display text.
-10. Use `--candidates-file` or `--structured-candidates-file` for long JSON, especially on Windows shells.
-11. Run:
+6. Choose candidate scope deliberately:
+   - use `scope: "global"` when a user personal preference, repeated user procedure, tool preference, validation preference, or response/reporting preference can guide future work outside the current repository.
+   - use `scope: "project"` only when the rule depends on this repository's product, data model, artifact format, local cache path, test suite, UI flow, business rule, or explicit project name.
+   - keep `sourceProjectId`/`sourceProjectRoot` as provenance for global memories learned during a project; do not set `projectId` just because the memory was observed in a project.
+   - if uncertain between global and project for a user-centered preference, prefer global with project-specific evidence unless the user or repository context clearly narrows it.
+7. Do not mark `no_reusable_memory_candidate` until the user-centered and scope audits above have been performed. Repeated user wording such as "always", "prefer", "do not", "next time", "again", corrections after dissatisfaction, and recurring final-answer requirements should normally produce a user-centered candidate unless it is clearly one-off.
+8. Before writing candidate JSON, run `vibebox.cmd schema --format json` or `vibebox schema --format json` and use the returned Core enum values, category model, defaults, and skeleton. Do not invent `type`, `modelClass`, `sourceType`, `primaryCategory`, or `relatedCategories` values from prose.
+9. Include fields such as `memoryRole`, `type`, `modelClass`, `modelSubClass`, `scope`, `primaryCategory`, `relatedCategories`, `title`, `summary`, `rule`, `displayTitle`, `displaySummary`, `displayRule`, `displayLanguage`, `evidence`, `confidence`, `sourceType`, `relationCandidates`, and `replaces` when applicable.
+10. Write display fields in configured `memoryLanguage`; for a Korean configured tag, write Korean display text.
+11. Use `--candidates-file` or `--structured-candidates-file` for long JSON, especially on Windows shells.
+12. Run:
 
 ```bash
 vibebox.cmd aftertask --request "<request>" --summary "..." --candidates-file structured-candidates.json --technical-outcome success --user-acceptance unknown
 ```
 
-12. If aftertask write access is blocked, request approved global VibeBox store write access or report that capture, project registration, active memory, and wiki updates were not completed.
-13. If VibeBox rejects a candidate for an invalid enum, rerun `vibebox schema --format json`, replace the invalid value with one from the schema output, and resubmit once. Do not repeatedly guess values.
-14. If VibeBox warns that candidates are missing or `whyOnlyOneCandidate` is missing, rewrite the capture input and rerun when reusable memory should be stored.
+13. If aftertask write access is blocked, request approved global VibeBox store write access or report that capture, project registration, active memory, and wiki updates were not completed.
+14. If VibeBox rejects a candidate for an invalid enum, rerun `vibebox schema --format json`, replace the invalid value with one from the schema output, and resubmit once. Do not repeatedly guess values.
+15. If VibeBox warns that candidates are missing or `whyOnlyOneCandidate` is missing, rewrite the capture input and rerun when reusable memory should be stored.
 
 `aftertask` is a global-store write/capture operation.
 
@@ -145,7 +151,7 @@ Language conversion and semantic rebuild require an adapter-provided runtime mar
 
 ## Codex Cache Note
 
-Codex App can load an installed plugin cache instead of the repository checkout. A GitHub push alone does not refresh the installed cache. After local plugin source updates, run `git pull` or reinstall/update the plugin, then verify the cache under `%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.1\`. VibeBox does not delete or rewrite Codex App plugin cache files automatically.
+Codex App can load an installed plugin cache instead of the repository checkout. A GitHub push alone does not refresh the installed cache. After local plugin source updates, run `git pull` or reinstall/update the plugin, then verify the cache under `%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.2\`. VibeBox does not delete or rewrite Codex App plugin cache files automatically.
 
 ## Sensitive Data
 

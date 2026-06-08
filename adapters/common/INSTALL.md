@@ -68,3 +68,5 @@ vibebox aftertask --request "<original request or faithful summary>" --summary "
 ```
 
 The agent, not Core, creates structured memory candidates. Use `vibebox schema --format json` as the single source of truth for candidate enum values, category keys, defaults, and the skeleton before writing the candidates file.
+
+When choosing candidate `scope`, prefer `global` for durable user personal preferences, repeated procedures, tool preferences, validation preferences, and response/reporting preferences unless they are explicitly bound to one repository. Use `project` for repository-specific product rules, data/schema/API contracts, artifact formats, UI flows, local paths/cache state, test suites, or explicit project names. Keep source project fields as provenance for global memories learned during project work.

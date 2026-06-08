@@ -104,6 +104,12 @@ Project facts stay project-scoped unless the agent identifies a reusable user or
 - `task`: applies only to the current task.
 - `temporary`: short-lived allowance or experiment.
 
+The agent should not make a memory project-scoped merely because it was discovered while working in a project. User personal preferences, repeated procedures, tool preferences, validation preferences, and response/reporting preferences should normally use `scope: "global"` when they can guide work outside the current repository.
+
+Use `scope: "project"` when the durable guidance depends on a specific repository, product, dataset, data/schema/API contract, artifact format, UI flow, business rule, local path/cache state, or test suite. A global memory can still record `sourceProjectId` and `sourceProjectRoot` as provenance; `projectId` should be reserved for memories whose active guidance is scoped to that project.
+
+If a user-centered preference includes one project example but the preference itself is reusable, prefer global and keep the project example in evidence. If the user or repository context explicitly narrows the rule, keep it project-scoped.
+
 Project memory should be considered before global memory in the current repository. If project and global guidance conflict, the agent should report the conflict and follow the current user request.
 
 ## Confidence
