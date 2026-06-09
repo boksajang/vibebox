@@ -30,6 +30,8 @@ Managed pages show current active guidance:
 - AI successful approaches and recovery patterns
 - design philosophy and domain patterns
 
+`Home.md` is the root index. It links to every category document, project index, and recent active memory note; it does not duplicate every memory body in one file.
+
 The Wiki does not show raw transcripts as current guidance. Raw events live under `logs/` as diagnostics.
 
 If a raw event has `userRequest` but no structured memory candidates, the Wiki does not gain synthetic user memory. If an event has only `aiActionSummary`, Core can preserve the raw event but cannot promote it to active memory.
@@ -116,6 +118,8 @@ memoryNote: true
 ```
 
 A memory has one canonical note under its `primaryCategory`. Related category pages and the source project page link to that same canonical note instead of duplicating it.
+
+VibeBox does not render separate topic or concept aggregate pages such as `Concept/`, `Dependency Management.md`, or `Redis.md`. Topic text remains metadata/display text unless it maps to a stable category document.
 
 ## Project Pages
 

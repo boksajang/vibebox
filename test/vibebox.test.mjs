@@ -2135,7 +2135,7 @@ test('review recommends actions and safe approval skips conflict candidates', as
   assert.equal(candidates.length, 2);
 });
 
-test('approval creates related concept wiki pages and doctor validates wiki/index consistency', async () => {
+test('approval uses canonical category wiki links without creating concept pages', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
 
@@ -2145,20 +2145,16 @@ test('approval creates related concept wiki pages and doctor validates wiki/inde
   await approveMemory(root, candidate.id);
 
   const avoidWiki = await readFile(storePath(root, 'wiki', 'Global Avoid Rules.md'), 'utf8');
-  assert.match(avoidWiki, /## Related/);
-  assert.match(avoidWiki, /\[\[Dependency Management\]\]/);
-
-  const conceptWiki = await readFile(storePath(root, 'wiki', 'Dependency Management.md'), 'utf8');
-  assert.match(conceptWiki, /Related memories/);
-  assert.match(conceptWiki, /\[\[Global Avoid Rules\/Do not modify package\.json/);
-  assert.doesNotMatch(conceptWiki, /mem_[a-f0-9]+/i);
+  assert.match(avoidWiki, /\[\[Global Avoid Rules\/Do not modify package\.json/);
+  assert.doesNotMatch(avoidWiki, /\[\[Dependency Management\]\]/);
+  await assert.rejects(() => readFile(storePath(root, 'wiki', 'Dependency Management.md'), 'utf8'), /ENOENT/);
 
   const doctor = await runDoctor(root);
   assert.equal(doctor.ok, true);
   assert.deepEqual(doctor.errors, []);
 });
 
-test('approval sanitizes concept wiki filenames for slash-like memory terms', async () => {
+test('approval ignores slash-like non-category topic wiki pages', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
 
@@ -2171,6 +2167,7 @@ test('approval sanitizes concept wiki filenames for slash-like memory terms', as
   const doctor = await runDoctor(root);
   assert.equal(doctor.ok, true);
   assert.equal(doctor.errors.length, 0);
+  await assert.rejects(() => readFile(storePath(root, 'wiki', 'Foo Bar Tooling.md'), 'utf8'), /ENOENT/);
 });
 
 test('doctor reports pending index and keyword index inconsistencies', async () => {
@@ -2564,7 +2561,7 @@ test('active replacement discards older memory from active retrieval, wiki, and 
   assert.equal(doctor.warnings.some((warning) => warning.includes(`references missing related memory ${oldMemory.id}`)), false);
 });
 
-test('active replacement clears stale concept wiki references for discarded memory', async () => {
+test('active replacement does not create topic concept wiki references for discarded memory', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
 
@@ -2572,9 +2569,7 @@ test('active replacement clears stale concept wiki references for discarded memo
     text: 'For dashboard cache projects, prefer Redis because cache invalidation was already tested.'
   });
   const oldMemory = await approveMemory(root, oldCandidate.id);
-  const redisWikiBefore = await readFile(storePath(root, 'wiki', 'Redis.md'), 'utf8');
-  assert.match(redisWikiBefore, /For dashboard cache projects, prefer Redis/);
-  assert.doesNotMatch(redisWikiBefore, /mem_[a-f0-9]+/i);
+  await assert.rejects(() => readFile(storePath(root, 'wiki', 'Redis.md'), 'utf8'), /ENOENT/);
 
   const [replacementCandidate] = await extractFromAgent(root, {
     structuredMemoryCandidates: [candidateFixture({
@@ -2596,13 +2591,10 @@ test('active replacement clears stale concept wiki references for discarded memo
   });
   await approveMemory(root, replacementCandidate.id);
 
-  try {
-    const redisWikiAfter = await readFile(storePath(root, 'wiki', 'Redis.md'), 'utf8');
-    assert.doesNotMatch(redisWikiAfter, new RegExp(oldMemory.id));
-    assert.doesNotMatch(redisWikiAfter, /prefer Redis because cache invalidation was already tested/);
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-  }
+  await assert.rejects(() => readFile(storePath(root, 'wiki', 'Redis.md'), 'utf8'), /ENOENT/);
+  const wiki = await readFile(storePath(root, 'wiki', 'User Preferences.md'), 'utf8');
+  assert.doesNotMatch(wiki, new RegExp(oldMemory.id));
+  assert.doesNotMatch(wiki, /prefer Redis because cache invalidation was already tested/);
 });
 
 test('cross-type replacement does not remove active success or failure namespace files', async () => {
@@ -4637,6 +4629,112 @@ test('semantic rebuild repairs stale wiki and relation files only with agent run
   await readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8');
   const doctor = await runDoctor(root);
   assert.equal(doctor.ok, true);
+});
+
+test('semantic rebuild repairs corrupted managed shells and removes stale concept duplicates', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const [candidate] = await extractFromAgent(root, {
+    text: 'Do not modify package.json unless explicitly requested because dependency churn is risky.'
+  });
+  await approveMemory(root, candidate.id);
+
+  const noteFiles = await listMemoryNoteFiles(root);
+  const canonicalNote = noteFiles.find((file) => wikiRelative(root, file).startsWith('Global Avoid Rules/'));
+  assert.ok(canonicalNote);
+
+  const staleConceptDir = storePath(root, 'wiki', 'Concept');
+  const staleConceptNote = path.join(staleConceptDir, path.basename(canonicalNote));
+  await mkdir(staleConceptDir, { recursive: true });
+  await cp(canonicalNote, staleConceptNote);
+  await writeFile(
+    storePath(root, 'wiki', 'Dependency Management.md'),
+    [
+      '---',
+      'title: Dependency Management',
+      'vibebox: true',
+      'obsidianCompatible: true',
+      '---',
+      '# Dependency Management',
+      '',
+      'Back to [[Home]].',
+      '<!-- VIBEBOX:BEGIN -->',
+      '- stale topic page',
+      '<!-- VIBEBOX:END -->',
+      ''
+    ].join('\n'),
+    'utf8'
+  );
+  await writeFile(
+    storePath(root, 'wiki', 'Home.md'),
+    [
+      '---',
+      'title: VibeBox ??vibebox: true',
+      'obsidianCompatible: true',
+      '---',
+      '# VibeBox ??',
+      'AI \u0080corrupted shell text',
+      '',
+      '<!-- VIBEBOX:BEGIN -->',
+      '- stale home content',
+      '<!-- VIBEBOX:END -->',
+      ''
+    ].join('\n'),
+    'utf8'
+  );
+
+  process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
+  await rebuildVibeBox(root, { agentSemanticData: { reviewed: true, changes: [] } });
+  delete process.env.VIBEBOX_AGENT_RUNTIME;
+
+  const home = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
+  assert.match(home, /title: VibeBox Home\nvibebox: true/);
+  assert.doesNotMatch(home, /\?\?vibebox: true/);
+  assert.doesNotMatch(home, /\u0080/);
+  await assert.rejects(() => readFile(staleConceptNote, 'utf8'), /ENOENT/);
+  await assert.rejects(() => readdir(staleConceptDir), /ENOENT/);
+  await assert.rejects(() => readFile(storePath(root, 'wiki', 'Dependency Management.md'), 'utf8'), /ENOENT/);
+
+  const doctor = await runDoctor(root);
+  assert.equal(doctor.ok, true);
+  assert.deepEqual(doctor.errors, []);
+});
+
+test('project workflow rules get canonical notes for project page links', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  const [candidate] = await extractFromAgent(root, {
+    structuredMemoryCandidates: [candidateFixture({
+      memoryRole: 'task_context',
+      type: 'workflow_rule',
+      modelClass: 'project_model',
+      modelSubClass: 'project_workflow',
+      scope: 'project',
+      projectId: 'vibebox-test-project',
+      sourceProjectId: 'vibebox-test-project',
+      primaryCategory: 'workflow_rules',
+      relatedCategories: ['validation_patterns'],
+      title: 'Project workflow rule note target',
+      summary: 'Project workflow rules must have canonical notes when project pages link them.',
+      displayTitle: 'Project workflow rule note target',
+      displaySummary: 'Project workflow rules must have canonical notes when project pages link them.',
+      displayRule: 'Project workflow rules must have canonical notes when project pages link them.'
+    })]
+  });
+  assert.equal(candidate.status, 'active');
+
+  process.env.VIBEBOX_AGENT_RUNTIME = 'test-agent';
+  await rebuildVibeBox(root, { agentSemanticData: { reviewed: true, changes: [] } });
+  delete process.env.VIBEBOX_AGENT_RUNTIME;
+
+  await readFile(storePath(root, 'wiki', 'Workflow Rules', 'Project workflow rule note target.md'), 'utf8');
+  const projectWiki = await readFile(storePath(root, 'wiki', 'projects', 'vibebox-test-project.md'), 'utf8');
+  assert.match(projectWiki, /\[\[Workflow Rules\/Project workflow rule note target/);
+  const doctor = await runDoctor(root);
+  assert.equal(doctor.ok, true);
+  assert.deepEqual(doctor.errors, []);
 });
 
 test('adaptive language policy preserves Japanese, Chinese, Arabic, and mixed memory text', async () => {

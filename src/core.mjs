@@ -3435,6 +3435,8 @@ function shouldWriteMemoryNote(memory) {
       'failure_memory',
       'success_pattern',
       'project_decision',
+      'architecture_rule',
+      'workflow_rule',
       'validation_pattern',
       'response_preference',
       'process_pattern',
@@ -3527,6 +3529,9 @@ function memoryNoteFileName(memory, locale = 'en-US', notePathMap = null) {
 }
 
 function wikiLinkForMemory(memory, locale = 'en-US', alias = '', notePathMap = null) {
+  if (notePathMap && !notePathMap.has(memory.id)) {
+    return wikiLinkForDocKey(memoryCategoryDocKey(memory), locale, alias || memoryDisplayTitle(memory, locale));
+  }
   const note = memoryNoteInfo(memory, locale, notePathMap);
   const target = wikiLinkTargetFromFileName(note.fileName);
   const cleanAlias = String(alias || note.title).replace(/[[\]]/gu, '').trim();
@@ -3557,7 +3562,7 @@ async function rebuildWiki(root) {
     await writeManagedWikiPage(root, `projects/${project.projectId}.md`, renderProjectShell(project, locale), renderProjectManaged(project, projectMemories, locale, notePathMap));
   }
   await writeMemoryWikiNotes(root, active, projects, locale, notePathMap);
-  await writeConceptWikiPages(root, active, locale, notePathMap);
+  await cleanupStaleConceptWikiPages(root, locale);
 }
 
 function managedBlock(content) {
@@ -3580,7 +3585,7 @@ async function writeManagedWikiPage(root, pageName, shell, managedContent) {
   }
 
   if (existing.includes(MANAGED_BEGIN) && existing.includes(MANAGED_END)) {
-    if (isManagedOnlyWikiText(existing)) {
+    if (isManagedOnlyWikiText(existing, shell)) {
       await writeFile(filePath, `${shell.trim()}\n\n${block}\n`, 'utf8');
       return;
     }
@@ -3748,6 +3753,7 @@ function renderMemoryMarkdown(memory, locale = 'en-US', notePathMap = null) {
   const note = memoryNoteInfo(memory, locale, notePathMap);
   const displaySummary = memoryDisplaySummary(memory, locale);
   const topicConcept = conceptNameForTerm(memory.topic);
+  const topicLink = topicConcept ? conceptWikiLink(topicConcept, locale) : '';
 
   const lines = [
     `## ${wikiLinkForMemory(memory, locale, note.title, notePathMap)}`,
@@ -3756,7 +3762,7 @@ function renderMemoryMarkdown(memory, locale = 'en-US', notePathMap = null) {
     `- ${t(locale, 'modelSubClass')}: \`${memory.modelSubClass || t(locale, 'notSpecified')}\``,
     `- ${t(locale, 'scopeLabel')}: \`${memory.scope}\``,
     `- ${t(locale, 'confidenceLabel')}: \`${memory.confidence}\``,
-    `- ${t(locale, 'topicLabel')}: ${topicConcept ? conceptWikiLink(topicConcept, locale) : memory.topic}`,
+    `- ${t(locale, 'topicLabel')}: ${topicLink || topicConcept || memory.topic || t(locale, 'notSpecified')}`,
     `- ${t(locale, 'summaryLabel')}: ${displaySummary}`,
     `- ${t(locale, 'appliesToLabel')}: ${(memory.appliesTo || []).join(', ') || t(locale, 'notSpecified')}`
   ];
@@ -3844,19 +3850,11 @@ async function cleanupStaleMemoryNotes(root, activeMemoryNotes) {
     const isMemoryNote = /^---[\s\S]*?\nmemoryNote:\s*true[\s\S]*?---/u.test(text)
       || (relative.startsWith('memories/') && text.includes('vibebox: true') && text.includes(MANAGED_BEGIN));
     if (!isMemoryNote || activeMemoryNotes.has(relative)) continue;
-    if (isManagedOnlyWikiText(text)) {
+    if (relative.startsWith('Concept/') || relative.startsWith('memories/') || isManagedOnlyWikiText(text)) {
       await rm(wikiFile, { force: true });
     }
   }
-  const oldMemoryDir = path.join(wikiRoot, 'memories');
-  try {
-    const entries = await readdir(oldMemoryDir);
-    if (entries.length === 0) {
-      await rm(oldMemoryDir, { recursive: true, force: true });
-    }
-  } catch {
-    // No legacy memories directory remains.
-  }
+  await cleanupEmptyWikiDirs(wikiRoot);
 }
 
 function sourceProjectForMemory(memory, projectById) {
@@ -3927,66 +3925,26 @@ function renderMemoryNoteManaged(memory, allMemories, projectById, locale = 'en-
   return lines.join('\n');
 }
 
-async function writeConceptWikiPages(root, memories, locale = 'en-US', notePathMap = null) {
-  const concepts = new Map();
-  const reservedTitles = new Set([
-    ...WIKI_PAGES.map(pageTitle),
-    ...WIKI_DOCS.map((doc) => localizedDocTitle(doc.docKey, locale))
-  ]);
-  for (const memory of memories) {
-    for (const concept of conceptsForMemory(memory)) {
-      if (reservedTitles.has(concept)) continue;
-      if (!concepts.has(concept)) concepts.set(concept, []);
-      concepts.get(concept).push(memory);
-    }
-  }
-
-  const activeConceptPages = new Set();
-  for (const [concept, relatedMemories] of concepts) {
-    if (!shouldWriteConceptWikiPage(concept, locale)) continue;
-    const pageName = `${safeWikiPageName(concept)}.md`;
-    activeConceptPages.add(pageName);
-    const shell = `${wikiFrontmatter(concept)}# ${concept}
-
-${wd(locale, 'backTo')} ${wikiLinkForDocKey('home', locale)}.`;
-    const managed = [
-      `## ${wd(locale, 'relatedMemory')}`,
-      '',
-      ...relatedMemories.map((memory) => `- ${wikiLinkForMemory(memory, locale, '', notePathMap)} ${memoryDisplaySummary(memory, locale)}`)
-    ].join('\n');
-    await writeManagedWikiPage(root, pageName, shell, managed);
-  }
-
+async function cleanupStaleConceptWikiPages(root, locale = 'en-US') {
   const wikiRoot = vibeboxPath(root, 'wiki');
   const managedDocFiles = new Set(currentWikiPages(locale));
   for (const wikiFile of await listMarkdownFiles(wikiRoot)) {
     const relative = path.relative(wikiRoot, wikiFile);
     if (relative.includes(path.sep) || relative.includes(path.posix.sep)) continue;
-    if (WIKI_PAGES.includes(relative) || managedDocFiles.has(relative) || activeConceptPages.has(relative)) continue;
+    if (WIKI_PAGES.includes(relative) || managedDocFiles.has(relative)) continue;
     const text = await readFile(wikiFile, 'utf8');
     if (!text.includes('vibebox: true') || !text.includes(MANAGED_BEGIN)) continue;
     if (isManagedOnlyWikiText(text)) {
       await rm(wikiFile, { force: true });
-      continue;
     }
-    const concept = pageTitle(relative);
-    const shell = `${wikiFrontmatter(concept)}# ${concept}
-
-${wd(locale, 'backTo')} ${wikiLinkForDocKey('home', locale)}.`;
-    await writeManagedWikiPage(root, relative, shell, [`## ${wd(locale, 'relatedMemory')}`, '', `- ${t(locale, 'none')}`].join('\n'));
   }
-}
-
-function shouldWriteConceptWikiPage(concept, locale = 'en-US') {
-  if (conceptDocKey(concept, locale)) return true;
-  return normalizeConfigLanguageTag(locale, BASE_MEMORY_LANGUAGE) === BASE_MEMORY_LANGUAGE;
+  await cleanupEmptyWikiDirs(wikiRoot);
 }
 
 function conceptWikiLink(concept, locale = 'en-US') {
   const docKey = conceptDocKey(concept, locale);
   if (docKey) return wikiLinkForDocKey(docKey, locale);
-  const conceptTitle = conceptNameForTerm(concept) || safeWikiPageName(concept);
-  return shouldWriteConceptWikiPage(conceptTitle, locale) ? wikiLink(safeWikiPageName(conceptTitle)) : '';
+  return '';
 }
 
 function conceptDocKey(concept, locale = BASE_MEMORY_LANGUAGE) {
@@ -4946,20 +4904,75 @@ async function cleanupStaleLocalizedWikiDocs(root, locale, staleDocFiles = []) {
   }
 }
 
-function isManagedOnlyWikiText(text) {
+async function cleanupEmptyWikiDirs(wikiRoot) {
+  let entries = [];
+  try {
+    entries = await readdir(wikiRoot, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === '.obsidian') continue;
+    const dirPath = path.join(wikiRoot, entry.name);
+    await cleanupEmptyWikiDirs(dirPath);
+    try {
+      const remaining = await readdir(dirPath);
+      if (remaining.length === 0) {
+        await rm(dirPath, { recursive: true, force: true });
+      }
+    } catch {
+      // Directory disappeared during cleanup.
+    }
+  }
+}
+
+function isManagedOnlyWikiText(text, expectedShell = '') {
   if (!text.includes('vibebox: true') || !text.includes(MANAGED_BEGIN)) return false;
   const withoutFrontmatter = text.replace(/^---[\s\S]*?---\s*/u, '');
   const withoutManaged = withoutFrontmatter.replace(new RegExp(`${escapeRegExp(MANAGED_BEGIN)}[\\s\\S]*?${escapeRegExp(MANAGED_END)}`, 'u'), '');
   const templatePacks = [BASE_DISPLAY_TEMPLATE, ...ACTIVE_DISPLAY_TEMPLATES.values()];
   const backLabels = new Set(templatePacks.map((pack) => pack.backTo).filter(Boolean));
   const homeDescriptions = new Set(templatePacks.map((pack) => pack.homeDescription).filter(Boolean));
-  return withoutManaged.split(/\r?\n/u).every((line) => {
+  const knownManagedShell = withoutManaged.split(/\r?\n/u).every((line) => {
     const trimmed = line.trim();
     return trimmed === ''
       || trimmed.startsWith('#')
       || homeDescriptions.has(trimmed)
       || [...backLabels].some((label) => trimmed.startsWith(label));
   });
+  return knownManagedShell || looksLikeCorruptedGeneratedShell(text, expectedShell);
+}
+
+function looksLikeCorruptedGeneratedShell(text, expectedShell = '') {
+  if (!expectedShell) return false;
+  const unmanaged = text.replace(new RegExp(`${escapeRegExp(MANAGED_BEGIN)}[\\s\\S]*?${escapeRegExp(MANAGED_END)}`, 'u'), '').trim();
+  const hasSuspiciousShell = /title:[^\r\n]*(?:vibebox|obsidianCompatible):\s*true/iu.test(unmanaged)
+    || /[\u0080-\u009f\ufffd]/u.test(unmanaged);
+  if (!hasSuspiciousShell) return false;
+
+  const expectedLines = expectedShell
+    .trim()
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const unmanagedLines = unmanaged
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (unmanagedLines.length > expectedLines.length) return false;
+
+  const expectedFreeTextCount = expectedLines.filter((line) => !isWikiShellControlLine(line)).length;
+  const unmanagedFreeTextCount = unmanagedLines.filter((line) => !isWikiShellControlLine(line)).length;
+  return unmanagedFreeTextCount <= expectedFreeTextCount;
+}
+
+function isWikiShellControlLine(line) {
+  return line === '---'
+    || line.startsWith('title:')
+    || /(?:^|[\s])vibebox:\s*true\b/iu.test(line)
+    || /(?:^|[\s])obsidianCompatible:\s*true\b/iu.test(line)
+    || line.startsWith('#');
 }
 
 function localizedDisplayCandidatesFromOptions(options = {}) {
