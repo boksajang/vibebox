@@ -4991,6 +4991,8 @@ test('universal agent skill package files exist and declare shared skill metadat
   assert.match(plugin.description, /Universal local-first memory middleware/i);
   assert.match(plugin.description, /structured memory candidates/i);
   assert.match(plugin.interface.longDescription, /global scope[\s\S]{0,120}user-centered preferences/i);
+  assert.equal(plugin.interface.defaultPrompt.some((line) => /Before creating any VibeBox candidate file[\s\S]+schema[\s\S]+candidateSkeleton/i.test(line)), true);
+  assert.equal(plugin.interface.defaultPrompt.some((line) => /Never guess memoryRole[\s\S]+project_outcome/i.test(line)), true);
   assert.equal(plugin.interface.defaultPrompt.some((line) => /Prefer scope global[\s\S]+user personal preferences/i.test(line)), true);
   assert.equal(plugin.interface.brandColor, '#0891B2');
   assert.equal(plugin.interface.composerIcon, './assets/icon.png');
@@ -5029,6 +5031,9 @@ test('schema command exposes structured candidate enums from core without touchi
   assert.ok(schema.enums.modelClass.includes(schema.candidateSkeleton.modelClass));
   assert.ok(schema.enums.primaryCategory.includes(schema.candidateSkeleton.primaryCategory));
   assert.equal(schema.categoryModel.typeToDocKey.response_preference, 'user_patterns');
+  assert.ok(schema.notes.some((note) => /Strict recording order/i.test(note)));
+  assert.ok(schema.notes.some((note) => /project_outcome/i.test(note)));
+  assert.ok(schema.notes.some((note) => /candidateSkeleton/i.test(note)));
   await assert.rejects(
     () => access(storePath(root, 'registry/projects.json')),
     /ENOENT/
@@ -5036,6 +5041,7 @@ test('schema command exposes structured candidate enums from core without touchi
 
   const text = await runCli(['schema', '--format', 'text'], root);
   assert.match(text, /Required fields:/);
+  assert.match(text, /Strict recording order:/);
   assert.match(text, /Candidate skeleton:/);
 });
 
@@ -5103,6 +5109,10 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /vibebox\.cmd <command>/);
   assert.match(combined, /vibebox\.cmd pretask --task/);
   assert.match(combined, /vibebox(?:\.cmd)? schema --format json/);
+  assert.match(combined, /Before creating any VibeBox candidate file[\s\S]{0,220}candidateSkeleton/i);
+  assert.match(combined, /Do not submit candidate JSON before reading schema/i);
+  assert.match(combined, /project_outcome[\s\S]{0,160}project_result/i);
+  assert.match(combined, /no_reusable_memory_candidate[\s\S]{0,220}fake `task_context`|fake `task_context`[\s\S]{0,220}no_reusable_memory_candidate/i);
   assert.match(combined, /node bin\/vibebox\.mjs <command>/);
   assert.match(combined, /pretask[\s\S]{0,220}read-only|read-only[\s\S]{0,220}pretask/i);
   assert.match(combined, /context[\s\S]{0,220}read-only|read-only[\s\S]{0,220}context/i);

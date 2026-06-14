@@ -854,9 +854,13 @@ export function structuredCandidateSchema(options = {}) {
       noCandidateReason: '<why no durable reusable memory exists>'
     },
     notes: [
+      'Strict recording order: run this schema command before creating any candidate file for aftertask.',
       'The AI Agent chooses semantic type/category from these enums; Core only validates and renders.',
-      'Do not invent enum values. If unsure, rerun `vibebox schema --format json` and rebuild the candidate.',
-      'Use primaryCategory for the canonical category and relatedCategories for additional category links.'
+      'Do not invent enum values for memoryRole, type, modelClass, scope, primaryCategory, relatedCategories, confidence, or sourceType.',
+      'Invalid guesses such as project_outcome, project_result, success_memory, or project_memory are contract failures unless the schema explicitly returns them.',
+      'Start active memory from candidateSkeleton; start no-memory diagnostics from noReusableMemoryCandidate.',
+      'Use primaryCategory for the canonical category and relatedCategories for additional category links.',
+      'If exactly one candidate is submitted for a non-trivial userRequest, include whyOnlyOneCandidate.'
     ]
   };
 }
@@ -869,6 +873,11 @@ export function formatStructuredCandidateSchema(schema = structuredCandidateSche
     '',
     'Required fields:',
     ...((schema.requiredFields || []).map((field) => `- ${field}`)),
+    '',
+    'Strict recording order:',
+    '- Run this schema command before creating any aftertask candidate file.',
+    '- Use only enum values printed below; do not guess role, outcome, or category labels.',
+    '- Start from Candidate skeleton, or from No reusable memory diagnostic when nothing durable should be stored.',
     '',
     'Enums:',
     ...Object.entries(enums).map(([key, values]) => `- ${key}: ${(values || []).join(', ')}`),

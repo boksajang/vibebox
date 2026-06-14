@@ -135,12 +135,13 @@ Notes:
 
 - Always pass the original user request or a faithful semantic summary with `--request` when active memory should connect to the user criteria.
 - Before writing candidate JSON, run `vibebox schema --format json` and use the returned Core enum values, category model, defaults, and candidate skeleton.
+- Do not submit candidate JSON before reading schema in the current task. Do not guess `memoryRole`, `type`, `modelClass`, `scope`, `primaryCategory`, `relatedCategories`, `confidence`, or `sourceType`; labels such as `project_outcome`, `project_result`, `success_memory`, and `project_memory` are invalid unless the schema explicitly returns them.
 - Do not call aftertask with only an AI action summary.
 - Without candidates, VibeBox records the event and warns instead of creating active memory.
 - Without structured candidates, Core records raw evidence and warns instead of creating active memory.
 - Core does not semantically interpret `userRequest`, headings, bullets, keywords, summaries, or command output.
 - If one candidate represents a captured complex request, include `whyOnlyOneCandidate`.
-- If there is no reusable memory, submit `no_reusable_memory_candidate` with `noCandidateReason`.
+- If there is no reusable memory, submit `no_reusable_memory_candidate` with `noCandidateReason` instead of forcing a fake `task_context`.
 - Wiki display fields must match configured `memoryLanguage`.
 
 ## `vibebox schema`

@@ -127,6 +127,10 @@ vibebox schema --format json
 
 Use that output as the single source of truth for candidate enum values, category keys, defaults, and the skeleton. Do not copy enum lists into agent prompts or guess values from prose.
 
+Do not create or submit the candidate file before reading schema in the current task. Role or outcome guesses such as `project_outcome`, `project_result`, `success_memory`, and `project_memory` are invalid unless the schema explicitly returns them.
+
+Start active memory from `candidateSkeleton`. If there is no durable reusable memory, submit `no_reusable_memory_candidate` with `noCandidateReason` instead of forcing a fake `task_context`.
+
 Example `structured-candidates.json`:
 
 ```json

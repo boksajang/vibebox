@@ -107,7 +107,9 @@ vibebox.cmd schema --format json
 vibebox schema --format json
 ```
 
-Use the schema output as the single source of truth for `type`, `modelClass`, `sourceType`, `primaryCategory`, `relatedCategories`, defaults, and the candidate skeleton. Do not copy enum lists into agent prompts or invent values from prose.
+Use the schema output as the single source of truth for `memoryRole`, `type`, `modelClass`, `scope`, `sourceType`, `primaryCategory`, `relatedCategories`, defaults, and the candidate skeleton. Do not copy enum lists into agent prompts or invent values from prose.
+
+Do not create or submit an `aftertask` candidate file until the schema has been read in the current task. Invalid role/outcome guesses such as `project_outcome`, `project_result`, `success_memory`, or `project_memory` are contract failures. Start from `candidateSkeleton` for active memory, or from `noReusableMemoryCandidate` when nothing durable should be stored.
 
 User-centered signals are first-priority candidates. Use `primaryCategory: "user_preferences"` for personal preferences and durable success criteria. Use `primaryCategory: "user_patterns"` for recurring feedback, answer/reporting style, communication style, correction patterns, question patterns, collaboration habits, repeated modification patterns, and repeated procedural instructions from the user. If the same memory is also technical, put technical categories in `relatedCategories` instead of losing the user-centered primary category.
 
@@ -120,9 +122,9 @@ Choose `scope` after the user-centered audit:
 - Keep `sourceProjectId` and `sourceProjectRoot` as provenance for global memories learned in a project. Do not set `projectId` just because the lesson was observed in one repository.
 - If uncertain between global and project for a user-centered preference, prefer global unless the user wording or repository reality clearly narrows it.
 
-Do not collapse separate validation, reporting, preservation, and failure-avoidance meanings into one summary-shaped candidate. If only one candidate is truly enough, include `whyOnlyOneCandidate`. If no reusable memory exists, include `no_reusable_memory_candidate` with `noCandidateReason`.
+Do not collapse separate validation, reporting, preservation, and failure-avoidance meanings into one summary-shaped candidate. If only one candidate is truly enough, include `whyOnlyOneCandidate`. If no reusable memory exists, include `no_reusable_memory_candidate` with `noCandidateReason`; do not force a fake `task_context`.
 
-If VibeBox rejects a candidate for an invalid enum, rerun `vibebox schema --format json`, replace the invalid value with one from the schema output, and resubmit once. Repeated guessing is a contract failure.
+If VibeBox rejects a candidate for a missing required field or invalid enum, rerun `vibebox schema --format json`, rebuild the object from `candidateSkeleton` or `noReusableMemoryCandidate`, and resubmit once. Repeated guessing is a contract failure.
 
 The agent must write Wiki display fields in configured `memoryLanguage`. Core validates BCP 47 tags and renders files; it does not translate missing display text.
 

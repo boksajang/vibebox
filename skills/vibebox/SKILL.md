@@ -28,6 +28,25 @@ Pending memory must not be treated as active memory.
 - Wiki display fields must follow configured `memoryLanguage`; Core does not translate missing display text.
 - User-centered memory is first-priority semantic work for the agent. Personal preferences, recurring feedback, answer/reporting style, correction style, question style, collaboration habits, and repeated user patterns must be considered before technical workflow, validation, or prevention categories. The current explicit request still wins, but durable user-centered signals should not be buried only under project or process categories.
 
+## Strict Recording Gate
+
+Before creating or submitting any `aftertask` candidate file, run:
+
+```bash
+vibebox.cmd schema --format json
+vibebox schema --format json
+```
+
+Treat the schema output as the contract for the current runtime. Do not write candidate JSON from memory, prose, screenshots, prior examples, or guessed field names.
+
+- Use only enum values returned by `schema.enums` for `memoryRole`, `type`, `modelClass`, `scope`, `primaryCategory`, `relatedCategories`, `confidence`, and `sourceType`.
+- Do not invent role or outcome labels such as `project_outcome`, `project_result`, `memory`, `outcome`, `success_memory`, or `project_memory`.
+- Start from `candidateSkeleton` or `noReusableMemoryCandidate`, then replace placeholder text with the actual semantic memory.
+- A reusable candidate must include every `requiredFields` entry and localized `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage`.
+- If exactly one candidate is submitted for a non-trivial user request, include `whyOnlyOneCandidate` in the candidate or envelope.
+- If no durable reusable memory exists, submit only `no_reusable_memory_candidate` with `noCandidateReason`; do not force a fake `task_context`.
+- If Core rejects a candidate for missing fields or invalid enum values, stop guessing, rerun schema, rebuild the candidate from the skeleton, and retry once.
+
 Load references only when needed:
 
 - [COMMANDS.md](references/COMMANDS.md)
@@ -108,7 +127,7 @@ After meaningful coding, design, documentation, packaging, or review work:
    - keep `sourceProjectId`/`sourceProjectRoot` as provenance for global memories learned during a project; do not set `projectId` just because the memory was observed in a project.
    - if uncertain between global and project for a user-centered preference, prefer global with project-specific evidence unless the user or repository context clearly narrows it.
 7. Do not mark `no_reusable_memory_candidate` until the user-centered and scope audits above have been performed. Repeated user wording such as "always", "prefer", "do not", "next time", "again", corrections after dissatisfaction, and recurring final-answer requirements should normally produce a user-centered candidate unless it is clearly one-off.
-8. Before writing candidate JSON, run `vibebox.cmd schema --format json` or `vibebox schema --format json` and use the returned Core enum values, category model, defaults, and skeleton. Do not invent `type`, `modelClass`, `sourceType`, `primaryCategory`, or `relatedCategories` values from prose.
+8. Before writing candidate JSON, run `vibebox.cmd schema --format json` or `vibebox schema --format json` and use the returned Core enum values, category model, defaults, and skeleton. Do not invent `memoryRole`, `type`, `modelClass`, `scope`, `sourceType`, `primaryCategory`, or `relatedCategories` values from prose.
 9. Include fields such as `memoryRole`, `type`, `modelClass`, `modelSubClass`, `scope`, `primaryCategory`, `relatedCategories`, `title`, `summary`, `rule`, `displayTitle`, `displaySummary`, `displayRule`, `displayLanguage`, `evidence`, `confidence`, `sourceType`, `relationCandidates`, and `replaces` when applicable.
 10. Write display fields in configured `memoryLanguage`; for a Korean configured tag, write Korean display text.
 11. Use `--candidates-file` or `--structured-candidates-file` for long JSON, especially on Windows shells.
@@ -119,7 +138,7 @@ vibebox.cmd aftertask --request "<request>" --summary "..." --candidates-file st
 ```
 
 13. If aftertask write access is blocked, request approved global VibeBox store write access or report that capture, project registration, active memory, and wiki updates were not completed.
-14. If VibeBox rejects a candidate for an invalid enum, rerun `vibebox schema --format json`, replace the invalid value with one from the schema output, and resubmit once. Do not repeatedly guess values.
+14. If VibeBox rejects a candidate for a missing required field or invalid enum, rerun `vibebox schema --format json`, rebuild from `candidateSkeleton` or `noReusableMemoryCandidate`, and resubmit once. Do not repeatedly guess values.
 15. If VibeBox warns that candidates are missing or `whyOnlyOneCandidate` is missing, rewrite the capture input and rerun when reusable memory should be stored.
 
 `aftertask` is a global-store write/capture operation.
