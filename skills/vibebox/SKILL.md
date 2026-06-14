@@ -170,7 +170,7 @@ Language conversion and semantic rebuild require an adapter-provided runtime mar
 
 ## Codex Cache Note
 
-Codex App can load an installed plugin cache instead of the repository checkout. A GitHub push alone does not refresh the installed cache. After local plugin source updates, run `git pull` or reinstall/update the plugin, then verify the cache under `%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.2\`. VibeBox does not delete or rewrite Codex App plugin cache files automatically.
+Codex App can load an installed plugin cache instead of the repository checkout. A GitHub push alone does not refresh the installed cache. After local plugin source updates, run `git pull` or reinstall/update the plugin, then verify the cache under `%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.3\`. VibeBox does not delete or rewrite Codex App plugin cache files automatically.
 
 ## Sensitive Data
 

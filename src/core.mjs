@@ -14,7 +14,7 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 
-export const VIBEBOX_VERSION = '0.1.2';
+export const VIBEBOX_VERSION = '0.1.3';
 
 const WIKI_DOCS = [
   { docKey: 'home', canonicalFileName: 'Home.md', titleKey: 'homeTitle', technicalName: true },
