@@ -1,6 +1,6 @@
 {
   "name": "vibebox",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Local-first active user pattern graph and blackbox memory middleware for AI coding agents.",
   "type": "module",
   "bin": {
@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "node --test",
-    "check": "node --check bin/vibebox.mjs && node --check src/core.mjs && node --check src/cli.mjs"
+    "check": "node --check bin/vibebox.mjs && node --check src/core.mjs && node --check src/cli.mjs && node --check scripts/claude-vibebox-hook.mjs"
   },
   "engines": {
     "node": ">=20"

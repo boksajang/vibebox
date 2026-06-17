@@ -5,6 +5,16 @@
 - Node.js `>=20`
 - npm
 
+## Preferred Agent Install
+
+Use an agent plugin, skill package, or hook-enabled adapter when one is available. In normal agent use, the user should not run `pretask`, `schema`, or `aftertask` manually. The installed agent contract or hooks should:
+
+1. retrieve `pretask` guidance before meaningful work;
+2. read `schema --format json` before writing structured memory candidates;
+3. run `aftertask` after meaningful work with the original user request and AI-agent structured candidates.
+
+The direct CLI commands below are for adapter authors, debugging, or fallback hosts that cannot load a plugin/hook package.
+
 ## Local CLI
 
 From this repository:
@@ -53,6 +63,8 @@ Use `VIBEBOX_HOME` or `--store <path>` for a different store.
 VibeBox does not create project-local `.vibebox` folders, workspace-local snapshots, copied stores, pointer files, or hidden metadata in work projects.
 
 ## Agent Invocation
+
+Manual invocation fallback:
 
 Before meaningful work:
 

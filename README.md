@@ -50,7 +50,7 @@ After the VibeBox plugin or skill is installed, users should not need to run `pr
 - after meaningful work, the agent captures the original user request, outcome, validation evidence, and AI-agent structured memory candidates;
 - VibeBox Core validates, stores, dedupes, indexes, links, and renders the Wiki automatically when capture succeeds.
 
-This applies to Codex plugin use and Claude-compatible skill use. The AI agent remains the semantic authority: it decides which reusable memories to submit, and Core manages those submitted candidates.
+This applies to Codex plugin use, Claude Code plugin use, and Claude-compatible skill fallback use. The AI agent remains the semantic authority: it decides which reusable memories to submit, and Core manages those submitted candidates.
 
 Sandboxed hosts may still ask for permission to read or write the single global VibeBox store. That approval is for automatic memory retrieval and capture, not for a manual user workflow.
 
@@ -88,10 +88,36 @@ Codex App can read an installed plugin cache instead of your local checkout. A G
 Example cache placeholder:
 
 ```text
-%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.3\
+%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.4\
 ```
 
 VibeBox does not delete or rewrite Codex App plugin cache files automatically.
+
+## Claude Code Plugin Use
+
+VibeBox includes a Claude Code plugin manifest at `.claude-plugin/plugin.json`, a Claude marketplace catalog at `.claude-plugin/marketplace.json`, and plugin hooks at `hooks/hooks.json`.
+
+Install from the repository marketplace inside Claude Code:
+
+```text
+/plugin marketplace add boksajang/vibebox
+/plugin install vibebox@vibebox
+/reload-plugins
+```
+
+CLI form:
+
+```bash
+claude plugin marketplace add boksajang/vibebox
+claude plugin install vibebox@vibebox
+```
+
+When the plugin is enabled, the bundled Claude hooks support the normal VibeBox workflow:
+
+- `UserPromptSubmit` runs `pretask` for the submitted prompt and adds the retrieved guidance to Claude context.
+- `Stop` adds an aftertask checkpoint so Claude does not finish meaningful work without running `schema` and `aftertask` with AI-agent structured candidates.
+
+The hooks do not synthesize memory by themselves. Claude remains responsible for deciding whether reusable memory exists, reading the Core schema before candidate JSON, and submitting structured candidates or `no_reusable_memory_candidate`.
 
 ## Obsidian Wiki
 

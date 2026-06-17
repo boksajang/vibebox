@@ -1,8 +1,47 @@
 # VibeBox Claude Adapter
 
-This is a Claude-compatible guide for using the shared VibeBox skill with the local VibeBox CLI.
+This is a Claude Code and Claude-compatible guide for using the shared VibeBox skill with the local VibeBox CLI.
 
 VibeBox memory behavior comes from Core and the shared skill, not from an adapter-specific fork.
+
+## Claude Code Plugin Install
+
+VibeBox ships Claude Code plugin metadata and hooks:
+
+- `.claude-plugin/plugin.json`
+- `.claude-plugin/marketplace.json`
+- `hooks/hooks.json`
+- `scripts/claude-vibebox-hook.mjs`
+
+Install from the VibeBox repository marketplace inside Claude Code:
+
+```text
+/plugin marketplace add boksajang/vibebox
+/plugin install vibebox@vibebox
+/reload-plugins
+```
+
+CLI form:
+
+```bash
+claude plugin marketplace add boksajang/vibebox
+claude plugin install vibebox@vibebox
+```
+
+The marketplace name is `vibebox`; the plugin name is also `vibebox`, so the installed plugin identifier is `vibebox@vibebox`.
+
+After install, users should ask for normal coding work. They should not need to manually run `pretask`, `schema`, or `aftertask` during ordinary use.
+
+## Claude Code Hooks
+
+The plugin hook file is `hooks/hooks.json`.
+
+- `UserPromptSubmit` runs the bundled VibeBox CLI with `pretask --task <submitted prompt>` and injects the active memory brief into Claude context before Claude plans or edits.
+- `Stop` injects an aftertask checkpoint. If meaningful work occurred, Claude should continue, run `schema --format json`, create structured candidates, and run `aftertask`.
+
+The hook does not invent semantic memory. Claude remains the semantic authority: it decides whether reusable memory exists, reads the Core schema before candidate JSON, and submits either structured candidates or `no_reusable_memory_candidate`.
+
+If global store access is denied, the hook adds that failure as context. Claude should report guidance or capture unavailable instead of creating a project-local fallback store.
 
 ## Shared Skill
 
@@ -35,6 +74,8 @@ node bin/vibebox.mjs <command>
 ```
 
 ## Workflow
+
+This section is for non-plugin hosts, debugging, or manual validation. In normal Claude Code plugin use, the installed hooks and shared skill drive this workflow.
 
 Before meaningful work:
 
