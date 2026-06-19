@@ -14,9 +14,13 @@ import {
   generateContextPack,
   generatePreTaskBrief,
   generateReport,
+  inspectCodexSetup,
+  inspectClaudeSetup,
   initVibeBox,
   rejectMemory,
   rebuildVibeBox,
+  setupClaude,
+  setupCodex,
   restoreVibeBox,
   reviewPending,
   runDoctor,
@@ -172,7 +176,7 @@ function commandAccessKind(command = '') {
   if (['pretask', 'context', 'report', 'blackbox', 'doctor', 'review', 'schema'].includes(normalized)) {
     return 'read';
   }
-  if (['aftertask', 'capture', 'extract', 'approve', 'reject', 'init', 'backup', 'restore', 'convert-lang', 'language', 'rebuild'].includes(normalized)) {
+  if (['aftertask', 'capture', 'extract', 'approve', 'reject', 'init', 'setup-codex', 'setup-claude', 'backup', 'restore', 'convert-lang', 'language', 'rebuild'].includes(normalized)) {
     return 'write';
   }
   return 'access';
@@ -205,11 +209,127 @@ export function formatCliError(error, command = '') {
   ].join('\n');
 }
 
+function yesNo(value) {
+  return value ? 'yes' : 'no';
+}
+
+function formatSetupResult(result) {
+  const label = result.agent === 'codex' ? 'Codex' : 'Claude Code';
+  const configLabel = result.agent === 'codex' ? 'Codex config' : 'Claude Code settings';
+  return [
+    `[VibeBox ${label} Setup]`,
+    '',
+    `Global store: ${result.globalStore}`,
+    `  Exists: ${yesNo(result.check.globalStoreExists)}`,
+    '',
+    `${configLabel}: ${result.agent === 'codex' ? result.configPath : result.settingsPath}`,
+    `  Created: ${yesNo(result.configCreated || result.settingsCreated)}`,
+    `  Changed: ${yesNo(result.changed)}`,
+    `  Backup: ${result.backupPath || '(none)'}`,
+    '',
+    'Result:',
+    result.check.ok
+      ? `  ${label} is configured for VibeBox global store access.`
+      : `  ${label} setup completed, but one or more checks still need attention.`,
+    '',
+    'Next:',
+    `  Restart ${label} so the updated settings are loaded.`
+  ].join('\n');
+}
+
+function formatCodexSetupDoctor(check) {
+  return [
+    '[VibeBox Doctor: Codex]',
+    '',
+    'Global store:',
+    `  ${check.globalStore}`,
+    `  Exists: ${yesNo(check.globalStoreExists)}`,
+    '',
+    'Codex config:',
+    `  ${check.configPath}`,
+    `  Found: ${yesNo(check.found)}`,
+    '',
+    'Sandbox:',
+    `  sandbox_mode: ${check.sandboxMode || '(missing)'}`,
+    `  approval_policy: ${check.approvalPolicy || '(missing)'}`,
+    `  [sandbox_workspace_write]: ${yesNo(check.hasSandboxWorkspaceWrite)}`,
+    `  writable_roots includes ~/.vibebox: ${yesNo(check.writableRootsIncludesVibeBox)}`,
+    '',
+    'Result:',
+    check.ok
+      ? '  Codex is configured to write VibeBox memory without extra global-store approval when this config layer is active.'
+      : '  Codex may ask for approval when VibeBox writes memory.',
+    ...(check.ok ? [] : [
+      '',
+      'Fix:',
+      '  Run:',
+      '    vibebox setup-codex'
+    ])
+  ].join('\n');
+}
+
+function formatClaudeSetupDoctor(check) {
+  return [
+    '[VibeBox Doctor: Claude Code]',
+    '',
+    'Global store:',
+    `  ${check.globalStore}`,
+    `  Exists: ${yesNo(check.globalStoreExists)}`,
+    '',
+    'Claude Code settings:',
+    `  ${check.settingsPath}`,
+    `  Found: ${yesNo(check.found)}`,
+    ...(check.parseError ? [`  Parse error: ${check.parseError}`] : []),
+    '',
+    'Checks:',
+    `  permissions.additionalDirectories includes ~/.vibebox: ${yesNo(check.additionalDirectoriesIncludesVibeBox)}`,
+    `  permissions.allow includes Read(~/.vibebox/**): ${yesNo(check.allowIncludesReadVibeBox)}`,
+    `  permissions.allow includes Edit(~/.vibebox/**): ${yesNo(check.allowIncludesEditVibeBox)}`,
+    `  optional Bash(vibebox ...) rules exist: ${yesNo(check.bashRulesComplete)}`,
+    '',
+    'Result:',
+    check.ok
+      ? '  Claude Code is configured for VibeBox global-store file access. Bash allow rules are recommended for fewer prompts.'
+      : '  Claude Code may ask for approval or lack file access when VibeBox reads or writes memory.',
+    ...(check.ok && check.bashRulesComplete ? [] : [
+      '',
+      'Fix:',
+      '  Run:',
+      '    vibebox setup-claude'
+    ])
+  ].join('\n');
+}
+
+function requestedDoctorAgents(flags = {}) {
+  if (flags.codex) return ['codex'];
+  if (flags.claude) return ['claude'];
+  const agent = String(flags.agent || flags.agents || '').toLowerCase();
+  if (agent === 'codex') return ['codex'];
+  if (agent === 'claude') return ['claude'];
+  if (agent === 'all' || agent === 'both') return ['codex', 'claude'];
+  return [];
+}
+
+async function formatAgentDoctorSections(flags = {}) {
+  const agents = requestedDoctorAgents(flags);
+  const sections = [];
+  for (const agent of agents) {
+    if (agent === 'codex') {
+      sections.push(formatCodexSetupDoctor(await inspectCodexSetup()));
+    } else if (agent === 'claude') {
+      sections.push(formatClaudeSetupDoctor(await inspectClaudeSetup()));
+    }
+  }
+  return sections;
+}
+
 function help() {
   return `VibeBox
 
 Usage:
   vibebox init [--store <path>] [--language <canonical-bcp47>] [--display-template-file <path>]
+  vibebox setup-codex
+  vibebox setup-claude
   vibebox capture --request <text> --summary <text> [--command <text>] [--command-result <text>] [--changed-files a,b] [--feedback <text>] [--outcome success|failure|partial|unknown] [--technical-outcome success|failure|partial|unknown] [--user-acceptance accepted|rejected|mixed|unknown]
   vibebox extract --candidates <agent-candidate-json> [--manual-review]
   vibebox review  (debug/manual override only)
@@ -222,7 +342,7 @@ Usage:
   vibebox aftertask --request <text> --summary <text> --candidates <agent-candidate-json> [--candidates-file <path>] [--structured-candidates-file <path>] [--files a,b] [--commands <text>] [--command-results <text>] [--errors <text>] [--technical-outcome success|failure|partial|unknown] [--user-acceptance accepted|rejected|mixed|unknown]
   vibebox report
   vibebox blackbox [--limit 10] [--type success|failure|task_summary] [--since YYYY-MM-DD]
-  vibebox doctor
+  vibebox doctor [--codex|--claude|--agent codex|claude|all]
   vibebox backup [--output <path>] [--include-logs|--exclude-logs]
   vibebox restore --from <path> --confirm-replace
   vibebox convert-lang <from> <to> [--display-template-file <path>]
@@ -231,6 +351,7 @@ Usage:
 
 Global store:
   Defaults to ~/.vibebox and can be overridden with VIBEBOX_HOME or --store <path>.
+  setup-codex and setup-claude configure agent user settings for the default ~/.vibebox store and ask you to restart the agent after changes.
   Obsidian Wiki display uses the configured canonical BCP 47 memoryLanguage. VIBEBOX_LANGUAGE/--language can seed a new store; VIBEBOX_LOCALE/--locale is an environment hint and does not rewrite an existing store.
   For non-default initial languages, the AI Agent must pass a localized display template with --display-template/--display-template-file or VIBEBOX_DISPLAY_TEMPLATE.
   Active memory requires AI-agent structured candidates. Core does not semantically interpret userRequest, headings, bullets, keywords, raw action summaries, or command output.
@@ -271,6 +392,14 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
         `Current project root: ${result.projectRoot}`,
         `Created ${result.created.length} missing item(s).`
       ].join('\n');
+    }
+
+    case 'setup-codex': {
+      return formatSetupResult(await setupCodex());
+    }
+
+    case 'setup-claude': {
+      return formatSetupResult(await setupClaude());
     }
 
     case 'capture': {
@@ -396,7 +525,9 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
 
     case 'doctor': {
       const report = await runDoctor(root);
-      return formatDoctorReport(report, { locale: flags.locale });
+      const baseReport = formatDoctorReport(report, { locale: flags.locale });
+      const setupSections = await formatAgentDoctorSections(flags);
+      return [baseReport, ...setupSections].join('\n\n');
     }
 
     case 'backup': {

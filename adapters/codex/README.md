@@ -49,14 +49,14 @@ Codex App can read installed plugin cache files instead of the repository workin
 Cache placeholder:
 
 ```text
-%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.4\
+%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.5\
 ```
 
-This `0.1.4` folder is the cache-busting installed version. Stale plugin cache content can make Codex App behave as if older skill files are still installed. After `git pull`, reinstall, or source updates, compare the installed cache against the repository:
+This `0.1.5` folder is the cache-busting installed version. Stale plugin cache content can make Codex App behave as if older skill files are still installed. After `git pull`, reinstall, or source updates, compare the installed cache against the repository:
 
 ```powershell
 $repo = (Get-Location).Path
-$cache = "$env:USERPROFILE\.codex\plugins\cache\personal\vibebox\0.1.4"
+$cache = "$env:USERPROFILE\.codex\plugins\cache\personal\vibebox\0.1.5"
 Test-Path $cache
 Get-FileHash "$repo\.codex-plugin\plugin.json", "$cache\.codex-plugin\plugin.json"
 Get-FileHash "$repo\skills\vibebox\SKILL.md", "$cache\skills\vibebox\SKILL.md"
@@ -101,7 +101,15 @@ Codex App may run with a workspace sandbox. A setup that works in another termin
 - If write access is denied, request approved global VibeBox store write access or report that aftertask capture, project registration, active memory, and wiki updates were not completed.
 - Do not create workspace-local memory snapshots, copied stores, project-local `.vibebox`, pointer files, or hidden metadata fallbacks.
 
-VibeBox does not automatically edit Codex configuration. If hooks are configured manually, use the current `[features].hooks` setting. Legacy `[features].codex_hooks` references are deprecated and should not be used for new setup.
+Run `vibebox setup-codex` to create `~/.vibebox`, back up `~/.codex/config.toml`, create the config if missing, and add the default store to `[sandbox_workspace_write].writable_roots` without duplicate entries. The command adds missing top-level `sandbox_mode = "workspace-write"` and `approval_policy = "on-request"` values, then asks you to restart Codex.
+
+Check the setup with:
+
+```bash
+vibebox doctor --codex
+```
+
+If hooks are configured manually, use the current `[features].hooks` setting. Legacy `[features].codex_hooks` references are deprecated and should not be used for new setup.
 
 ## Codex Workflow
 

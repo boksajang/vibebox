@@ -14,7 +14,7 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 
-export const VIBEBOX_VERSION = '0.1.4';
+export const VIBEBOX_VERSION = '0.1.5';
 
 const WIKI_DOCS = [
   { docKey: 'home', canonicalFileName: 'Home.md', titleKey: 'homeTitle', technicalName: true },
@@ -382,6 +382,22 @@ const SENSITIVE_PATTERNS = [
 const MANAGED_BEGIN = '<!-- VIBEBOX:BEGIN -->';
 const MANAGED_END = '<!-- VIBEBOX:END -->';
 
+const CODEX_CONFIG_RELATIVE_PATH = path.join('.codex', 'config.toml');
+const CLAUDE_SETTINGS_RELATIVE_PATH = path.join('.claude', 'settings.json');
+const VIBEBOX_HOME_RELATIVE_PATH = '.vibebox';
+const CLAUDE_VIBEBOX_DIRECTORY = '~/.vibebox';
+const CLAUDE_VIBEBOX_ALLOW_RULES = [
+  'Read(~/.vibebox/**)',
+  'Edit(~/.vibebox/**)',
+  'Bash(vibebox doctor *)',
+  'Bash(vibebox capture *)',
+  'Bash(vibebox pretask *)',
+  'Bash(vibebox aftertask *)',
+  'Bash(vibebox approve *)',
+  'Bash(vibebox reject *)',
+  'Bash(vibebox report *)'
+];
+
 export function getVibeBoxHome(options = {}) {
   return path.resolve(options.storeRoot || process.env.VIBEBOX_HOME || path.join(os.homedir(), '.vibebox'));
 }
@@ -461,6 +477,331 @@ export async function loadJson(filePath, fallback = undefined) {
     }
     throw error;
   }
+}
+
+function userHomeDir(options = {}) {
+  return path.resolve(options.homeDir || os.homedir());
+}
+
+function userVibeBoxHome(options = {}) {
+  return path.join(userHomeDir(options), VIBEBOX_HOME_RELATIVE_PATH);
+}
+
+function userCodexConfigPath(options = {}) {
+  return path.join(userHomeDir(options), CODEX_CONFIG_RELATIVE_PATH);
+}
+
+function userClaudeSettingsPath(options = {}) {
+  return path.join(userHomeDir(options), CLAUDE_SETTINGS_RELATIVE_PATH);
+}
+
+function portablePath(filePath) {
+  return path.resolve(filePath).replace(/\\/gu, '/');
+}
+
+function pathCandidatesEqual(left, right, options = {}) {
+  const homeDir = userHomeDir(options);
+  const normalizeCandidate = (value) => {
+    const raw = String(value || '').trim().replace(/^['"]|['"]$/gu, '');
+    if (!raw) return '';
+    const expanded = raw === '~' || raw.startsWith('~/') || raw.startsWith('~\\')
+      ? path.join(homeDir, raw.slice(2))
+      : raw;
+    const normalized = path.resolve(expanded.replace(/\\/gu, path.sep)).replace(/\\/gu, '/');
+    return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+  };
+  return normalizeCandidate(left) === normalizeCandidate(right);
+}
+
+function backupLabel() {
+  return nowIso().replace(/[:.]/gu, '-');
+}
+
+async function backupExistingFile(filePath) {
+  if (!(await exists(filePath))) return null;
+  const backupPath = `${filePath}.vibebox-backup-${backupLabel()}`;
+  await writeFile(backupPath, await readFile(filePath, 'utf8'), 'utf8');
+  return backupPath;
+}
+
+function splitTomlLines(text) {
+  return String(text || '').replace(/\r\n/gu, '\n').split('\n');
+}
+
+function findTomlSection(lines, sectionName) {
+  let start = -1;
+  let end = lines.length;
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(/^\s*\[([^\]]+)\]\s*(?:#.*)?$/u);
+    if (!match) continue;
+    if (match[1].trim() === sectionName) {
+      start = index;
+      continue;
+    }
+    if (start >= 0) {
+      end = index;
+      break;
+    }
+  }
+  return start >= 0 ? { start, end } : null;
+}
+
+function findTopLevelTomlValue(text, key) {
+  let section = '';
+  for (const line of splitTomlLines(text)) {
+    const sectionMatch = line.match(/^\s*\[([^\]]+)\]\s*(?:#.*)?$/u);
+    if (sectionMatch) {
+      section = sectionMatch[1].trim();
+      continue;
+    }
+    if (section) continue;
+    const keyMatch = line.match(new RegExp(`^\\s*${key}\\s*=\\s*(.+?)\\s*(?:#.*)?$`, 'u'));
+    if (keyMatch) {
+      return keyMatch[1].trim().replace(/^"|"$/gu, '');
+    }
+  }
+  return null;
+}
+
+function parseTomlStringArray(arrayText) {
+  const values = [];
+  for (const match of String(arrayText || '').matchAll(/"((?:\\.|[^"])*)"|'((?:\\.|[^'])*)'/gu)) {
+    const raw = match[1] ?? match[2] ?? '';
+    values.push(raw.replace(/\\"/gu, '"').replace(/\\\\/gu, '\\'));
+  }
+  return values;
+}
+
+function findTomlArray(lines, section, key) {
+  if (!section) return null;
+  for (let index = section.start + 1; index < section.end; index += 1) {
+    if (!new RegExp(`^\\s*${key}\\s*=\\s*\\[`, 'u').test(lines[index])) continue;
+    let end = index;
+    while (end < section.end && !lines[end].includes(']')) {
+      end += 1;
+    }
+    if (end >= section.end) return null;
+    const text = lines.slice(index, end + 1).join('\n');
+    return { start: index, end, values: parseTomlStringArray(text) };
+  }
+  return null;
+}
+
+function formatTomlStringArray(key, values) {
+  const formatted = values.map((value) => `  "${String(value).replace(/\\/gu, '\\\\').replace(/"/gu, '\\"')}"`);
+  return [`${key} = [`, formatted.join(',\n'), ']'].filter(Boolean);
+}
+
+function upsertCodexVibeBoxConfig(existingText, options = {}) {
+  const target = portablePath(userVibeBoxHome(options));
+  let text = String(existingText || '');
+  let changed = false;
+  const topLevelLines = [];
+  if (!findTopLevelTomlValue(text, 'sandbox_mode')) {
+    topLevelLines.push('sandbox_mode = "workspace-write"');
+    changed = true;
+  }
+  if (!findTopLevelTomlValue(text, 'approval_policy')) {
+    topLevelLines.push('approval_policy = "on-request"');
+    changed = true;
+  }
+  if (topLevelLines.length > 0) {
+    text = `${topLevelLines.join('\n')}\n${text.trim() ? `\n${text}` : ''}`;
+  }
+
+  const lines = splitTomlLines(text);
+  let section = findTomlSection(lines, 'sandbox_workspace_write');
+  if (!section) {
+    if (lines.length > 0 && lines.at(-1) === '') lines.pop();
+    if (lines.length > 0) lines.push('');
+    lines.push('[sandbox_workspace_write]', ...formatTomlStringArray('writable_roots', [target]));
+    changed = true;
+    return { text: `${lines.join('\n').replace(/\s+$/u, '')}\n`, changed, target };
+  }
+
+  let array = findTomlArray(lines, section, 'writable_roots');
+  if (!array) {
+    lines.splice(section.start + 1, 0, ...formatTomlStringArray('writable_roots', [target]));
+    changed = true;
+    return { text: `${lines.join('\n').replace(/\s+$/u, '')}\n`, changed, target };
+  }
+
+  if (!array.values.some((value) => pathCandidatesEqual(value, target, options))) {
+    const values = [...array.values, target];
+    lines.splice(array.start, array.end - array.start + 1, ...formatTomlStringArray('writable_roots', values));
+    changed = true;
+  }
+  return { text: `${lines.join('\n').replace(/\s+$/u, '')}\n`, changed, target };
+}
+
+function inspectCodexConfig(options = {}) {
+  return async function inspect() {
+    const homeDir = userHomeDir(options);
+    const globalStore = userVibeBoxHome(options);
+    const configPath = userCodexConfigPath(options);
+    const found = await exists(configPath);
+    const text = found ? await readFile(configPath, 'utf8') : '';
+    const lines = splitTomlLines(text);
+    const section = findTomlSection(lines, 'sandbox_workspace_write');
+    const roots = findTomlArray(lines, section, 'writable_roots')?.values || [];
+    const includesVibeBox = roots.some((value) => pathCandidatesEqual(value, globalStore, { homeDir }));
+    return {
+      agent: 'codex',
+      globalStore,
+      globalStoreExists: await exists(globalStore),
+      configPath,
+      found,
+      sandboxMode: found ? findTopLevelTomlValue(text, 'sandbox_mode') : null,
+      approvalPolicy: found ? findTopLevelTomlValue(text, 'approval_policy') : null,
+      hasSandboxWorkspaceWrite: Boolean(section),
+      writableRoots: roots,
+      writableRootsIncludesVibeBox: includesVibeBox,
+      ok: found && includesVibeBox
+    };
+  };
+}
+
+async function readJsonObjectIfExists(filePath) {
+  try {
+    const parsed = JSON.parse(await readFile(filePath, 'utf8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (error) {
+    if (error.code === 'ENOENT') return {};
+    throw error;
+  }
+}
+
+function uniqueArray(values, equals = (left, right) => left === right) {
+  const output = [];
+  for (const value of values.filter(Boolean)) {
+    if (!output.some((item) => equals(item, value))) output.push(value);
+  }
+  return output;
+}
+
+function ruleToolName(rule) {
+  return String(rule || '').replace(/\(.+$/u, '').trim();
+}
+
+function inspectClaudeSettingsObject(settings, options = {}) {
+  const permissions = settings?.permissions && typeof settings.permissions === 'object' && !Array.isArray(settings.permissions)
+    ? settings.permissions
+    : {};
+  const additionalDirectories = Array.isArray(permissions.additionalDirectories) ? permissions.additionalDirectories : [];
+  const allow = Array.isArray(permissions.allow) ? permissions.allow : [];
+  const hasDirectory = additionalDirectories.some((value) => pathCandidatesEqual(value, CLAUDE_VIBEBOX_DIRECTORY, options));
+  const hasReadRule = allow.some((value) => pathCandidatesEqual(String(value).match(/^Read\((.+)\)$/u)?.[1] || '', '~/.vibebox/**', options));
+  const hasEditRule = allow.some((value) => pathCandidatesEqual(String(value).match(/^Edit\((.+)\)$/u)?.[1] || '', '~/.vibebox/**', options));
+  const bashRules = CLAUDE_VIBEBOX_ALLOW_RULES.filter((rule) => ruleToolName(rule) === 'Bash');
+  const presentBashRules = bashRules.filter((rule) => allow.includes(rule));
+  return {
+    additionalDirectories,
+    allow,
+    additionalDirectoriesIncludesVibeBox: hasDirectory,
+    allowIncludesReadVibeBox: hasReadRule,
+    allowIncludesEditVibeBox: hasEditRule,
+    expectedBashRules: bashRules,
+    presentBashRules,
+    bashRulesComplete: presentBashRules.length === bashRules.length
+  };
+}
+
+export async function inspectCodexSetup(options = {}) {
+  return inspectCodexConfig(options)();
+}
+
+export async function inspectClaudeSetup(options = {}) {
+  const homeDir = userHomeDir(options);
+  const globalStore = userVibeBoxHome(options);
+  const settingsPath = userClaudeSettingsPath(options);
+  const found = await exists(settingsPath);
+  let parsed = {};
+  let parseError = '';
+  if (found) {
+    try {
+      parsed = await readJsonObjectIfExists(settingsPath);
+    } catch (error) {
+      parseError = error.message;
+    }
+  }
+  const permissions = inspectClaudeSettingsObject(parsed, { homeDir });
+  return {
+    agent: 'claude',
+    globalStore,
+    globalStoreExists: await exists(globalStore),
+    settingsPath,
+    found,
+    parseError,
+    ...permissions,
+    ok: found
+      && !parseError
+      && permissions.additionalDirectoriesIncludesVibeBox
+      && permissions.allowIncludesReadVibeBox
+      && permissions.allowIncludesEditVibeBox
+  };
+}
+
+export async function setupCodex(options = {}) {
+  const homeDir = userHomeDir(options);
+  const globalStore = userVibeBoxHome({ homeDir });
+  const configPath = userCodexConfigPath({ homeDir });
+  await ensureDir(globalStore);
+  await ensureDir(path.dirname(configPath));
+  const configExisted = await exists(configPath);
+  const backupPath = await backupExistingFile(configPath);
+  const existingText = configExisted ? await readFile(configPath, 'utf8') : '';
+  const updated = upsertCodexVibeBoxConfig(existingText, { homeDir });
+  if (!configExisted || updated.changed) {
+    await writeFile(configPath, updated.text, 'utf8');
+  }
+  return {
+    agent: 'codex',
+    homeDir,
+    globalStore,
+    configPath,
+    configExisted,
+    configCreated: !configExisted,
+    backupPath,
+    changed: !configExisted || updated.changed,
+    restartRequired: true,
+    check: await inspectCodexSetup({ homeDir })
+  };
+}
+
+export async function setupClaude(options = {}) {
+  const homeDir = userHomeDir(options);
+  const globalStore = userVibeBoxHome({ homeDir });
+  const settingsPath = userClaudeSettingsPath({ homeDir });
+  await ensureDir(globalStore);
+  await ensureDir(path.dirname(settingsPath));
+  const settingsExisted = await exists(settingsPath);
+  const backupPath = await backupExistingFile(settingsPath);
+  const settings = await readJsonObjectIfExists(settingsPath);
+  const permissions = settings.permissions && typeof settings.permissions === 'object' && !Array.isArray(settings.permissions)
+    ? { ...settings.permissions }
+    : {};
+  permissions.additionalDirectories = uniqueArray([
+    ...(Array.isArray(permissions.additionalDirectories) ? permissions.additionalDirectories : []),
+    CLAUDE_VIBEBOX_DIRECTORY
+  ], (left, right) => pathCandidatesEqual(left, right, { homeDir }));
+  permissions.allow = uniqueArray([
+    ...(Array.isArray(permissions.allow) ? permissions.allow : []),
+    ...CLAUDE_VIBEBOX_ALLOW_RULES
+  ]);
+  const updatedSettings = { ...settings, permissions };
+  await saveJson(settingsPath, updatedSettings);
+  return {
+    agent: 'claude',
+    homeDir,
+    globalStore,
+    settingsPath,
+    settingsExisted,
+    settingsCreated: !settingsExisted,
+    backupPath,
+    changed: true,
+    restartRequired: true,
+    check: await inspectClaudeSetup({ homeDir })
+  };
 }
 
 export async function readJsonl(filePath) {

@@ -37,6 +37,16 @@ Sandboxed hosts may block this store because it is outside the workspace.
 - If write access is denied, request approved global VibeBox store write access or report capture unavailable and state that project registration, active memory, and wiki updates were not completed.
 - Do not create workspace-local memory snapshots, copied stores, project-local `.vibebox` folders, pointer files, or hidden metadata as a fallback.
 
+For supported sandboxed hosts, use the host setup commands to reduce repeated approval prompts for the default global store:
+
+```bash
+vibebox setup-codex
+vibebox setup-claude
+vibebox doctor --agent all
+```
+
+`setup-codex` updates `~/.codex/config.toml`; `setup-claude` updates `~/.claude/settings.json`. Both back up existing config files, merge without duplicate VibeBox entries, and require restarting the host afterward.
+
 Recommended wording: `VibeBox uses one global store as the single source of truth. This sandboxed session may need approval to read or write the global VibeBox store. pretask/context require read access. aftertask requires write access for memory capture. No workspace-local memory snapshot will be created.`
 
 ## Pre-Task Retrieval
@@ -157,9 +167,10 @@ vibebox.cmd context --task "Update dashboard dependency handling"
 vibebox report
 vibebox blackbox --limit 10
 vibebox doctor
+vibebox doctor --agent all
 ```
 
-Reports and blackbox output summarize active graph and diagnostic task history without dumping raw logs. Doctor checks global store health, registry, JSON parsing, indexes, localized Wiki links, suspicious raw secrets, and legacy project-local stores.
+Reports and blackbox output summarize active graph and diagnostic task history without dumping raw logs. Doctor checks global store health, registry, JSON parsing, indexes, localized Wiki links, suspicious raw secrets, and legacy project-local stores. Agent setup doctor options check Codex and Claude Code permissions for the default `~/.vibebox` store.
 
 ## Legacy / Manual Debugging Only
 

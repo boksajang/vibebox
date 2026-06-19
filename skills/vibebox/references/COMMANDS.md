@@ -48,12 +48,14 @@ Write or maintenance commands:
 - `vibebox approve`
 - `vibebox reject`
 - `vibebox init`
+- `vibebox setup-codex`
+- `vibebox setup-claude`
 - `vibebox backup`
 - `vibebox restore`
 - `vibebox convert-lang`
 - `vibebox rebuild`
 
-These commands create, update, export, restore, or maintain files in the global store. `init`, `aftertask`, and `capture` can register the current project when write access is available.
+These commands create, update, export, restore, or maintain files in the global store or user-level agent configuration. `init`, `aftertask`, and `capture` can register the current project when write access is available. `setup-codex` and `setup-claude` target user configuration files under `~/.codex` and `~/.claude` so the default `~/.vibebox` store is allowed by the host.
 
 If access is denied, request the narrow global-store access needed. For `pretask` or `context`, request approved read-only global VibeBox store access. For `aftertask`, request approved global VibeBox store write access or report capture unavailable and state that project registration, active memory, and wiki updates did not happen.
 
@@ -85,6 +87,32 @@ vibebox init
 ```
 
 Notes: existing VibeBox files are preserved. VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects.
+
+## `vibebox setup-codex`
+
+Purpose: configure Codex user settings for the default `~/.vibebox` global store.
+
+Example:
+
+```bash
+vibebox setup-codex
+vibebox doctor --codex
+```
+
+Notes: creates `~/.vibebox` if missing, creates `~/.codex/config.toml` if missing, backs up an existing config, and adds the default global store to `[sandbox_workspace_write].writable_roots` without duplicate entries. It adds missing top-level `sandbox_mode = "workspace-write"` and `approval_policy = "on-request"` keys. Restart Codex after setup.
+
+## `vibebox setup-claude`
+
+Purpose: configure Claude Code user settings for the default `~/.vibebox` global store.
+
+Example:
+
+```bash
+vibebox setup-claude
+vibebox doctor --claude
+```
+
+Notes: creates `~/.vibebox` if missing, creates `~/.claude/settings.json` if missing, backs up an existing settings file, and merges `permissions.additionalDirectories`, `Read(~/.vibebox/**)`, `Edit(~/.vibebox/**)`, and VibeBox `Bash(...)` allow rules without duplicate entries. Restart Claude Code after setup.
 
 ## `vibebox pretask`
 
@@ -214,9 +242,12 @@ Example:
 
 ```bash
 vibebox doctor
+vibebox doctor --codex
+vibebox doctor --claude
+vibebox doctor --agent all
 ```
 
-Notes: read-only inspection. It checks storage layout, JSON parsing, indexes, localized Wiki links, suspicious raw secrets, duplicate localized docs, orphan project pages, and legacy project-local stores.
+Notes: read-only inspection. It checks storage layout, JSON parsing, indexes, localized Wiki links, suspicious raw secrets, duplicate localized docs, orphan project pages, and legacy project-local stores. With `--codex`, `--claude`, or `--agent all`, it also reports whether the user-level agent settings include the default `~/.vibebox` store and shows the matching `setup-*` fix command when needed.
 
 ## Backup And Restore
 

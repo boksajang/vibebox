@@ -60,6 +60,30 @@ The global store contains `global/`, `projects/{projectId}/`, `wiki/`, `index/`,
 
 VibeBox does not create project-local `.vibebox` folders, workspace-local snapshots, copied stores, pointer files, or hidden metadata in work repositories.
 
+## Agent Sandbox Setup
+
+For supported sandboxed agents, VibeBox can update user-level agent settings so the default global store is available without repeated approval prompts.
+
+Codex:
+
+```bash
+vibebox setup-codex
+vibebox doctor --codex
+```
+
+`setup-codex` creates `~/.vibebox` if missing, creates `~/.codex/config.toml` if missing, backs up an existing config, and adds the default global store to `[sandbox_workspace_write].writable_roots` without duplicate entries. It adds `sandbox_mode = "workspace-write"` and `approval_policy = "on-request"` only when those top-level keys are missing. Restart Codex after setup.
+
+Claude Code:
+
+```bash
+vibebox setup-claude
+vibebox doctor --claude
+```
+
+`setup-claude` creates `~/.vibebox` if missing, creates `~/.claude/settings.json` if missing, backs up an existing settings file, and merges `permissions.additionalDirectories`, `Read(~/.vibebox/**)`, `Edit(~/.vibebox/**)`, and VibeBox `Bash(...)` allow rules without duplicate entries. Restart Claude Code after setup.
+
+Use `vibebox doctor --agent all` to inspect both Codex and Claude Code settings.
+
 ## Normal Workflow
 
 Before meaningful repository work:
@@ -200,7 +224,7 @@ vibebox blackbox --limit 10
 vibebox doctor
 ```
 
-`report` summarizes active memory and legacy/manual debug pending state. `blackbox` summarizes recent diagnostic task history without dumping raw logs. `doctor` checks store health, JSON parsing, indexes, localized Wiki links, suspicious raw secrets, registry state, and legacy project-local stores.
+`report` summarizes active memory and legacy/manual debug pending state. `blackbox` summarizes recent diagnostic task history without dumping raw logs. `doctor` checks store health, JSON parsing, indexes, localized Wiki links, suspicious raw secrets, registry state, and legacy project-local stores. Add `--codex`, `--claude`, or `--agent all` to check agent sandbox settings for the default `~/.vibebox` store.
 
 ## Legacy / Manual Debugging Only
 
@@ -266,10 +290,10 @@ Codex App can load installed plugin cache files instead of the current repositor
 Cache placeholder:
 
 ```text
-%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.4\
+%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.5\
 ```
 
-This is the cache-busting folder for `0.1.4`; stale plugin cache content can make Codex App behave as if older skill files are still installed. After updating or reinstalling, compare these files between source and installed cache:
+This is the cache-busting folder for `0.1.5`; stale plugin cache content can make Codex App behave as if older skill files are still installed. After updating or reinstalling, compare these files between source and installed cache:
 
 - `.codex-plugin/plugin.json`
 - `skills/vibebox/SKILL.md`
@@ -282,7 +306,7 @@ Example PowerShell:
 
 ```powershell
 $repo = (Get-Location).Path
-$cache = "$env:USERPROFILE\.codex\plugins\cache\personal\vibebox\0.1.4"
+$cache = "$env:USERPROFILE\.codex\plugins\cache\personal\vibebox\0.1.5"
 Test-Path $cache
 Get-FileHash "$repo\.codex-plugin\plugin.json", "$cache\.codex-plugin\plugin.json"
 Get-FileHash "$repo\skills\vibebox\SKILL.md", "$cache\skills\vibebox\SKILL.md"
@@ -300,6 +324,8 @@ If hashes differ or expected contract phrases are absent, reinstall or refresh t
 - If `vibebox` is not found, run `npm link` from the VibeBox checkout or use `node bin/vibebox.mjs <command>`.
 - If PowerShell blocks the `.ps1` shim, use `vibebox.cmd <command>`.
 - If a wrapper-style call is blocked, retry direct `vibebox.cmd`, then `vibebox`, then the Node fallback.
+- If Codex repeatedly asks for `~/.vibebox` approval, run `vibebox setup-codex`, restart Codex, then check `vibebox doctor --codex`.
+- If Claude Code needs global-store file permissions, run `vibebox setup-claude`, restart Claude Code, then check `vibebox doctor --claude`.
 - If sandbox access to the global store is denied, request approved read-only global VibeBox store access for `pretask`/`context` or approved global VibeBox store write access for `aftertask`.
 - If write access is denied, report that capture, project registration, active memory, and wiki updates were not completed.
 - If an isolated verification store is needed, set `VIBEBOX_HOME` to a temporary store path.

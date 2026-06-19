@@ -49,6 +49,16 @@ Sandboxed hosts may block the store because it is outside the workspace.
 - If write access is denied, request approved global VibeBox store write access or report capture unavailable and state that project registration, active memory, and wiki updates were not completed.
 - Do not create a copied store, workspace-local memory snapshot, project-local `.vibebox`, pointer file, or hidden metadata fallback.
 
+Supported sandboxed hosts can be configured once for the default global store:
+
+```bash
+vibebox setup-codex
+vibebox setup-claude
+vibebox doctor --agent all
+```
+
+Restart the host after setup. If `VIBEBOX_HOME` points somewhere other than `~/.vibebox`, configure that custom path manually in the host sandbox.
+
 ## Command Preference
 
 Windows/Codex:

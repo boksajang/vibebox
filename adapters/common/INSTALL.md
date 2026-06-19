@@ -62,6 +62,25 @@ Use `VIBEBOX_HOME` or `--store <path>` for a different store.
 
 VibeBox does not create project-local `.vibebox` folders, workspace-local snapshots, copied stores, pointer files, or hidden metadata in work projects.
 
+## Configure Agent Store Access
+
+When a supported sandboxed host repeatedly asks for access to the default global store, configure that host once and restart it:
+
+```bash
+vibebox setup-codex
+vibebox setup-claude
+```
+
+Inspect the resulting setup:
+
+```bash
+vibebox doctor --codex
+vibebox doctor --claude
+vibebox doctor --agent all
+```
+
+These setup commands target the default `~/.vibebox` store. If you use `VIBEBOX_HOME` for a custom store, configure the host sandbox manually for that path.
+
 ## Agent Invocation
 
 Manual invocation fallback:

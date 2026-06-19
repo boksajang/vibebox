@@ -81,11 +81,12 @@ node bin/vibebox.mjs pretask --task "<task description>"
 4. Prefer `vibebox.cmd` on Windows/Codex. Do not wrap normal retrieval in `powershell.exe -Command` unless direct invocation is unavailable.
 5. If a sandbox blocks global store access, request approved read-only global VibeBox store access for `pretask` or `context`.
 6. If aftertask write access is blocked, request approved global VibeBox store write access.
-7. Do not create workspace-local memory snapshots, copied stores, project-local `.vibebox` folders, pointer files, or hidden metadata as a workaround.
-8. Read `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`.
-9. Apply relevant guidance in the actual plan and implementation.
-10. If memory conflicts with the current user request, mention the conflict and follow the current request.
-11. If memory conflicts with repository reality, report the conflict before acting.
+7. If the same sandbox repeatedly asks for default `~/.vibebox` access, use or recommend `vibebox setup-codex` or `vibebox setup-claude`, then restart that host and verify with `vibebox doctor --codex`, `vibebox doctor --claude`, or `vibebox doctor --agent all`.
+8. Do not create workspace-local memory snapshots, copied stores, project-local `.vibebox` folders, pointer files, or hidden metadata as a workaround.
+9. Read `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`.
+10. Apply relevant guidance in the actual plan and implementation.
+11. If memory conflicts with the current user request, mention the conflict and follow the current request.
+12. If memory conflicts with repository reality, report the conflict before acting.
 
 `pretask` and `context` are read-only retrieval commands and do not create project registry entries.
 
@@ -170,7 +171,7 @@ Language conversion and semantic rebuild require an adapter-provided runtime mar
 
 ## Codex Cache Note
 
-Codex App can load an installed plugin cache instead of the repository checkout. A GitHub push alone does not refresh the installed cache. After local plugin source updates, run `git pull` or reinstall/update the plugin, then verify the cache under `%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.4\`. VibeBox does not delete or rewrite Codex App plugin cache files automatically.
+Codex App can load an installed plugin cache instead of the repository checkout. A GitHub push alone does not refresh the installed cache. After local plugin source updates, run `git pull` or reinstall/update the plugin, then verify the cache under `%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.5\`. VibeBox does not delete or rewrite Codex App plugin cache files automatically.
 
 ## Sensitive Data
 

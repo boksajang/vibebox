@@ -54,6 +54,15 @@ This applies to Codex plugin use, Claude Code plugin use, and Claude-compatible 
 
 Sandboxed hosts may still ask for permission to read or write the single global VibeBox store. That approval is for automatic memory retrieval and capture, not for a manual user workflow.
 
+To pre-authorize the default global store for supported hosts, run the setup command for that agent and restart it:
+
+```bash
+vibebox setup-codex
+vibebox setup-claude
+```
+
+`setup-codex` backs up `~/.codex/config.toml`, creates it if missing, and adds `~/.vibebox` to `[sandbox_workspace_write].writable_roots`. `setup-claude` backs up `~/.claude/settings.json`, creates it if missing, and adds VibeBox file and command permissions. Use `vibebox doctor --codex`, `vibebox doctor --claude`, or `vibebox doctor --agent all` to inspect these settings.
+
 On first use, the agent or adapter should bootstrap the global store and provide any required localized display template for the configured `memoryLanguage`. Users should not need to craft VibeBox workflow commands or candidate JSON manually.
 
 ### Local CLI Development
@@ -88,7 +97,7 @@ Codex App can read an installed plugin cache instead of your local checkout. A G
 Example cache placeholder:
 
 ```text
-%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.4\
+%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.5\
 ```
 
 VibeBox does not delete or rewrite Codex App plugin cache files automatically.

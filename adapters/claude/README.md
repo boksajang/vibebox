@@ -32,6 +32,15 @@ The marketplace name is `vibebox`; the plugin name is also `vibebox`, so the ins
 
 After install, users should ask for normal coding work. They should not need to manually run `pretask`, `schema`, or `aftertask` during ordinary use.
 
+If Claude Code repeatedly asks for access to the VibeBox global store, run:
+
+```bash
+vibebox setup-claude
+vibebox doctor --claude
+```
+
+`setup-claude` creates `~/.vibebox`, backs up `~/.claude/settings.json`, creates it if missing, and merges `permissions.additionalDirectories`, `Read(~/.vibebox/**)`, `Edit(~/.vibebox/**)`, and VibeBox `Bash(...)` allow rules without duplicate entries. Restart Claude Code after setup.
+
 ## Claude Code Hooks
 
 The plugin hook file is `hooks/hooks.json`.
@@ -129,6 +138,8 @@ or `VIBEBOX_HOME` when configured.
 Sandboxed hosts may need approved read-only global VibeBox store access for `pretask`/`context` and approved global VibeBox store write access for `aftertask`. If read access is denied, report guidance unavailable. If aftertask write access is denied, report that capture, project registration, active memory, and wiki updates were not completed.
 
 VibeBox does not create project-local `.vibebox` folders, workspace-local snapshots, copied stores, pointer files, or hidden metadata in work projects.
+
+Use `vibebox doctor --claude` to check whether `~/.claude/settings.json` grants VibeBox file access. The optional `Bash(vibebox ...)` rules reduce command prompts, while `Read(~/.vibebox/**)` and `Edit(~/.vibebox/**)` cover the global store files.
 
 ## Language And Maintenance
 

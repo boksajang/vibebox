@@ -34,6 +34,10 @@ import {
   readJsonl,
   rejectMemory,
   rebuildVibeBox,
+  inspectCodexSetup,
+  inspectClaudeSetup,
+  setupClaude,
+  setupCodex,
   restoreVibeBox,
   reviewPending,
   runDoctor,
@@ -4944,6 +4948,79 @@ test('doctor warns about old project-local VibeBox stores without migrating them
   assert.ok(report.warnings.some((warning) => warning.includes('project-local .vibebox')));
 });
 
+test('setup-codex backs up and configures writable_roots without duplicates', async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), 'vibebox-codex-home-'));
+  const configPath = path.join(home, '.codex', 'config.toml');
+  await mkdir(path.dirname(configPath), { recursive: true });
+  await writeFile(configPath, [
+    'model = "gpt-test"',
+    'sandbox_mode = "workspace-write"',
+    'approval_policy = "on-request"',
+    '',
+    '[sandbox_workspace_write]',
+    'network_access = false',
+    'writable_roots = []',
+    ''
+  ].join('\n'), 'utf8');
+
+  const first = await setupCodex({ homeDir: home });
+  assert.equal(first.configCreated, false);
+  assert.ok(first.backupPath);
+  await readFile(first.backupPath, 'utf8');
+  assert.equal(first.check.ok, true);
+  assert.equal(first.check.writableRootsIncludesVibeBox, true);
+
+  const second = await setupCodex({ homeDir: home });
+  assert.equal(second.check.ok, true);
+  const updated = await readFile(configPath, 'utf8');
+  assert.equal((updated.match(/\.vibebox/gu) || []).length, 1);
+  assert.match(updated, /model = "gpt-test"/u);
+  assert.match(updated, /network_access = false/u);
+
+  const inspected = await inspectCodexSetup({ homeDir: home });
+  assert.equal(inspected.sandboxMode, 'workspace-write');
+  assert.equal(inspected.approvalPolicy, 'on-request');
+  assert.equal(inspected.writableRootsIncludesVibeBox, true);
+});
+
+test('setup-codex creates a new config when missing', async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), 'vibebox-codex-new-home-'));
+  const result = await setupCodex({ homeDir: home });
+  assert.equal(result.configCreated, true);
+  assert.equal(result.backupPath, null);
+  assert.equal(result.check.ok, true);
+  const text = await readFile(path.join(home, '.codex', 'config.toml'), 'utf8');
+  assert.match(text, /sandbox_mode = "workspace-write"/u);
+  assert.match(text, /approval_policy = "on-request"/u);
+  assert.match(text, /\[sandbox_workspace_write\]/u);
+  assert.match(text, /writable_roots = \[/u);
+});
+
+test('setup-claude merges permissions in an isolated settings file', async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), 'vibebox-claude-home-'));
+  const result = await setupClaude({ homeDir: home });
+  assert.equal(result.settingsCreated, true);
+  assert.equal(result.check.ok, true);
+  assert.equal(result.check.bashRulesComplete, true);
+
+  const settingsPath = path.join(home, '.claude', 'settings.json');
+  const settings = JSON.parse(await readFile(settingsPath, 'utf8'));
+  assert.deepEqual(settings.permissions.additionalDirectories, ['~/.vibebox']);
+  assert.ok(settings.permissions.allow.includes('Read(~/.vibebox/**)'));
+  assert.ok(settings.permissions.allow.includes('Edit(~/.vibebox/**)'));
+  assert.ok(settings.permissions.allow.includes('Bash(vibebox aftertask *)'));
+
+  await setupClaude({ homeDir: home });
+  const afterSecondRun = JSON.parse(await readFile(settingsPath, 'utf8'));
+  assert.equal(afterSecondRun.permissions.additionalDirectories.filter((item) => item === '~/.vibebox').length, 1);
+  assert.equal(afterSecondRun.permissions.allow.filter((item) => item === 'Edit(~/.vibebox/**)').length, 1);
+
+  const inspected = await inspectClaudeSetup({ homeDir: home });
+  assert.equal(inspected.additionalDirectoriesIncludesVibeBox, true);
+  assert.equal(inspected.allowIncludesEditVibeBox, true);
+  assert.equal(inspected.bashRulesComplete, true);
+});
+
 test('doctor does not warn for already redacted captured secret placeholders', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
@@ -4985,7 +5062,7 @@ test('universal agent skill package files exist and declare shared skill metadat
     assert.ok(content.trim().length > 0, `${relativePath} should not be empty`);
   }
 
-  const expectedVersion = '0.1.4';
+  const expectedVersion = '0.1.5';
   const packageJson = await loadJson(path.resolve('package.json'));
   const plugin = await loadJson(path.resolve('.codex-plugin/plugin.json'));
   assert.equal(plugin.name, 'vibebox');
@@ -5170,8 +5247,8 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /Reading `pretask` is not a complete VibeBox workflow|pretask[\s\S]{0,160}not a complete VibeBox workflow/i);
   assert.match(combined, /convert-lang[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}convert-lang/i);
   assert.match(combined, /rebuild[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}rebuild/i);
-  assert.match(combined, /0\.1\.4[\s\S]{0,180}cache-busting|cache-busting[\s\S]{0,180}0\.1\.4/i);
-  assert.match(combined, /plugins\\cache\\personal\\vibebox\\0\.1\.4/i);
+  assert.match(combined, /0\.1\.5[\s\S]{0,180}cache-busting|cache-busting[\s\S]{0,180}0\.1\.5/i);
+  assert.match(combined, /plugins\\cache\\personal\\vibebox\\0\.1\.5/i);
   assert.match(combined, /scope: "global"[\s\S]{0,220}user personal preferences|user personal preferences[\s\S]{0,220}scope: "global"/i);
   assert.match(combined, /scope: "global"[\s\S]{0,260}repeated procedural instructions|repeated procedural instructions[\s\S]{0,260}scope: "global"/i);
   assert.match(combined, /sourceProjectId[\s\S]{0,220}provenance|provenance[\s\S]{0,220}sourceProjectId/i);
@@ -5265,7 +5342,7 @@ test('CLI --language overrides environment locale for new store configuration', 
   assertConfigLanguageTags(config, 'ja-JP');
 });
 
-test('CLI exposes init, capture, extract, review, approve, context, pretask, schema, aftertask, report, blackbox, doctor, backup, restore, convert-lang, and rebuild commands', async () => {
+test('CLI exposes setup, memory, diagnostics, backup, language, and rebuild commands', async () => {
   const root = await makeWorkspace();
   const bin = path.resolve('bin/vibebox.mjs');
 
