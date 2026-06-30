@@ -1,6 +1,6 @@
 {
   "name": "vibebox",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Universal local-first memory middleware where AI agents provide structured memory candidates and Core manages them.",
   "author": {
     "name": "Boksajang"

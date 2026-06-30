@@ -1,6 +1,6 @@
 {
   "name": "vibebox",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "interface": {
     "displayName": "VibeBox",
     "shortDescription": "Local-first structured memory middleware for AI coding agents."
@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "vibebox",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "source": {
         "source": "local",
         "path": "."
