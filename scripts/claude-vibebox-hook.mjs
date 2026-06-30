@@ -36,6 +36,18 @@ function emitContext(eventName, additionalContext) {
   }));
 }
 
+function emitBlock(eventName, reason) {
+  const message = truncate(reason);
+  process.stdout.write(JSON.stringify({
+    decision: 'block',
+    reason: message,
+    hookSpecificOutput: {
+      hookEventName: eventName,
+      additionalContext: message
+    }
+  }));
+}
+
 function runVibeBox(args, cwd) {
   const result = spawnSync(process.execPath, [vibeboxCli, ...args], {
     cwd: cwd || process.cwd(),
@@ -98,12 +110,13 @@ if (eventName === 'Stop') {
     process.exit(0);
   }
 
-  emitContext('Stop', [
+  emitBlock('Stop', [
     'VibeBox aftertask checkpoint.',
-    'If this turn performed meaningful coding, documentation, packaging, review, validation, or debugging work and the user did not opt out, do not stop yet.',
+    'Do not stop yet if this turn performed meaningful coding, documentation, packaging, review, validation, or debugging work and the user did not opt out.',
     `Run \`node "${vibeboxCli}" schema --format json\` before writing candidate JSON.`,
     `Then run \`node "${vibeboxCli}" aftertask --request "<original user request or faithful summary>" --summary "..." --candidates-file <structured-candidates.json> --technical-outcome success|failure|partial|unknown --user-acceptance accepted|rejected|mixed|unknown\`.`,
-    'The AI agent must provide structured candidates for reusable memory. Core will not infer active memory from raw summaries. If no durable memory exists, submit no_reusable_memory_candidate with noCandidateReason.'
+    'The AI agent must provide structured candidates for reusable memory. Core will not infer active memory from raw summaries.',
+    'If no durable memory exists, submit no_reusable_memory_candidate with noCandidateReason instead of skipping the checkpoint.'
   ].join('\n'));
   process.exit(0);
 }

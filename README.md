@@ -97,7 +97,7 @@ Codex App can read an installed plugin cache instead of your local checkout. A G
 Example cache placeholder:
 
 ```text
-%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.5\
+%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.6\
 ```
 
 VibeBox does not delete or rewrite Codex App plugin cache files automatically.
@@ -124,7 +124,7 @@ claude plugin install vibebox@vibebox
 When the plugin is enabled, the bundled Claude hooks support the normal VibeBox workflow:
 
 - `UserPromptSubmit` runs `pretask` for the submitted prompt and adds the retrieved guidance to Claude context.
-- `Stop` adds an aftertask checkpoint so Claude does not finish meaningful work without running `schema` and `aftertask` with AI-agent structured candidates.
+- `Stop` blocks once with an aftertask checkpoint so Claude cannot silently finish meaningful work without running `schema` and `aftertask` with AI-agent structured candidates.
 
 The hooks do not synthesize memory by themselves. Claude remains responsible for deciding whether reusable memory exists, reading the Core schema before candidate JSON, and submitting structured candidates or `no_reusable_memory_candidate`.
 

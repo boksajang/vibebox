@@ -5062,7 +5062,7 @@ test('universal agent skill package files exist and declare shared skill metadat
     assert.ok(content.trim().length > 0, `${relativePath} should not be empty`);
   }
 
-  const expectedVersion = '0.1.5';
+  const expectedVersion = '0.1.6';
   const packageJson = await loadJson(path.resolve('package.json'));
   const plugin = await loadJson(path.resolve('.codex-plugin/plugin.json'));
   assert.equal(plugin.name, 'vibebox');
@@ -5139,6 +5139,44 @@ test('schema command exposes structured candidate enums from core without touchi
   assert.match(text, /Required fields:/);
   assert.match(text, /Strict recording order:/);
   assert.match(text, /Candidate skeleton:/);
+});
+
+test('Claude Stop hook blocks once for the aftertask checkpoint', async () => {
+  const hookPath = path.resolve('scripts/claude-vibebox-hook.mjs');
+  const env = {
+    ...process.env,
+    CLAUDE_PLUGIN_ROOT: path.resolve('.')
+  };
+
+  const firstStop = spawnSync(process.execPath, [hookPath], {
+    input: JSON.stringify({
+      hook_event_name: 'Stop',
+      cwd: process.cwd()
+    }),
+    encoding: 'utf8',
+    env
+  });
+
+  assert.equal(firstStop.status, 0);
+  const payload = JSON.parse(firstStop.stdout);
+  assert.equal(payload.decision, 'block');
+  assert.match(payload.reason, /VibeBox aftertask checkpoint/);
+  assert.match(payload.reason, /no_reusable_memory_candidate/);
+  assert.equal(payload.hookSpecificOutput.hookEventName, 'Stop');
+  assert.match(payload.hookSpecificOutput.additionalContext, /schema --format json/);
+
+  const recursiveStop = spawnSync(process.execPath, [hookPath], {
+    input: JSON.stringify({
+      hook_event_name: 'Stop',
+      stop_hook_active: true,
+      cwd: process.cwd()
+    }),
+    encoding: 'utf8',
+    env
+  });
+
+  assert.equal(recursiveStop.status, 0);
+  assert.equal(recursiveStop.stdout, '');
 });
 
 test('structured candidate enum errors include allowed values from core schema', async () => {
@@ -5232,6 +5270,7 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /hooks\/hooks\.json/);
   assert.match(combined, /UserPromptSubmit[\s\S]{0,260}pretask/i);
   assert.match(combined, /Stop[\s\S]{0,260}aftertask/i);
+  assert.match(combined, /decision['"]?: ['"]block['"]?|blocks once[\s\S]{0,160}aftertask checkpoint/i);
   assert.match(combined, /\/plugin marketplace add boksajang\/vibebox/i);
   assert.match(combined, /\/plugin install vibebox@vibebox/i);
   assert.match(combined, /claude plugin marketplace add boksajang\/vibebox/i);
@@ -5247,8 +5286,8 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /Reading `pretask` is not a complete VibeBox workflow|pretask[\s\S]{0,160}not a complete VibeBox workflow/i);
   assert.match(combined, /convert-lang[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}convert-lang/i);
   assert.match(combined, /rebuild[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}rebuild/i);
-  assert.match(combined, /0\.1\.5[\s\S]{0,180}cache-busting|cache-busting[\s\S]{0,180}0\.1\.5/i);
-  assert.match(combined, /plugins\\cache\\personal\\vibebox\\0\.1\.5/i);
+  assert.match(combined, /0\.1\.6[\s\S]{0,180}cache-busting|cache-busting[\s\S]{0,180}0\.1\.6/i);
+  assert.match(combined, /plugins\\cache\\personal\\vibebox\\0\.1\.6/i);
   assert.match(combined, /scope: "global"[\s\S]{0,220}user personal preferences|user personal preferences[\s\S]{0,220}scope: "global"/i);
   assert.match(combined, /scope: "global"[\s\S]{0,260}repeated procedural instructions|repeated procedural instructions[\s\S]{0,260}scope: "global"/i);
   assert.match(combined, /sourceProjectId[\s\S]{0,220}provenance|provenance[\s\S]{0,220}sourceProjectId/i);

@@ -46,7 +46,7 @@ vibebox doctor --claude
 The plugin hook file is `hooks/hooks.json`.
 
 - `UserPromptSubmit` runs the bundled VibeBox CLI with `pretask --task <submitted prompt>` and injects the active memory brief into Claude context before Claude plans or edits.
-- `Stop` injects an aftertask checkpoint. If meaningful work occurred, Claude should continue, run `schema --format json`, create structured candidates, and run `aftertask`.
+- `Stop` blocks once with an aftertask checkpoint. If meaningful work occurred, Claude must continue, run `schema --format json`, create structured candidates, and run `aftertask`.
 
 The hook does not invent semantic memory. Claude remains the semantic authority: it decides whether reusable memory exists, reads the Core schema before candidate JSON, and submits either structured candidates or `no_reusable_memory_candidate`.
 
