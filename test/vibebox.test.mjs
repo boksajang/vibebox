@@ -1013,15 +1013,28 @@ test('init creates the VibeBox storage layout and preserves existing wiki files'
   assert.ok(result.projectId);
   await assertNoLocalStore(root);
 
+  const expectedWikiFiles = [
+    'Home.md',
+    'User Preferences.md',
+    'User Patterns.md',
+    'Design Philosophy.md',
+    'Validation Patterns.md',
+    'Process Patterns.md',
+    'Decision Patterns.md',
+    'Technology Preferences.md',
+    'Agent Failure Patterns.md',
+    'Agent Success Patterns.md',
+    'Prevention Rules.md',
+    'Global Avoid Rules.md',
+    'Failure Memory.md',
+    'Success Patterns.md',
+    'Tooling Preferences.md',
+    'Workflow Rules.md',
+    'Project Index.md'
+  ];
+
   for (const relative of [
-    'wiki/Home.md',
-    'wiki/User Preferences.md',
-    'wiki/Global Avoid Rules.md',
-    'wiki/Failure Memory.md',
-    'wiki/Success Patterns.md',
-    'wiki/Tooling Preferences.md',
-    'wiki/Workflow Rules.md',
-    'wiki/Project Index.md',
+    ...expectedWikiFiles.map((fileName) => `wiki/${fileName}`),
     `wiki/projects/${result.projectId}.md`,
     'index/global-memory-index.json',
     'index/project-index.json',
@@ -1034,6 +1047,12 @@ test('init creates the VibeBox storage layout and preserves existing wiki files'
     `projects/${result.projectId}/project.json`
   ]) {
     await readFile(storePath(root, relative), 'utf8');
+  }
+
+  const initialHome = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
+  for (const fileName of expectedWikiFiles.filter((fileName) => fileName !== 'Home.md')) {
+    const title = fileName.replace(/\.md$/u, '');
+    assert.match(initialHome, new RegExp(`\\[\\[${title.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}\\]\\]`));
   }
 
   const registry = await loadJson(storePath(root, 'registry', 'projects.json'));

@@ -3963,24 +3963,22 @@ ${wd(locale, 'homeDescription')}`;
 }
 
 function renderHomeManaged(memories, locale = 'en-US', notePathMap = null) {
-  const counts = memories.reduce((acc, memory) => {
-    acc[memory.type] = (acc[memory.type] || 0) + 1;
+  const countsByDocKey = memories.reduce((acc, memory) => {
+    for (const docKey of memoryCategoryDocKeys(memory)) {
+      acc[docKey] = (acc[docKey] || 0) + 1;
+    }
     return acc;
   }, {});
+  const wikiLinks = WIKI_DOCS
+    .filter((doc) => doc.docKey !== 'home')
+    .map((doc) => {
+      const suffix = doc.docKey === 'project_index' ? '' : ` (${countsByDocKey[doc.docKey] || 0})`;
+      return `- ${wikiLinkForDocKey(doc.docKey, locale)}${suffix}`;
+    })
+    .join('\n');
   return `## ${wd(locale, 'wiki')}
 
-- ${wikiLinkForDocKey('user_preferences', locale)} (${counts.user_preference || 0})
-- ${wikiLinkForDocKey('user_patterns', locale)} (${PATTERN_TYPES.size > 0 ? memories.filter((memory) => PATTERN_TYPES.has(memory.type)).length : 0})
-- ${wikiLinkForDocKey('design_philosophy', locale)} (${counts.design_philosophy || 0})
-- ${wikiLinkForDocKey('validation_patterns', locale)} (${counts.validation_pattern || 0})
-- ${wikiLinkForDocKey('process_patterns', locale)} (${counts.process_pattern || 0})
-- ${wikiLinkForDocKey('prevention_rules', locale)}
-- ${wikiLinkForDocKey('global_avoid_rules', locale)} (${counts.avoid_rule || 0})
-- ${wikiLinkForDocKey('failure_memory', locale)} (${counts.failure_memory || 0})
-- ${wikiLinkForDocKey('success_patterns', locale)} (${counts.success_pattern || 0})
-- ${wikiLinkForDocKey('tooling_preferences', locale)} (${counts.tooling_preference || 0})
-- ${wikiLinkForDocKey('workflow_rules', locale)} (${counts.workflow_rule || 0})
-- ${wikiLinkForDocKey('project_index', locale)}
+${wikiLinks}
 
 ## ${wd(locale, 'recentActiveMemory')}
 
