@@ -1857,7 +1857,7 @@ export async function initVibeBox(root = process.cwd(), options = {}) {
       configOptions.displayTemplates = existingConfig.displayTemplates ?? existingConfig.displayTemplate;
     }
   }
-  const config = await createDefaultConfig({ ...configOptions, requireDisplayTemplate: true });
+  const config = await createDefaultConfig({ ...configOptions, requireDisplayTemplate: false });
   const memoryLocale = configuredMemoryLocale(config);
 
   await ensureDir(vibeboxPath(root, 'registry'));

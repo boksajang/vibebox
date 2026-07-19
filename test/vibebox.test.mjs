@@ -1136,6 +1136,39 @@ test('init reuses existing display templates for a non-default configured langua
   assert.equal((await runDoctor(root)).errors.length, 0);
 });
 
+test('init creates default store files even when ko-KR has no display template', async () => {
+  const root = await makeWorkspace();
+  const previousLocale = process.env.VIBEBOX_LOCALE;
+  const previousTemplate = process.env.VIBEBOX_DISPLAY_TEMPLATE;
+  const previousTemplates = process.env.VIBEBOX_DISPLAY_TEMPLATES;
+  try {
+    process.env.VIBEBOX_LOCALE = 'ko-KR';
+    delete process.env.VIBEBOX_DISPLAY_TEMPLATE;
+    delete process.env.VIBEBOX_DISPLAY_TEMPLATES;
+
+    await initVibeBox(root);
+
+    const config = await loadJson(storePath(root, 'config.json'));
+    assertConfigLanguageTags(config, 'ko-KR');
+    await access(storePath(root, 'global'));
+    await access(storePath(root, 'projects'));
+    await access(storePath(root, 'wiki'));
+    await access(storePath(root, 'registry', 'projects.json'));
+    await access(storePath(root, 'registry', 'wiki-docs.json'));
+    await access(storePath(root, 'index', 'global-memory-index.json'));
+    await access(storePath(root, 'logs', 'events.jsonl'));
+    await access(storePath(root, 'pending', 'memory-candidates.jsonl'));
+    assert.equal((await runDoctor(root)).errors.length, 0);
+  } finally {
+    if (previousLocale === undefined) delete process.env.VIBEBOX_LOCALE;
+    else process.env.VIBEBOX_LOCALE = previousLocale;
+    if (previousTemplate === undefined) delete process.env.VIBEBOX_DISPLAY_TEMPLATE;
+    else process.env.VIBEBOX_DISPLAY_TEMPLATE = previousTemplate;
+    if (previousTemplates === undefined) delete process.env.VIBEBOX_DISPLAY_TEMPLATES;
+    else process.env.VIBEBOX_DISPLAY_TEMPLATES = previousTemplates;
+  }
+});
+
 test('project identity prefers git remote names and falls back to package or folder names', async () => {
   const remoteRoot = await makeWorkspace();
   await mkdir(path.join(remoteRoot, '.git'), { recursive: true });
