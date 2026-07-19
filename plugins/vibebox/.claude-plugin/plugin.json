@@ -1,0 +1,20 @@
+{
+  "name": "vibebox",
+  "displayName": "VibeBox",
+  "version": "0.1.7",
+  "description": "Local-first structured memory middleware for Claude Code and other AI coding agents.",
+  "author": {
+    "name": "Boksajang"
+  },
+  "repository": "https://github.com/boksajang/vibebox",
+  "license": "MIT",
+  "keywords": [
+    "memory",
+    "ai-coding",
+    "hooks",
+    "structured-candidates",
+    "local-first"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json"
+}

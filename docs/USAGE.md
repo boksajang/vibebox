@@ -290,30 +290,29 @@ Codex App can load installed plugin cache files instead of the current repositor
 Cache placeholder:
 
 ```text
-%USERPROFILE%\.codex\plugins\cache\personal\vibebox\0.1.7\
+%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.7\
 ```
 
-This is the cache-busting folder for `0.1.7`; stale plugin cache content can make Codex App behave as if older skill files are still installed. After updating or reinstalling, compare these files between source and installed cache:
+This is the cache-busting folder for `0.1.7`; stale plugin cache content can make Codex App behave as if older skill files are still installed. After updating or reinstalling, compare these files between `plugins/vibebox` and installed cache:
 
 - `.codex-plugin/plugin.json`
 - `skills/vibebox/SKILL.md`
 - `skills/vibebox/references/WORKFLOW.md`
 - `skills/vibebox/references/COMMANDS.md`
 - `skills/vibebox/references/MEMORY_POLICY.md`
-- `adapters/codex/README.md`
 
 Example PowerShell:
 
 ```powershell
 $repo = (Get-Location).Path
-$cache = "$env:USERPROFILE\.codex\plugins\cache\personal\vibebox\0.1.7"
+$package = "$repo\plugins\vibebox"
+$cache = "$env:USERPROFILE\.codex\plugins\cache\boksajang\vibebox\0.1.7"
 Test-Path $cache
-Get-FileHash "$repo\.codex-plugin\plugin.json", "$cache\.codex-plugin\plugin.json"
-Get-FileHash "$repo\skills\vibebox\SKILL.md", "$cache\skills\vibebox\SKILL.md"
-Get-FileHash "$repo\skills\vibebox\references\WORKFLOW.md", "$cache\skills\vibebox\references\WORKFLOW.md"
-Get-FileHash "$repo\skills\vibebox\references\COMMANDS.md", "$cache\skills\vibebox\references\COMMANDS.md"
-Get-FileHash "$repo\skills\vibebox\references\MEMORY_POLICY.md", "$cache\skills\vibebox\references\MEMORY_POLICY.md"
-Get-FileHash "$repo\adapters\codex\README.md", "$cache\adapters\codex\README.md"
+Get-FileHash "$package\.codex-plugin\plugin.json", "$cache\.codex-plugin\plugin.json"
+Get-FileHash "$package\skills\vibebox\SKILL.md", "$cache\skills\vibebox\SKILL.md"
+Get-FileHash "$package\skills\vibebox\references\WORKFLOW.md", "$cache\skills\vibebox\references\WORKFLOW.md"
+Get-FileHash "$package\skills\vibebox\references\COMMANDS.md", "$cache\skills\vibebox\references\COMMANDS.md"
+Get-FileHash "$package\skills\vibebox\references\MEMORY_POLICY.md", "$cache\skills\vibebox\references\MEMORY_POLICY.md"
 Select-String -Path "$cache\skills\vibebox\SKILL.md" -Pattern "whyOnlyOneCandidate","no_reusable_memory_candidate","displayLanguage","Core will not infer active memory"
 ```
 

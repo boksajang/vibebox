@@ -5111,9 +5111,16 @@ test('universal agent skill package files exist and declare shared skill metadat
   }
   assert.equal(marketplace.plugins.some((entry) => entry.name === 'vibebox'), true);
   const marketplacePlugin = marketplace.plugins.find((entry) => entry.name === 'vibebox');
+  assert.equal(marketplacePlugin.source.path, './plugins/vibebox');
   if (marketplacePlugin.version) {
     assert.equal(marketplacePlugin.version, expectedVersion);
   }
+  const packagedPlugin = await loadJson(path.resolve('plugins/vibebox/.codex-plugin/plugin.json'));
+  assert.equal(packagedPlugin.name, 'vibebox');
+  assert.equal(packagedPlugin.version, expectedVersion);
+  await readFile(path.resolve('plugins/vibebox/skills/vibebox/SKILL.md'), 'utf8');
+  await readFile(path.resolve('plugins/vibebox/assets/icon.png'));
+  await readFile(path.resolve('plugins/vibebox/assets/logo.png'));
   const claudePlugin = await loadJson(path.resolve('.claude-plugin/plugin.json'));
   assert.equal(claudePlugin.name, 'vibebox');
   assert.equal(claudePlugin.version, expectedVersion);
@@ -5306,14 +5313,14 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /convert-lang[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}convert-lang/i);
   assert.match(combined, /rebuild[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}rebuild/i);
   assert.match(combined, /0\.1\.7[\s\S]{0,180}cache-busting|cache-busting[\s\S]{0,180}0\.1\.7/i);
-  assert.match(combined, /plugins\\cache\\personal\\vibebox\\0\.1\.7/i);
+  assert.match(combined, /plugins\\cache\\boksajang\\vibebox\\0\.1\.7/i);
   assert.match(combined, /scope: "global"[\s\S]{0,220}user personal preferences|user personal preferences[\s\S]{0,220}scope: "global"/i);
   assert.match(combined, /scope: "global"[\s\S]{0,260}repeated procedural instructions|repeated procedural instructions[\s\S]{0,260}scope: "global"/i);
   assert.match(combined, /sourceProjectId[\s\S]{0,220}provenance|provenance[\s\S]{0,220}sourceProjectId/i);
   assert.match(combined, /Use `scope: "project"`[\s\S]{0,260}(?:repository|repo|project)[\s\S]{0,260}(?:schema|API|artifact|UI flow|test suite)/i);
   assert.match(combined, /Get-FileHash[\s\S]{0,800}skills\\vibebox\\SKILL\.md/i);
   assert.match(combined, /Get-FileHash[\s\S]{0,800}skills\\vibebox\\references\\WORKFLOW\.md/i);
-  assert.match(combined, /Get-FileHash[\s\S]{0,800}adapters\\codex\\README\.md/i);
+  assert.match(combined, /Get-FileHash[\s\S]{0,800}\.codex-plugin\\plugin\.json/i);
   assert.match(combined, /Select-String[\s\S]{0,240}whyOnlyOneCandidate[\s\S]{0,240}no_reusable_memory_candidate/i);
   assert.match(combined, /stale[\s\S]{0,180}plugin cache|plugin cache[\s\S]{0,180}stale/i);
   assert.match(combined, /VibeBox does not[\s\S]{0,80}(?:delete|rewrite)[\s\S]{0,120}Codex(?:'s)?(?: App)?(?: plugin)? cache/i);
