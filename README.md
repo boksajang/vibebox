@@ -39,6 +39,60 @@ Requirements:
 - Node.js 20 or newer
 - npm
 
+### Windows Beginner Install
+
+Use this path when Codex is already installed and you want to install VibeBox from GitHub on Windows.
+
+Open PowerShell and run:
+
+```powershell
+mkdir C:\VibeBox
+cd C:\VibeBox
+git clone https://github.com/boksajang/vibebox.git
+cd vibebox
+npm install
+npm link
+vibebox.cmd init
+vibebox.cmd setup-codex
+vibebox.cmd doctor
+codex plugin marketplace add boksajang/vibebox
+codex plugin add vibebox@boksajang
+codex plugin list
+```
+
+What each command does:
+
+- `mkdir C:\VibeBox` creates a working folder for the install.
+- `cd C:\VibeBox` moves PowerShell into that folder.
+- `git clone https://github.com/boksajang/vibebox.git` downloads VibeBox from GitHub.
+- `cd vibebox` moves into the downloaded VibeBox folder.
+- `npm install` installs the Node.js packages VibeBox needs.
+- `npm link` registers the `vibebox` command globally on this PC.
+- `vibebox.cmd init` creates the global VibeBox store at `%USERPROFILE%\.vibebox`, including the default folders, indexes, logs, registry, and Wiki files.
+- `vibebox.cmd setup-codex` updates Codex settings so Codex can read and write `%USERPROFILE%\.vibebox` without repeated approval prompts.
+- `vibebox.cmd doctor` checks that the VibeBox store and Codex setup are valid.
+- `codex plugin marketplace add boksajang/vibebox` registers the GitHub marketplace with Codex.
+- `codex plugin add vibebox@boksajang` installs and enables the VibeBox Codex plugin.
+- `codex plugin list` confirms that `vibebox@boksajang` is installed and enabled.
+
+On Windows PowerShell, prefer `vibebox.cmd` in examples. Running `vibebox init` may call `vibebox.ps1` and be blocked by the PowerShell execution policy.
+
+You can also ask inside Codex App:
+
+```text
+boksajang/vibebox 플러그인을 설치하고 활성화 해라. 필요하면 GitHub에서 clone하고 npm install, npm link, vibebox.cmd init, vibebox.cmd setup-codex, vibebox.cmd doctor까지 실행해라.
+```
+
+If Codex only installs the plugin and does not run the CLI setup, run the full PowerShell sequence above yourself. `setup-codex` is not the plugin install command; it is the one-time Codex permission setup after `npm link` makes `vibebox.cmd` available.
+
+At minimum, after `npm install` and `npm link`, run these once so the global memory store and Codex permissions are ready:
+
+```powershell
+vibebox.cmd init
+vibebox.cmd setup-codex
+vibebox.cmd doctor
+```
+
 ### Agent Plugin Or Skill Use
 
 Install or enable VibeBox through the AI agent surface you use, then start a new agent session.
@@ -74,8 +128,8 @@ git clone https://github.com/boksajang/vibebox.git
 cd vibebox
 npm install
 npm link
-vibebox init
-vibebox doctor
+vibebox.cmd init
+vibebox.cmd doctor
 ```
 
 `vibebox init` and `vibebox doctor` are maintenance checks for a bare CLI checkout. In normal plugin or skill use, the agent invokes VibeBox during the coding workflow and no additional user setup commands are part of day-to-day memory capture.
