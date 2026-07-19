@@ -17,7 +17,7 @@ Install from the VibeBox repository marketplace inside Claude Code:
 
 ```text
 /plugin marketplace add boksajang/vibebox
-/plugin install vibebox@vibebox
+/plugin install vibebox@boksajang
 /reload-plugins
 ```
 
@@ -25,10 +25,10 @@ CLI form:
 
 ```bash
 claude plugin marketplace add boksajang/vibebox
-claude plugin install vibebox@vibebox
+claude plugin install vibebox@boksajang
 ```
 
-The marketplace name is `vibebox`; the plugin name is also `vibebox`, so the installed plugin identifier is `vibebox@vibebox`.
+The marketplace name is `boksajang`; the plugin name is `vibebox`, so the installed plugin identifier is `vibebox@boksajang`.
 
 After install, users should ask for normal coding work. They should not need to manually run `pretask`, `schema`, or `aftertask` during ordinary use.
 

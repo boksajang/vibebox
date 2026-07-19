@@ -5105,7 +5105,7 @@ test('universal agent skill package files exist and declare shared skill metadat
   );
 
   const marketplace = await loadJson(path.resolve('.agents/plugins/marketplace.json'));
-  assert.equal(marketplace.name, 'vibebox');
+  assert.equal(marketplace.name, 'boksajang');
   if (marketplace.version) {
     assert.equal(marketplace.version, expectedVersion);
   }
@@ -5120,7 +5120,7 @@ test('universal agent skill package files exist and declare shared skill metadat
   assert.equal(claudePlugin.skills, './skills/');
   assert.equal(claudePlugin.hooks, './hooks/hooks.json');
   const claudeMarketplace = await loadJson(path.resolve('.claude-plugin/marketplace.json'));
-  assert.equal(claudeMarketplace.name, 'vibebox');
+  assert.equal(claudeMarketplace.name, 'boksajang');
   const claudeMarketplacePlugin = claudeMarketplace.plugins.find((entry) => entry.name === 'vibebox');
   assert.ok(claudeMarketplacePlugin);
   assert.equal(claudeMarketplacePlugin.source, './');
@@ -5291,9 +5291,9 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /Stop[\s\S]{0,260}aftertask/i);
   assert.match(combined, /decision['"]?: ['"]block['"]?|blocks once[\s\S]{0,160}aftertask checkpoint/i);
   assert.match(combined, /\/plugin marketplace add boksajang\/vibebox/i);
-  assert.match(combined, /\/plugin install vibebox@vibebox/i);
+  assert.match(combined, /\/plugin install vibebox@boksajang/i);
   assert.match(combined, /claude plugin marketplace add boksajang\/vibebox/i);
-  assert.match(combined, /claude plugin install vibebox@vibebox/i);
+  assert.match(combined, /claude plugin install vibebox@boksajang/i);
   assert.match(combined, /Do not create workspace-local memory snapshots/i);
   assert.match(combined, /original user request or faithful summary/i);
   assert.match(combined, /without (?:structured )?candidates, VibeBox records the event and warns|userRequest[\s\S]{0,120}structured candidates are missing/i);

@@ -24,21 +24,24 @@ Register the marketplace source:
 
 ```bash
 codex plugin marketplace add boksajang/vibebox
+codex plugin add vibebox@boksajang
 ```
 
 Git URL form:
 
 ```bash
 codex plugin marketplace add https://github.com/boksajang/vibebox.git
+codex plugin add vibebox@boksajang
 ```
 
 Windows shim fallback:
 
 ```bash
 codex.cmd plugin marketplace add boksajang/vibebox
+codex.cmd plugin add vibebox@boksajang
 ```
 
-Then enable the `vibebox` plugin in Codex and start a new session.
+Then enable the `vibebox` plugin in Codex and start a new session if the host does not load the installed plugin immediately.
 
 Manual edits to Codex marketplace files are for local development or troubleshooting only.
 

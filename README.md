@@ -88,9 +88,10 @@ Install or register the marketplace source:
 
 ```bash
 codex plugin marketplace add boksajang/vibebox
+codex plugin add vibebox@boksajang
 ```
 
-Then enable the `vibebox` plugin in Codex and start a new session.
+Then enable the `vibebox` plugin in Codex and start a new session if the host does not load the installed plugin immediately.
 
 Codex App can read an installed plugin cache instead of your local checkout. A GitHub push alone does not update that installed cache. After updating local plugin source, run `git pull` or reinstall the plugin, then verify the cache folder and key file hashes.
 
@@ -110,7 +111,7 @@ Install from the repository marketplace inside Claude Code:
 
 ```text
 /plugin marketplace add boksajang/vibebox
-/plugin install vibebox@vibebox
+/plugin install vibebox@boksajang
 /reload-plugins
 ```
 
@@ -118,7 +119,7 @@ CLI form:
 
 ```bash
 claude plugin marketplace add boksajang/vibebox
-claude plugin install vibebox@vibebox
+claude plugin install vibebox@boksajang
 ```
 
 When the plugin is enabled, the bundled Claude hooks support the normal VibeBox workflow:
