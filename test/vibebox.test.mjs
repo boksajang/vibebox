@@ -1015,6 +1015,7 @@ test('init creates the VibeBox storage layout and preserves existing wiki files'
 
   const expectedWikiFiles = [
     'Home.md',
+    'Global.md',
     'User Preferences.md',
     'User Patterns.md',
     'Design Philosophy.md',
@@ -1065,6 +1066,51 @@ test('init creates the VibeBox storage layout and preserves existing wiki files'
   await initVibeBox(root);
   assert.equal(await readFile(homePath, 'utf8'), 'custom home note\n');
   await assertNoLocalStore(root);
+});
+
+test('Global.md indexes only active global memory notes', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  await afterTask(root, {
+    userRequest: 'Record one global preference and one project rule.',
+    aiActionSummary: 'Recorded scoped memory fixtures.',
+    structuredMemoryCandidates: [
+      candidateFixture({
+        candidateId: 'global-wiki-index-memory',
+        scope: 'global',
+        type: 'user_preference',
+        modelClass: 'user_model',
+        modelSubClass: 'global_preference',
+        primaryCategory: 'user_preferences',
+        title: 'Global validation preference',
+        summary: 'Always report validation results.',
+        displayTitle: 'Global validation preference',
+        displaySummary: 'Always report validation results.',
+        displayRule: 'Report validation results.',
+        displayLanguage: 'en-US'
+      }),
+      candidateFixture({
+        candidateId: 'project-wiki-index-memory',
+        scope: 'project',
+        type: 'project_decision',
+        modelClass: 'project_model',
+        modelSubClass: 'project_decision',
+        primaryCategory: 'decision_patterns',
+        title: 'Project-only database decision',
+        summary: 'This project uses MSSQL.',
+        displayTitle: 'Project-only database decision',
+        displaySummary: 'This project uses MSSQL.',
+        displayRule: 'Use MSSQL in this project.',
+        displayLanguage: 'en-US'
+      })
+    ]
+  });
+
+  const globalPage = await readFile(storePath(root, 'wiki', 'Global.md'), 'utf8');
+  assert.match(globalPage, /Global validation preference/);
+  assert.doesNotMatch(globalPage, /Project-only database decision/);
+  await assertWikiLinksResolve(root);
 });
 
 test('init enriches project identity without locking config to an absolute path', async () => {
@@ -3888,6 +3934,7 @@ test('Korean wiki uses agent display fields instead of canonical English summari
 test('locale-specific wiki categories and memory display fields are generated from agent templates', async () => {
   const expectedDocKeys = [
     'home',
+    'global_index',
     'user_preferences',
     'user_patterns',
     'design_philosophy',
@@ -3910,6 +3957,7 @@ test('locale-specific wiki categories and memory display fields are generated fr
       locale: 'en-US',
       expectedFiles: [
         'Home.md',
+        'Global.md',
         'User Preferences.md',
         'User Patterns.md',
         'Design Philosophy.md',
@@ -3969,6 +4017,7 @@ test('locale-specific wiki categories and memory display fields are generated fr
       },
       expectedFiles: [
         'Home.md',
+        'Global.md',
         'ユーザー設定.md',
         'ユーザーパターン.md',
         '設計思想.md',
@@ -3997,6 +4046,7 @@ test('locale-specific wiki categories and memory display fields are generated fr
       templateOverrides: KOREAN_DISPLAY_TEMPLATE_OVERRIDES,
       expectedFiles: [
         'Home.md',
+        'Global.md',
         '사용자 성향.md',
         '사용자 패턴.md',
         '설계 철학.md',
@@ -5114,7 +5164,7 @@ test('universal agent skill package files exist and declare shared skill metadat
     assert.ok(content.trim().length > 0, `${relativePath} should not be empty`);
   }
 
-  const expectedVersion = '0.1.7';
+  const expectedVersion = '0.1.8';
   const packageJson = await loadJson(path.resolve('package.json'));
   const plugin = await loadJson(path.resolve('.codex-plugin/plugin.json'));
   assert.equal(plugin.name, 'vibebox');
@@ -5345,8 +5395,8 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /Reading `pretask` is not a complete VibeBox workflow|pretask[\s\S]{0,160}not a complete VibeBox workflow/i);
   assert.match(combined, /convert-lang[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}convert-lang/i);
   assert.match(combined, /rebuild[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}rebuild/i);
-  assert.match(combined, /0\.1\.7[\s\S]{0,180}cache-busting|cache-busting[\s\S]{0,180}0\.1\.7/i);
-  assert.match(combined, /plugins\\cache\\boksajang\\vibebox\\0\.1\.7/i);
+  assert.match(combined, /0\.1\.8[\s\S]{0,180}cache-busting|cache-busting[\s\S]{0,180}0\.1\.8/i);
+  assert.match(combined, /plugins\\cache\\boksajang\\vibebox\\0\.1\.8/i);
   assert.match(combined, /scope: "global"[\s\S]{0,220}user personal preferences|user personal preferences[\s\S]{0,220}scope: "global"/i);
   assert.match(combined, /scope: "global"[\s\S]{0,260}repeated procedural instructions|repeated procedural instructions[\s\S]{0,260}scope: "global"/i);
   assert.match(combined, /sourceProjectId[\s\S]{0,220}provenance|provenance[\s\S]{0,220}sourceProjectId/i);

@@ -1,6 +1,6 @@
 {
   "name": "boksajang",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "interface": {
     "displayName": "VibeBox",
     "shortDescription": "Local-first structured memory middleware for AI coding agents."
@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "vibebox",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "source": {
         "source": "local",
         "path": "./plugins/vibebox"

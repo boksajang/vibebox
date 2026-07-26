@@ -32,6 +32,8 @@ Managed pages show current active guidance:
 
 `Home.md` is the root index. It links to every category document, project index, and recent active memory note; it does not duplicate every memory body in one file.
 
+`Global.md` is a generated index of active memory whose scope is exactly `global`. It links to the existing canonical category notes without copying or moving them.
+
 The Wiki does not show raw transcripts as current guidance. Raw events live under `logs/` as diagnostics.
 
 If a raw event has `userRequest` but no structured memory candidates, the Wiki does not gain synthetic user memory. If an event has only `aiActionSummary`, Core can preserve the raw event but cannot promote it to active memory.

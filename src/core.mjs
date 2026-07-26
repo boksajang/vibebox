@@ -14,10 +14,11 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 
-export const VIBEBOX_VERSION = '0.1.7';
+export const VIBEBOX_VERSION = '0.1.8';
 
 const WIKI_DOCS = [
   { docKey: 'home', canonicalFileName: 'Home.md', titleKey: 'homeTitle', technicalName: true },
+  { docKey: 'global_index', canonicalFileName: 'Global.md', titleKey: 'globalStore', technicalName: true },
   { docKey: 'user_preferences', canonicalFileName: 'User Preferences.md', titleKey: 'pageUserPreferences' },
   { docKey: 'user_patterns', canonicalFileName: 'User Patterns.md', titleKey: 'pageUserPatterns' },
   { docKey: 'design_philosophy', canonicalFileName: 'Design Philosophy.md', titleKey: 'pageDesignPhilosophy' },
@@ -3899,8 +3900,15 @@ async function rebuildWiki(root) {
 
   await saveJson(vibeboxPath(root, 'registry/wiki-docs.json'), defaultWikiDocRegistry(locale));
   await writeManagedWikiDoc(root, 'home', renderHomeShell(locale), renderHomeManaged(active, locale, notePathMap), locale);
+  await writeManagedWikiDoc(
+    root,
+    'global_index',
+    renderMemoryShell(localizedDocFileName('global_index', locale), locale),
+    renderGlobalIndexManaged(active.filter((memory) => memory.scope === 'global'), locale, notePathMap),
+    locale
+  );
   await writeManagedWikiDoc(root, 'project_index', renderProjectIndexShell(locale), renderProjectIndexManaged(projects, locale), locale);
-  for (const doc of WIKI_DOCS.filter((item) => !['home', 'project_index'].includes(item.docKey))) {
+  for (const doc of WIKI_DOCS.filter((item) => !['home', 'global_index', 'project_index'].includes(item.docKey))) {
     const pageMemories = active.filter((memory) => (
       shouldWriteMemoryNote(memory)
       && memoryCategoryDocKeys(memory).includes(doc.docKey)
@@ -4093,6 +4101,12 @@ ${wd(locale, 'backTo')} ${wikiLinkForDocKey('home', locale)}.`;
 
 function renderMemoryManaged(memories, locale = 'en-US', notePathMap = null) {
   return memories.length === 0 ? t(locale, 'none') : memories.map((memory) => renderMemoryMarkdown(memory, locale, notePathMap)).join('\n\n');
+}
+
+function renderGlobalIndexManaged(memories, locale = 'en-US', notePathMap = null) {
+  return memories.length === 0
+    ? t(locale, 'none')
+    : memories.map((memory) => `- ${wikiLinkForMemory(memory, locale, '', notePathMap)}`).join('\n');
 }
 
 function renderMemoryMarkdown(memory, locale = 'en-US', notePathMap = null) {

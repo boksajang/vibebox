@@ -8,7 +8,7 @@
       "name": "vibebox",
       "source": "./",
       "description": "Local-first structured memory middleware with Claude Code hooks for VibeBox pretask and aftertask workflow.",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "author": {
         "name": "Boksajang"
       }
