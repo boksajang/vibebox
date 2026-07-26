@@ -90,6 +90,7 @@ vibebox pretask --task "<task description>"
 ```
 
 Claude-compatible agents should apply `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` before planning or editing.
+`pretask` includes active global user-profile baselines even when task wording does not overlap their canonical text. Do not require a full `report` scan before normal work.
 
 After meaningful work:
 

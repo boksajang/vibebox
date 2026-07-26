@@ -32,6 +32,8 @@ VibeBox turns those reusable lessons into active guidance:
 
 Past memory is context, not authority. The current user request always wins.
 
+`pretask` always carries active global user-profile baselines such as durable personal, design, coding, and response preferences, even when the current task wording has no direct lexical overlap. Project-specific guidance still takes priority, and other global technical memory remains relevance-filtered. Localized display fields also participate in matching, so a user-language task can retrieve memory whose canonical fields use another language. Agents do not need to run the full `report` command to compensate for a filtered Pre-Task Brief; `report` is an audit view.
+
 ## Quick Start
 
 Requirements:
@@ -156,7 +158,7 @@ Codex App can read an installed plugin cache instead of your local checkout. A G
 Example cache placeholder:
 
 ```text
-%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.11\
+%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.12\
 ```
 
 VibeBox does not delete or rewrite Codex App plugin cache files automatically.

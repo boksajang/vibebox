@@ -1673,6 +1673,89 @@ test('retrieval uses structural indexes, source project priority, and lexical sc
   assert.doesNotMatch(lexicalOnlyBrief, /Automobile drivetrain notes/);
 });
 
+test('pretask and context always include active global user-profile baselines without lexical overlap', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+
+  await extractFromAgent(root, {
+    structuredMemoryCandidates: [
+      candidateFixture({
+        candidateId: 'global-theme-baseline',
+        type: 'design_preference',
+        modelClass: 'user_model',
+        modelSubClass: 'website_theme_preference',
+        scope: 'global',
+        primaryCategory: 'user_preferences',
+        relatedCategories: ['design_philosophy'],
+        title: 'Dual-theme website preference',
+        summary: 'All websites should support light and dark modes with light mode as the default.',
+        rule: 'Implement both themes and use light mode by default.'
+      }),
+      candidateFixture({
+        candidateId: 'unrelated-global-technical-memory',
+        type: 'technology_preference',
+        modelClass: 'domain_model',
+        modelSubClass: 'automotive_technology_preference',
+        scope: 'global',
+        primaryCategory: 'technology_preferences',
+        topic: 'automobile drivetrain',
+        title: 'Automobile drivetrain preference',
+        summary: 'Use this drivetrain guidance only for automotive maintenance.',
+        rule: 'Apply only to automotive drivetrain work.',
+        domains: ['automotive'],
+        tags: ['automobile', 'drivetrain']
+      })
+    ]
+  });
+
+  const task = '요청한 화면 구현을 계속한다.';
+  const brief = await generatePreTaskBrief(root, { task, debug: true });
+  const context = await generateContextPack(root, { task });
+
+  assert.match(brief, /User Success Criteria:\n- .*light and dark modes/s);
+  assert.match(brief, /Relevant Memory Context:\n- .*light and dark modes/s);
+  assert.match(brief, /global-theme-baseline.*match=0/s);
+  assert.doesNotMatch(brief, /automotive maintenance/);
+  assert.match(context, /Relevant User Preferences:\n- .*light and dark modes/s);
+  assert.doesNotMatch(context, /automotive maintenance/);
+});
+
+test('retrieval indexes localized display fields for user-language task matching', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root, {
+    language: 'ko-KR',
+    displayTemplate: agentDisplayTemplate('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES)
+  });
+
+  await extractFromAgent(root, {
+    structuredMemoryCandidates: [
+      candidateFixture({
+        candidateId: 'localized-technology-match',
+        type: 'technology_preference',
+        modelClass: 'domain_model',
+        modelSubClass: 'database_preference',
+        scope: 'global',
+        primaryCategory: 'technology_preferences',
+        title: 'PostgreSQL analytics preference',
+        summary: 'Use PostgreSQL for analytics storage.',
+        rule: 'Prefer PostgreSQL for analytics storage.',
+        displayTitle: '분석 데이터베이스 선호',
+        displaySummary: '분석 데이터베이스에는 PostgreSQL을 사용합니다.',
+        displayRule: '분석 데이터베이스에는 PostgreSQL을 우선 사용합니다.',
+        displayLanguage: 'ko-KR'
+      })
+    ]
+  });
+
+  const brief = await generatePreTaskBrief(root, {
+    task: '분석 데이터베이스 구현을 시작한다.',
+    debug: true
+  });
+
+  assert.match(brief, /분석 데이터베이스에는 PostgreSQL을 사용합니다/u);
+  assert.match(brief, /localized-technology-match.*match=[1-9]\d*/s);
+});
+
 test('project memory is not crowded out by matching global memory limits', async () => {
   const root = await makeWorkspace();
   await initVibeBox(root);
@@ -5184,7 +5267,7 @@ test('universal agent skill package files exist and declare shared skill metadat
     assert.ok(content.trim().length > 0, `${relativePath} should not be empty`);
   }
 
-  const expectedVersion = '0.1.11';
+  const expectedVersion = '0.1.12';
   const packageJson = await loadJson(path.resolve('package.json'));
   const plugin = await loadJson(path.resolve('.codex-plugin/plugin.json'));
   assert.equal(plugin.name, 'vibebox');
@@ -5587,8 +5670,10 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /Reading `pretask` is not a complete VibeBox workflow|pretask[\s\S]{0,160}not a complete VibeBox workflow/i);
   assert.match(combined, /convert-lang[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}convert-lang/i);
   assert.match(combined, /rebuild[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}rebuild/i);
-  assert.match(combined, /0\.1\.11[\s\S]{0,180}cache-busting|cache-busting[\s\S]{0,180}0\.1\.11/i);
-  assert.match(combined, /plugins\\cache\\boksajang\\vibebox\\0\.1\.11/i);
+  assert.match(combined, /0\.1\.12[\s\S]{0,180}cache-busting|cache-busting[\s\S]{0,180}0\.1\.12/i);
+  assert.match(combined, /plugins\\cache\\boksajang\\vibebox\\0\.1\.12/i);
+  assert.match(combined, /global user-profile baselines[\s\S]{0,220}(?:lexical overlap|match score)|(?:lexical overlap|match score)[\s\S]{0,220}global user-profile baselines/i);
+  assert.match(combined, /report[\s\S]{0,160}(?:audit|not a required fallback)|(?:audit|not a required fallback)[\s\S]{0,160}report/i);
   assert.match(combined, /scope: "global"[\s\S]{0,220}user personal preferences|user personal preferences[\s\S]{0,220}scope: "global"/i);
   assert.match(combined, /scope: "global"[\s\S]{0,260}repeated procedural instructions|repeated procedural instructions[\s\S]{0,260}scope: "global"/i);
   assert.match(combined, /sourceProjectId[\s\S]{0,220}provenance|provenance[\s\S]{0,220}sourceProjectId/i);

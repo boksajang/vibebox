@@ -52,15 +52,15 @@ Codex App can read installed plugin cache files instead of the repository workin
 Cache placeholder:
 
 ```text
-%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.11\
+%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.12\
 ```
 
-This `0.1.11` folder is the cache-busting installed version. Stale plugin cache content can make Codex App behave as if older skill files are still installed. After `git pull`, reinstall, or source updates, compare the installed cache against the repository:
+This `0.1.12` folder is the cache-busting installed version. Stale plugin cache content can make Codex App behave as if older skill files are still installed. After `git pull`, reinstall, or source updates, compare the installed cache against the repository:
 
 ```powershell
 $repo = (Get-Location).Path
 $package = "$repo\plugins\vibebox"
-$cache = "$env:USERPROFILE\.codex\plugins\cache\boksajang\vibebox\0.1.11"
+$cache = "$env:USERPROFILE\.codex\plugins\cache\boksajang\vibebox\0.1.12"
 Test-Path $cache
 Get-FileHash "$package\.codex-plugin\plugin.json", "$cache\.codex-plugin\plugin.json"
 Get-FileHash "$package\skills\vibebox\SKILL.md", "$cache\skills\vibebox\SKILL.md"
@@ -126,6 +126,7 @@ vibebox.cmd pretask --task "<task description>"
 ```
 
 Codex must read and apply `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` before planning or editing. Reading `pretask` is not a complete VibeBox workflow by itself.
+`pretask` includes active global user-profile baselines even when task wording does not overlap their canonical text. Do not require a full `report` scan before normal work.
 
 After meaningful work:
 

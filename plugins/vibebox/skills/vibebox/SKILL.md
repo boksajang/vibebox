@@ -92,12 +92,14 @@ node bin/vibebox.mjs pretask --task "<task description>"
 12. If memory conflicts with repository reality, report the conflict before acting.
 
 `pretask` and `context` are read-only retrieval commands and do not create project registry entries.
+They include active global user-profile baselines even without direct lexical overlap, while unrelated global technical memory remains relevance-filtered. Localized display fields participate in task matching. Do not run the full `report` as a routine workaround for missing global preferences; treat their absence from `pretask` as a retrieval problem.
 
 ## During Work
 
 - Inspect the repository before editing.
 - Treat active memory as constraints, warnings, and reusable approaches.
 - Prefer project-specific memory over global memory for the current repository.
+- Apply global user-profile baselines surfaced by `pretask`; do not conclude that no global preference exists merely because no other relevance-filtered global memory appears.
 - Treat failure memory as prevention guidance.
 - Treat successful approaches as reusable methods when they fit the current task.
 - Preserve existing behavior unless the user asks to change it.
@@ -174,7 +176,7 @@ Language conversion and semantic rebuild require an adapter-provided runtime mar
 
 ## Codex Cache Note
 
-Codex App can load an installed plugin cache instead of the repository checkout. A GitHub push alone does not refresh the installed cache. After local plugin source updates, run `git pull` or reinstall/update the plugin, then verify the cache under `%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.11\`. The installed package includes `bin/vibebox.mjs` and `src/`; VibeBox does not delete or rewrite Codex App plugin cache files automatically.
+Codex App can load an installed plugin cache instead of the repository checkout. A GitHub push alone does not refresh the installed cache. After local plugin source updates, run `git pull` or reinstall/update the plugin, then verify the cache under `%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.12\`. The installed package includes `bin/vibebox.mjs` and `src/`; VibeBox does not delete or rewrite Codex App plugin cache files automatically.
 
 ## Sensitive Data
 

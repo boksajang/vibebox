@@ -126,7 +126,7 @@ vibebox pretask --task "Fix dashboard table scrolling"
 vibebox pretask "Fix dashboard table scrolling"
 ```
 
-Notes: read-only retrieval. It should not modify repository files, but it needs read access to the global store. Agents should apply `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` in their actual work.
+Notes: read-only retrieval. It should not modify repository files, but it needs read access to the global store. Agents should apply `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` in their actual work. Active global user-profile baselines are included even without lexical overlap, and localized display fields participate in matching. The full `report` is an audit command, not a required fallback before normal work.
 
 ## `vibebox context`
 

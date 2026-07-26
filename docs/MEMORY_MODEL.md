@@ -134,7 +134,9 @@ Memory can be:
 
 Only active memory guides normal pretask/context output. Pending is legacy/manual debug state, not normal workflow guidance.
 
-Pretask/context retrieval first narrows active memory with structural data: current `projectId`, `sourceProjectId`, scope, type/category, active status, keyword indexes, and active relation indexes. Task text can affect deterministic token/domain/tag/situation scoring, but Core must not infer user intent, success criteria, failure meaning, category meaning, or memory fitness semantically. Semantic judgment stays with the AI Agent that creates structured candidates.
+Pretask/context retrieval first narrows active memory with structural data: current `projectId`, `sourceProjectId`, scope, type/category, active status, keyword indexes, and active relation indexes. Canonical and localized display fields both participate in deterministic token/domain/tag/situation scoring. Active global user-profile baselines are included even when their lexical match score is zero, because durable personal preferences must not disappear merely because the current task is phrased differently or in another language. Project-specific guidance still takes priority, while unrelated global technical memory remains relevance-filtered. Core does not infer user intent, success criteria, failure meaning, category meaning, or memory fitness semantically; that judgment stays with the AI Agent that creates structured candidates.
+
+`report` is an audit of the broader store, not a required fallback before every task. If a durable global user preference is absent from `pretask`, that is a retrieval defect rather than a reason for agents to routinely scan the full report.
 
 ## Conflict And Replacement
 

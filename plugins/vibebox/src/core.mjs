@@ -14,7 +14,7 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 
-export const VIBEBOX_VERSION = '0.1.11';
+export const VIBEBOX_VERSION = '0.1.12';
 
 const WIKI_DOCS = [
   { docKey: 'home', canonicalFileName: 'Home.md', titleKey: 'homeTitle', fileNameKey: 'homeFileName' },
@@ -3724,6 +3724,9 @@ function memoryKeywords(memory) {
     memory.title,
     memory.summary,
     memory.rule,
+    memory.displayTitle,
+    memory.displaySummary,
+    memory.displayRule,
     memory.patternType,
     memory.situation,
     memory.trigger,
@@ -4514,6 +4517,13 @@ function situationPreferredTypes(situation) {
   return bySituation[situation] || bySituation.implementation;
 }
 
+function isGlobalUserBaselineMemory(memory) {
+  if (!memory || memory.scope !== 'global') return false;
+  const categoryKeys = memoryCategoryDocKeys(memory);
+  return memory.modelClass === 'user_model'
+    || categoryKeys.some((docKey) => ['user_preferences', 'user_patterns'].includes(docKey));
+}
+
 function addIndexedIds(target, indexSection = {}, values = []) {
   for (const value of values || []) {
     const key = normalizeText(value);
@@ -4584,12 +4594,20 @@ function selectRelevantMemories(memories, task, config) {
     .filter((memory) => matchesActiveCondition(memory, task))
     .filter((memory) => memoryMatchesTaskDomain(memory, { taskDomains, taskTags, task }, config.projectIds || config.projectId))
     .map((memory) => ({ memory, ...scoreMemoryDetailed(memory, task, { ...config, situation }) }))
-    .filter((item) => item.matchScore > 0)
+    .filter((item) => item.matchScore > 0 || isGlobalUserBaselineMemory(item.memory))
     .sort((left, right) => right.score - left.score);
   const currentProject = scored.filter((item) => memoryBelongsToCurrentProject(item.memory, config.projectIds || config.projectId));
   const broader = scored.filter((item) => !memoryBelongsToCurrentProject(item.memory, config.projectIds || config.projectId));
-  const preferredBroader = broader.filter((item) => situationPreferredTypes(situation).includes(item.memory.type));
-  const combined = [...currentProject, ...preferredBroader, ...broader];
+  const globalUserBaseline = broader.filter((item) => isGlobalUserBaselineMemory(item.memory));
+  const preferredBroader = broader.filter((item) => (
+    !isGlobalUserBaselineMemory(item.memory)
+    && situationPreferredTypes(situation).includes(item.memory.type)
+  ));
+  const otherBroader = broader.filter((item) => (
+    !isGlobalUserBaselineMemory(item.memory)
+    && !situationPreferredTypes(situation).includes(item.memory.type)
+  ));
+  const combined = [...currentProject, ...globalUserBaseline, ...preferredBroader, ...otherBroader];
   const seen = new Set();
   const selected = combined
     .filter((item) => {
