@@ -290,13 +290,16 @@ Codex App can load installed plugin cache files instead of the current repositor
 Cache placeholder:
 
 ```text
-%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.8\
+%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.9\
 ```
 
-This is the cache-busting folder for `0.1.8`; stale plugin cache content can make Codex App behave as if older skill files are still installed. After updating or reinstalling, compare these files between `plugins/vibebox` and installed cache:
+This is the cache-busting folder for `0.1.9`; stale plugin cache content can make Codex App behave as if older skill files are still installed. After updating or reinstalling, compare these files between `plugins/vibebox` and installed cache:
 
 - `.codex-plugin/plugin.json`
 - `skills/vibebox/SKILL.md`
+- `bin/vibebox.mjs`
+- `src/cli.mjs`
+- `src/core.mjs`
 - `skills/vibebox/references/WORKFLOW.md`
 - `skills/vibebox/references/COMMANDS.md`
 - `skills/vibebox/references/MEMORY_POLICY.md`
@@ -306,13 +309,16 @@ Example PowerShell:
 ```powershell
 $repo = (Get-Location).Path
 $package = "$repo\plugins\vibebox"
-$cache = "$env:USERPROFILE\.codex\plugins\cache\boksajang\vibebox\0.1.8"
+$cache = "$env:USERPROFILE\.codex\plugins\cache\boksajang\vibebox\0.1.9"
 Test-Path $cache
 Get-FileHash "$package\.codex-plugin\plugin.json", "$cache\.codex-plugin\plugin.json"
 Get-FileHash "$package\skills\vibebox\SKILL.md", "$cache\skills\vibebox\SKILL.md"
 Get-FileHash "$package\skills\vibebox\references\WORKFLOW.md", "$cache\skills\vibebox\references\WORKFLOW.md"
 Get-FileHash "$package\skills\vibebox\references\COMMANDS.md", "$cache\skills\vibebox\references\COMMANDS.md"
 Get-FileHash "$package\skills\vibebox\references\MEMORY_POLICY.md", "$cache\skills\vibebox\references\MEMORY_POLICY.md"
+Get-FileHash "$package\bin\vibebox.mjs", "$cache\bin\vibebox.mjs"
+Get-FileHash "$package\src\cli.mjs", "$cache\src\cli.mjs"
+Get-FileHash "$package\src\core.mjs", "$cache\src\core.mjs"
 Select-String -Path "$cache\skills\vibebox\SKILL.md" -Pattern "whyOnlyOneCandidate","no_reusable_memory_candidate","displayLanguage","Core will not infer active memory"
 ```
 

@@ -46,15 +46,6 @@ Use this path when Codex is already installed and you want to install VibeBox fr
 Open PowerShell and run:
 
 ```powershell
-mkdir C:\VibeBox
-cd C:\VibeBox
-git clone https://github.com/boksajang/vibebox.git
-cd vibebox
-npm install
-npm link
-vibebox.cmd init
-vibebox.cmd setup-codex
-vibebox.cmd doctor
 codex plugin marketplace add boksajang/vibebox
 codex plugin add vibebox@boksajang
 codex plugin list
@@ -62,36 +53,19 @@ codex plugin list
 
 What each command does:
 
-- `mkdir C:\VibeBox` creates a working folder for the install.
-- `cd C:\VibeBox` moves PowerShell into that folder.
-- `git clone https://github.com/boksajang/vibebox.git` downloads VibeBox from GitHub.
-- `cd vibebox` moves into the downloaded VibeBox folder.
-- `npm install` installs the Node.js packages VibeBox needs.
-- `npm link` registers the `vibebox` command globally on this PC.
-- `vibebox.cmd init` creates the global VibeBox store at `%USERPROFILE%\.vibebox`, including the default folders, indexes, logs, registry, and Wiki files.
-- `vibebox.cmd setup-codex` updates Codex settings so Codex can read and write `%USERPROFILE%\.vibebox` without repeated approval prompts.
-- `vibebox.cmd doctor` checks that the VibeBox store and Codex setup are valid.
 - `codex plugin marketplace add boksajang/vibebox` registers the GitHub marketplace with Codex.
 - `codex plugin add vibebox@boksajang` installs and enables the VibeBox Codex plugin.
 - `codex plugin list` confirms that `vibebox@boksajang` is installed and enabled.
 
-On Windows PowerShell, prefer `vibebox.cmd` in examples. Running `vibebox init` may call `vibebox.ps1` and be blocked by the PowerShell execution policy.
+The installed plugin bundles VibeBox Core. On the first meaningful prompt, the hook initializes `%USERPROFILE%\.vibebox` if needed and then runs `pretask`. The aftertask checkpoint supplies the installed CLI path for `schema` and `aftertask`, so a separate clone, `npm install`, `npm link`, or global `vibebox.cmd` command is not required.
 
 You can also ask inside Codex App:
 
 ```text
-boksajang/vibebox 플러그인을 설치하고 활성화 해라. 필요하면 GitHub에서 clone하고 npm install, npm link, vibebox.cmd init, vibebox.cmd setup-codex, vibebox.cmd doctor까지 실행해라.
+boksajang/vibebox 플러그인을 설치하고 활성화해라.
 ```
 
-If Codex only installs the plugin and does not run the CLI setup, run the full PowerShell sequence above yourself. `setup-codex` is not the plugin install command; it is the one-time Codex permission setup after `npm link` makes `vibebox.cmd` available.
-
-At minimum, after `npm install` and `npm link`, run these once so the global memory store and Codex permissions are ready:
-
-```powershell
-vibebox.cmd init
-vibebox.cmd setup-codex
-vibebox.cmd doctor
-```
+Sandboxed hosts may still request approval before the bundled runtime can create or update `%USERPROFILE%\.vibebox`. This is a storage permission boundary, not a separate CLI installation requirement.
 
 ### Agent Plugin Or Skill Use
 
@@ -108,7 +82,7 @@ This applies to Codex plugin use, Claude Code plugin use, and Claude-compatible 
 
 Sandboxed hosts may still ask for permission to read or write the single global VibeBox store. That approval is for automatic memory retrieval and capture, not for a manual user workflow.
 
-To pre-authorize the default global store for supported hosts, run the setup command for that agent and restart it:
+To pre-authorize the default global store for supported hosts, ask the agent to run the bundled setup command and then restart that host:
 
 ```bash
 vibebox setup-codex
@@ -152,7 +126,7 @@ Codex App can read an installed plugin cache instead of your local checkout. A G
 Example cache placeholder:
 
 ```text
-%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.8\
+%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.9\
 ```
 
 VibeBox does not delete or rewrite Codex App plugin cache files automatically.
@@ -178,10 +152,12 @@ claude plugin install vibebox@boksajang
 
 When the plugin is enabled, the bundled Claude hooks support the normal VibeBox workflow:
 
-- `UserPromptSubmit` runs `pretask` for the submitted prompt and adds the retrieved guidance to Claude context.
-- `Stop` blocks once with an aftertask checkpoint so Claude cannot silently finish meaningful work without running `schema` and `aftertask` with AI-agent structured candidates.
+- `UserPromptSubmit` initializes `~/.vibebox` when needed, runs `pretask` for the submitted prompt, and adds the retrieved guidance to Claude context.
+- `Stop` blocks once with an aftertask checkpoint and supplies the installed CLI's absolute path, so Claude cannot silently finish meaningful work without running `schema` and `aftertask` with AI-agent structured candidates.
 
 The hooks do not synthesize memory by themselves. Claude remains responsible for deciding whether reusable memory exists, reading the Core schema before candidate JSON, and submitting structured candidates or `no_reusable_memory_candidate`.
+
+Claude Code resolves the marketplace `source: "./"` from the repository root and copies that plugin root into its cache. Because the root includes `bin/`, `src/`, `package.json`, hooks, and skills, Claude plugin installation does not require a separate clone, `npm install`, `npm link`, or global `vibebox` command. Claude may still show normal security prompts for access to `~/.vibebox` or execution of the bundled CLI.
 
 ## Obsidian Wiki
 

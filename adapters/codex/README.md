@@ -16,7 +16,7 @@ Codex marketplace manifest:
 
 - `.agents/plugins/marketplace.json`
 
-The marketplace points Codex at `plugins/vibebox`. The wrapper exposes the shared skill. It does not copy or replace the Core CLI.
+The marketplace points Codex at `plugins/vibebox`. This package includes the shared skill, hooks, and VibeBox Core runtime under `bin/` and `src/`, so Codex App and Codex CLI do not require a separately linked global CLI.
 
 ## Install
 
@@ -52,21 +52,24 @@ Codex App can read installed plugin cache files instead of the repository workin
 Cache placeholder:
 
 ```text
-%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.8\
+%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.9\
 ```
 
-This `0.1.8` folder is the cache-busting installed version. Stale plugin cache content can make Codex App behave as if older skill files are still installed. After `git pull`, reinstall, or source updates, compare the installed cache against the repository:
+This `0.1.9` folder is the cache-busting installed version. Stale plugin cache content can make Codex App behave as if older skill files are still installed. After `git pull`, reinstall, or source updates, compare the installed cache against the repository:
 
 ```powershell
 $repo = (Get-Location).Path
 $package = "$repo\plugins\vibebox"
-$cache = "$env:USERPROFILE\.codex\plugins\cache\boksajang\vibebox\0.1.8"
+$cache = "$env:USERPROFILE\.codex\plugins\cache\boksajang\vibebox\0.1.9"
 Test-Path $cache
 Get-FileHash "$package\.codex-plugin\plugin.json", "$cache\.codex-plugin\plugin.json"
 Get-FileHash "$package\skills\vibebox\SKILL.md", "$cache\skills\vibebox\SKILL.md"
 Get-FileHash "$package\skills\vibebox\references\WORKFLOW.md", "$cache\skills\vibebox\references\WORKFLOW.md"
 Get-FileHash "$package\skills\vibebox\references\COMMANDS.md", "$cache\skills\vibebox\references\COMMANDS.md"
 Get-FileHash "$package\skills\vibebox\references\MEMORY_POLICY.md", "$cache\skills\vibebox\references\MEMORY_POLICY.md"
+Get-FileHash "$package\bin\vibebox.mjs", "$cache\bin\vibebox.mjs"
+Get-FileHash "$package\src\cli.mjs", "$cache\src\cli.mjs"
+Get-FileHash "$package\src\core.mjs", "$cache\src\core.mjs"
 Select-String -Path "$cache\skills\vibebox\SKILL.md" -Pattern "whyOnlyOneCandidate","no_reusable_memory_candidate","displayLanguage","Core will not infer active memory"
 ```
 

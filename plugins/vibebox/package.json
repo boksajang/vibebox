@@ -6,11 +6,6 @@
   "bin": {
     "vibebox": "./bin/vibebox.mjs"
   },
-  "scripts": {
-    "sync:plugin": "node scripts/sync-plugin-package.mjs",
-    "test": "node --test",
-    "check": "node --check bin/vibebox.mjs && node --check src/core.mjs && node --check src/cli.mjs && node --check scripts/claude-vibebox-hook.mjs"
-  },
   "engines": {
     "node": ">=20"
   },

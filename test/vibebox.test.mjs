@@ -5164,7 +5164,7 @@ test('universal agent skill package files exist and declare shared skill metadat
     assert.ok(content.trim().length > 0, `${relativePath} should not be empty`);
   }
 
-  const expectedVersion = '0.1.8';
+  const expectedVersion = '0.1.9';
   const packageJson = await loadJson(path.resolve('package.json'));
   const plugin = await loadJson(path.resolve('.codex-plugin/plugin.json'));
   assert.equal(plugin.name, 'vibebox');
@@ -5199,8 +5199,14 @@ test('universal agent skill package files exist and declare shared skill metadat
     assert.equal(marketplacePlugin.version, expectedVersion);
   }
   const packagedPlugin = await loadJson(path.resolve('plugins/vibebox/.codex-plugin/plugin.json'));
+  const packagedPackageJson = await loadJson(path.resolve('plugins/vibebox/package.json'));
   assert.equal(packagedPlugin.name, 'vibebox');
   assert.equal(packagedPlugin.version, expectedVersion);
+  assert.equal(packagedPackageJson.version, expectedVersion);
+  assert.equal(packagedPackageJson.bin.vibebox, './bin/vibebox.mjs');
+  await readFile(path.resolve('plugins/vibebox/bin/vibebox.mjs'), 'utf8');
+  await readFile(path.resolve('plugins/vibebox/src/cli.mjs'), 'utf8');
+  await readFile(path.resolve('plugins/vibebox/src/core.mjs'), 'utf8');
   await readFile(path.resolve('plugins/vibebox/skills/vibebox/SKILL.md'), 'utf8');
   await readFile(path.resolve('plugins/vibebox/assets/icon.png'));
   await readFile(path.resolve('plugins/vibebox/assets/logo.png'));
@@ -5286,6 +5292,110 @@ test('Claude Stop hook blocks once for the aftertask checkpoint', async () => {
 
   assert.equal(recursiveStop.status, 0);
   assert.equal(recursiveStop.stdout, '');
+});
+
+test('Claude marketplace root bootstraps the global store with only its bundled runtime', async () => {
+  const marketplaceRoot = path.resolve('.');
+  const marketplace = await loadJson(path.join(marketplaceRoot, '.claude-plugin', 'marketplace.json'));
+  const pluginEntry = marketplace.plugins.find((entry) => entry.name === 'vibebox');
+  assert.equal(pluginEntry.source, './');
+
+  const pluginManifest = await loadJson(path.join(marketplaceRoot, '.claude-plugin', 'plugin.json'));
+  const hookConfigPath = path.resolve(marketplaceRoot, pluginManifest.hooks);
+  const hookConfig = await loadJson(hookConfigPath);
+  assert.match(JSON.stringify(hookConfig), /\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/claude-vibebox-hook\.mjs/u);
+
+  const workspace = await makeWorkspace();
+  const isolatedStore = path.join(workspace, 'claude-plugin-store');
+  const hookPath = path.join(marketplaceRoot, 'scripts', 'claude-vibebox-hook.mjs');
+  const env = {
+    ...process.env,
+    CLAUDE_PLUGIN_ROOT: marketplaceRoot,
+    VIBEBOX_HOME: isolatedStore,
+    VIBEBOX_LANGUAGE: 'en-US',
+    VIBEBOX_LOCALE: 'en-US',
+    PATH: ''
+  };
+  const pretask = spawnSync(process.execPath, [hookPath], {
+    input: JSON.stringify({
+      hook_event_name: 'UserPromptSubmit',
+      prompt: 'Validate the installed Claude plugin runtime.',
+      cwd: workspace
+    }),
+    encoding: 'utf8',
+    env
+  });
+
+  assert.equal(pretask.status, 0);
+  const payload = JSON.parse(pretask.stdout);
+  assert.match(payload.hookSpecificOutput.additionalContext, /pretask retrieved active memory/i);
+  await readFile(path.join(isolatedStore, 'config.json'), 'utf8');
+  await readFile(path.join(isolatedStore, 'wiki', 'Global.md'), 'utf8');
+});
+
+test('packaged plugin bootstraps and uses its bundled CLI without a global VibeBox command', async () => {
+  const packageRoot = path.resolve('plugins/vibebox');
+  const hookPath = path.join(packageRoot, 'scripts', 'claude-vibebox-hook.mjs');
+  const bundledCli = path.join(packageRoot, 'bin', 'vibebox.mjs');
+  const workspace = await makeWorkspace();
+  const isolatedStore = path.join(workspace, 'installed-plugin-store');
+  const env = {
+    ...process.env,
+    CLAUDE_PLUGIN_ROOT: packageRoot,
+    VIBEBOX_HOME: isolatedStore,
+    VIBEBOX_LANGUAGE: 'en-US',
+    VIBEBOX_LOCALE: 'en-US',
+    PATH: ''
+  };
+
+  const pretask = spawnSync(process.execPath, [hookPath], {
+    input: JSON.stringify({
+      hook_event_name: 'UserPromptSubmit',
+      prompt: 'Inspect the repository before editing.',
+      cwd: workspace
+    }),
+    encoding: 'utf8',
+    env
+  });
+
+  assert.equal(pretask.status, 0);
+  const pretaskPayload = JSON.parse(pretask.stdout);
+  assert.match(pretaskPayload.hookSpecificOutput.additionalContext, /pretask retrieved active memory/i);
+  await readFile(path.join(isolatedStore, 'config.json'), 'utf8');
+  await readFile(path.join(isolatedStore, 'wiki', 'Global.md'), 'utf8');
+
+  const schema = spawnSync(process.execPath, [bundledCli, 'schema', '--format', 'json'], {
+    cwd: workspace,
+    encoding: 'utf8',
+    env
+  });
+  assert.equal(schema.status, 0);
+  assert.equal(JSON.parse(schema.stdout).version, VIBEBOX_VERSION);
+
+  const aftertask = spawnSync(process.execPath, [
+    bundledCli,
+    'aftertask',
+    '--request',
+    'Verify the self-contained plugin runtime.',
+    '--summary',
+    'The bundled CLI initialized and recorded to the global store.',
+    '--candidates',
+    JSON.stringify({
+      no_reusable_memory_candidate: true,
+      noCandidateReason: 'This is an isolated package runtime verification.'
+    }),
+    '--technical-outcome',
+    'success',
+    '--user-acceptance',
+    'unknown'
+  ], {
+    cwd: workspace,
+    encoding: 'utf8',
+    env
+  });
+  assert.equal(aftertask.status, 0);
+  assert.match(aftertask.stdout, /Captured blackbox event/);
+  assert.match(await readFile(path.join(isolatedStore, 'logs', 'events.jsonl'), 'utf8'), /Verify the self-contained plugin runtime/);
 });
 
 test('structured candidate enum errors include allowed values from core schema', async () => {
@@ -5395,8 +5505,8 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /Reading `pretask` is not a complete VibeBox workflow|pretask[\s\S]{0,160}not a complete VibeBox workflow/i);
   assert.match(combined, /convert-lang[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}convert-lang/i);
   assert.match(combined, /rebuild[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}rebuild/i);
-  assert.match(combined, /0\.1\.8[\s\S]{0,180}cache-busting|cache-busting[\s\S]{0,180}0\.1\.8/i);
-  assert.match(combined, /plugins\\cache\\boksajang\\vibebox\\0\.1\.8/i);
+  assert.match(combined, /0\.1\.9[\s\S]{0,180}cache-busting|cache-busting[\s\S]{0,180}0\.1\.9/i);
+  assert.match(combined, /plugins\\cache\\boksajang\\vibebox\\0\.1\.9/i);
   assert.match(combined, /scope: "global"[\s\S]{0,220}user personal preferences|user personal preferences[\s\S]{0,220}scope: "global"/i);
   assert.match(combined, /scope: "global"[\s\S]{0,260}repeated procedural instructions|repeated procedural instructions[\s\S]{0,260}scope: "global"/i);
   assert.match(combined, /sourceProjectId[\s\S]{0,220}provenance|provenance[\s\S]{0,220}sourceProjectId/i);

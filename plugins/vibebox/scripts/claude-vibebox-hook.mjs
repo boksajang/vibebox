@@ -84,7 +84,16 @@ if (eventName === 'UserPromptSubmit') {
     process.exit(0);
   }
 
-  const result = runVibeBox(['pretask', '--task', prompt], input.cwd);
+  let result = runVibeBox(['pretask', '--task', prompt], input.cwd);
+  const pretaskFailure = `${result.stderr}${result.stdout}`;
+  if (result.status !== 0 && /global store not found/iu.test(pretaskFailure)) {
+    const bootstrap = runVibeBox(['init'], input.cwd);
+    if (bootstrap.status === 0) {
+      result = runVibeBox(['pretask', '--task', prompt], input.cwd);
+    } else {
+      result = bootstrap;
+    }
+  }
   if (result.status === 0) {
     emitContext('UserPromptSubmit', [
       'VibeBox pretask retrieved active memory for this user request.',

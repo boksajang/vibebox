@@ -1,7 +1,7 @@
 {
   "name": "vibebox",
   "displayName": "VibeBox",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Local-first structured memory middleware for Claude Code and other AI coding agents.",
   "author": {
     "name": "Boksajang"

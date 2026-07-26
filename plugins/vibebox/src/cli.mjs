@@ -1,0 +1,615 @@
+import { readFile } from 'node:fs/promises';
+import {
+  afterTask,
+  approveSafeMemories,
+  approveMemory,
+  backupVibeBox,
+  captureEvent,
+  convertLanguage,
+  extractMemoryCandidates,
+  formatStructuredCandidateSchema,
+  generateBlackboxReport,
+  getVibeBoxHome,
+  formatDoctorReport,
+  generateContextPack,
+  generatePreTaskBrief,
+  generateReport,
+  inspectCodexSetup,
+  inspectClaudeSetup,
+  initVibeBox,
+  rejectMemory,
+  rebuildVibeBox,
+  setupClaude,
+  setupCodex,
+  restoreVibeBox,
+  reviewPending,
+  runDoctor,
+  structuredCandidateSchema
+} from './core.mjs';
+
+function parseArgs(argv) {
+  const args = [];
+  const flags = {};
+  for (let index = 0; index < argv.length; index += 1) {
+    const item = argv[index];
+    if (!item.startsWith('--')) {
+      args.push(item);
+      continue;
+    }
+    const withoutPrefix = item.slice(2);
+    const equalsIndex = withoutPrefix.indexOf('=');
+    if (equalsIndex >= 0) {
+      flags[withoutPrefix.slice(0, equalsIndex)] = withoutPrefix.slice(equalsIndex + 1);
+      continue;
+    }
+    const next = argv[index + 1];
+    if (next && !next.startsWith('--')) {
+      flags[withoutPrefix] = next;
+      index += 1;
+    } else {
+      flags[withoutPrefix] = true;
+    }
+  }
+  return { args, flags };
+}
+
+async function readStdin() {
+  if (process.stdin.isTTY) {
+    return '';
+  }
+  const chunks = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+function parseChangedFiles(value) {
+  if (!value) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value;
+  }
+  return String(value)
+    .split(/[,;]/u)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseList(value) {
+  if (!value) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value;
+  }
+  return String(value)
+    .split(/\r?\n|[,;]/u)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseAfterTaskFile(text = '') {
+  const fields = {};
+  let current = '';
+  const aliases = new Map([
+    ['user request', 'userRequest'],
+    ['original user request', 'userRequest'],
+    ['request', 'userRequest'],
+    ['\uC0AC\uC6A9\uC790 \uC694\uCCAD', 'userRequest'],
+    ['\uC6D0 \uC0AC\uC6A9\uC790 \uC694\uCCAD', 'userRequest'],
+    ['\uC694\uCCAD', 'userRequest'],
+    ['summary', 'summary'],
+    ['ai action summary', 'summary'],
+    ['action summary', 'summary'],
+    ['\uC694\uC57D', 'summary'],
+    ['changed files', 'files'],
+    ['files', 'files'],
+    ['\uBCC0\uACBD \uD30C\uC77C', 'files'],
+    ['\uD30C\uC77C', 'files'],
+    ['commands', 'commands'],
+    ['\uBA85\uB839', 'commands'],
+    ['command results', 'commandResults'],
+    ['\uBA85\uB839 \uACB0\uACFC', 'commandResults'],
+    ['errors', 'errors'],
+    ['\uC624\uB958', 'errors'],
+    ['user feedback', 'feedback'],
+    ['feedback', 'feedback'],
+    ['\uC0AC\uC6A9\uC790 \uD53C\uB4DC\uBC31', 'feedback'],
+    ['\uD53C\uB4DC\uBC31', 'feedback'],
+    ['structured memory candidates', 'structuredMemoryCandidates'],
+    ['memory candidates', 'structuredMemoryCandidates'],
+    ['structured candidates', 'structuredMemoryCandidates'],
+    ['agent memory candidates', 'structuredMemoryCandidates'],
+    ['notes', 'notes']
+  ]);
+  for (const line of String(text || '').split(/\r?\n/u)) {
+    const match = line.match(/^([^:\uFF1A]+)[:\uFF1A]\s*(.*)$/u);
+    const key = match ? aliases.get(match[1].trim().toLowerCase()) : '';
+    if (key) {
+      current = key;
+      fields[current] = [fields[current], match[2]].filter(Boolean).join('\n');
+      continue;
+    }
+    if (current && line.trim()) {
+      fields[current] = [fields[current], line].filter(Boolean).join('\n');
+    }
+  }
+  return Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, value.trim()]));
+}
+
+async function readCandidateInput(flags = {}, fallback = '') {
+  if (flags['candidates-file'] || flags.candidatesFile) {
+    return readFile(flags['candidates-file'] || flags.candidatesFile, 'utf8');
+  }
+  if (flags['structured-candidates-file'] || flags.structuredCandidatesFile) {
+    return readFile(flags['structured-candidates-file'] || flags.structuredCandidatesFile, 'utf8');
+  }
+  if (flags.candidates || flags.structuredCandidates || flags.structuredMemoryCandidates) {
+    return flags.candidates || flags.structuredCandidates || flags.structuredMemoryCandidates;
+  }
+  return fallback;
+}
+
+async function readDisplayTemplateInput(flags = {}) {
+  if (flags['display-template-file'] || flags.displayTemplateFile || flags['template-file'] || flags.templateFile) {
+    return readFile(flags['display-template-file'] || flags.displayTemplateFile || flags['template-file'] || flags.templateFile, 'utf8');
+  }
+  return flags['display-template']
+    || flags.displayTemplate
+    || flags.template
+    || flags['locale-template']
+    || flags.localeTemplate
+    || '';
+}
+
+function isPermissionDeniedError(error) {
+  const code = String(error?.code || '').toUpperCase();
+  const message = String(error?.message || '');
+  return ['EACCES', 'EPERM'].includes(code)
+    || /\b(?:permission denied|access denied|operation not permitted|not permitted|sandbox denied|sandbox denial|outside the workspace|approval denied)\b/iu.test(message);
+}
+
+function commandAccessKind(command = '') {
+  const normalized = String(command || '').toLowerCase();
+  if (['pretask', 'context', 'report', 'blackbox', 'doctor', 'review', 'schema'].includes(normalized)) {
+    return 'read';
+  }
+  if (['aftertask', 'capture', 'extract', 'approve', 'reject', 'init', 'setup-codex', 'setup-claude', 'backup', 'restore', 'convert-lang', 'language', 'rebuild'].includes(normalized)) {
+    return 'write';
+  }
+  return 'access';
+}
+
+export function formatCliError(error, command = '') {
+  const message = error?.message || String(error);
+  if (!isPermissionDeniedError(error)) return message;
+
+  const store = getVibeBoxHome();
+  const kind = commandAccessKind(command);
+  const purpose = kind === 'read'
+    ? 'pretask/context/report/doctor require read access to active memory and diagnostics in the global VibeBox store. pretask/context are read-only and do not register projects.'
+    : kind === 'write'
+      ? 'aftertask/capture/init/rebuild/convert-lang/restore/backup write capture, registry, index, wiki, backup, or restore data in the global VibeBox store. aftertask requires write access for memory capture and project registration.'
+      : 'this command needs access to the global VibeBox store.';
+  const approval = kind === 'read'
+    ? 'Rerun with approved read-only global VibeBox store access, or report VibeBox guidance unavailable if approval is denied.'
+    : 'Rerun with approved global VibeBox store write access when the command records or maintains memory, or report VibeBox capture unavailable if approval is denied.';
+
+  return [
+    message,
+    '',
+    `VibeBox global store access is required at ${store}.`,
+    purpose,
+    'Sandboxed hosts such as Codex may block ~/.vibebox because it is outside the workspace.',
+    'This command uses the single global VibeBox store; no workspace-local memory snapshot will be created.',
+    'Do not create workspace-local memory snapshots, project-local .vibebox folders, or copied memory stores as a fallback.',
+    approval
+  ].join('\n');
+}
+
+function yesNo(value) {
+  return value ? 'yes' : 'no';
+}
+
+function formatSetupResult(result) {
+  const label = result.agent === 'codex' ? 'Codex' : 'Claude Code';
+  const configLabel = result.agent === 'codex' ? 'Codex config' : 'Claude Code settings';
+  return [
+    `[VibeBox ${label} Setup]`,
+    '',
+    `Global store: ${result.globalStore}`,
+    `  Exists: ${yesNo(result.check.globalStoreExists)}`,
+    '',
+    `${configLabel}: ${result.agent === 'codex' ? result.configPath : result.settingsPath}`,
+    `  Created: ${yesNo(result.configCreated || result.settingsCreated)}`,
+    `  Changed: ${yesNo(result.changed)}`,
+    `  Backup: ${result.backupPath || '(none)'}`,
+    '',
+    'Result:',
+    result.check.ok
+      ? `  ${label} is configured for VibeBox global store access.`
+      : `  ${label} setup completed, but one or more checks still need attention.`,
+    '',
+    'Next:',
+    `  Restart ${label} so the updated settings are loaded.`
+  ].join('\n');
+}
+
+function formatCodexSetupDoctor(check) {
+  return [
+    '[VibeBox Doctor: Codex]',
+    '',
+    'Global store:',
+    `  ${check.globalStore}`,
+    `  Exists: ${yesNo(check.globalStoreExists)}`,
+    '',
+    'Codex config:',
+    `  ${check.configPath}`,
+    `  Found: ${yesNo(check.found)}`,
+    '',
+    'Sandbox:',
+    `  sandbox_mode: ${check.sandboxMode || '(missing)'}`,
+    `  approval_policy: ${check.approvalPolicy || '(missing)'}`,
+    `  [sandbox_workspace_write]: ${yesNo(check.hasSandboxWorkspaceWrite)}`,
+    `  writable_roots includes ~/.vibebox: ${yesNo(check.writableRootsIncludesVibeBox)}`,
+    '',
+    'Result:',
+    check.ok
+      ? '  Codex is configured to write VibeBox memory without extra global-store approval when this config layer is active.'
+      : '  Codex may ask for approval when VibeBox writes memory.',
+    ...(check.ok ? [] : [
+      '',
+      'Fix:',
+      '  Run:',
+      '    vibebox setup-codex'
+    ])
+  ].join('\n');
+}
+
+function formatClaudeSetupDoctor(check) {
+  return [
+    '[VibeBox Doctor: Claude Code]',
+    '',
+    'Global store:',
+    `  ${check.globalStore}`,
+    `  Exists: ${yesNo(check.globalStoreExists)}`,
+    '',
+    'Claude Code settings:',
+    `  ${check.settingsPath}`,
+    `  Found: ${yesNo(check.found)}`,
+    ...(check.parseError ? [`  Parse error: ${check.parseError}`] : []),
+    '',
+    'Checks:',
+    `  permissions.additionalDirectories includes ~/.vibebox: ${yesNo(check.additionalDirectoriesIncludesVibeBox)}`,
+    `  permissions.allow includes Read(~/.vibebox/**): ${yesNo(check.allowIncludesReadVibeBox)}`,
+    `  permissions.allow includes Edit(~/.vibebox/**): ${yesNo(check.allowIncludesEditVibeBox)}`,
+    `  optional Bash(vibebox ...) rules exist: ${yesNo(check.bashRulesComplete)}`,
+    '',
+    'Result:',
+    check.ok
+      ? '  Claude Code is configured for VibeBox global-store file access. Bash allow rules are recommended for fewer prompts.'
+      : '  Claude Code may ask for approval or lack file access when VibeBox reads or writes memory.',
+    ...(check.ok && check.bashRulesComplete ? [] : [
+      '',
+      'Fix:',
+      '  Run:',
+      '    vibebox setup-claude'
+    ])
+  ].join('\n');
+}
+
+function requestedDoctorAgents(flags = {}) {
+  if (flags.codex) return ['codex'];
+  if (flags.claude) return ['claude'];
+  const agent = String(flags.agent || flags.agents || '').toLowerCase();
+  if (agent === 'codex') return ['codex'];
+  if (agent === 'claude') return ['claude'];
+  if (agent === 'all' || agent === 'both') return ['codex', 'claude'];
+  return [];
+}
+
+async function formatAgentDoctorSections(flags = {}) {
+  const agents = requestedDoctorAgents(flags);
+  const sections = [];
+  for (const agent of agents) {
+    if (agent === 'codex') {
+      sections.push(formatCodexSetupDoctor(await inspectCodexSetup()));
+    } else if (agent === 'claude') {
+      sections.push(formatClaudeSetupDoctor(await inspectClaudeSetup()));
+    }
+  }
+  return sections;
+}
+
+function help() {
+  return `VibeBox
+
+Usage:
+  vibebox init [--store <path>] [--language <canonical-bcp47>] [--display-template-file <path>]
+  vibebox setup-codex
+  vibebox setup-claude
+  vibebox capture --request <text> --summary <text> [--command <text>] [--command-result <text>] [--changed-files a,b] [--feedback <text>] [--outcome success|failure|partial|unknown] [--technical-outcome success|failure|partial|unknown] [--user-acceptance accepted|rejected|mixed|unknown]
+  vibebox extract --candidates <agent-candidate-json> [--manual-review]
+  vibebox review  (debug/manual override only)
+  vibebox approve <candidate-id>  (debug/manual override only)
+  vibebox approve --safe  (debug/manual override only)
+  vibebox reject <candidate-id>  (debug/manual override only)
+  vibebox context --task <text>
+  vibebox pretask --task <text>
+  vibebox schema [--format json|text]
+  vibebox aftertask --request <text> --summary <text> --candidates <agent-candidate-json> [--candidates-file <path>] [--structured-candidates-file <path>] [--files a,b] [--commands <text>] [--command-results <text>] [--errors <text>] [--technical-outcome success|failure|partial|unknown] [--user-acceptance accepted|rejected|mixed|unknown]
+  vibebox report
+  vibebox blackbox [--limit 10] [--type success|failure|task_summary] [--since YYYY-MM-DD]
+  vibebox doctor [--codex|--claude|--agent codex|claude|all]
+  vibebox backup [--output <path>] [--include-logs|--exclude-logs]
+  vibebox restore --from <path> --confirm-replace
+  vibebox convert-lang <from> <to> [--display-template-file <path>]
+  vibebox language convert <from> <to> [--display-template-file <path>]
+  vibebox rebuild [--index-only]
+
+Global store:
+  Defaults to ~/.vibebox and can be overridden with VIBEBOX_HOME or --store <path>.
+  setup-codex and setup-claude configure agent user settings for the default ~/.vibebox store and ask you to restart the agent after changes.
+  Obsidian Wiki display uses the configured canonical BCP 47 memoryLanguage. VIBEBOX_LANGUAGE/--language can seed a new store; VIBEBOX_LOCALE/--locale is an environment hint and does not rewrite an existing store.
+  For non-default initial languages, the AI Agent must pass a localized display template with --display-template/--display-template-file or VIBEBOX_DISPLAY_TEMPLATE.
+  Active memory requires AI-agent structured candidates. Core does not semantically interpret userRequest, headings, bullets, keywords, raw action summaries, or command output.
+  Run vibebox schema --format json before authoring structured candidates. The schema is generated from Core enum constants so agents do not need copied enum lists.
+  If userRequest is present without candidates, aftertask stores the raw event, warns, and creates no active memory.
+  If userRequest is captured with exactly one candidate, aftertask emits a contract warning unless the AI Agent includes whyOnlyOneCandidate.
+  If no reusable memory exists, include a no_reusable_memory_candidate item with noCandidateReason so Core records the diagnostic without active memory.
+  Wiki display fields (displayTitle/displaySummary/displayRule/displayLanguage) should be written by the AI Agent in configured memoryLanguage; Core does not translate missing display text.
+  Semantic operations convert-lang and rebuild require VIBEBOX_AGENT_RUNTIME from an adapter.
+`;
+}
+
+export async function runCli(argv = process.argv.slice(2), root = process.cwd()) {
+  const [command, ...rest] = argv;
+  const { args, flags } = parseArgs(rest);
+  if (flags.store) {
+    process.env.VIBEBOX_HOME = String(flags.store);
+  }
+  if (flags.locale) {
+    process.env.VIBEBOX_LOCALE = String(flags.locale);
+  }
+  if (flags.language) {
+    if (!flags.locale) {
+      delete process.env.VIBEBOX_LOCALE;
+    }
+    process.env.VIBEBOX_LANGUAGE = String(flags.language);
+  }
+
+  switch (command) {
+    case 'init': {
+      const result = await initVibeBox(root, {
+        displayTemplate: await readDisplayTemplateInput(flags)
+      });
+      const projectId = result.projectId || '(none)';
+      return [
+        `VibeBox global store initialized at ${result.storeRoot}`,
+        `Current projectId: ${projectId}`,
+        `Current project root: ${result.projectRoot}`,
+        `Created ${result.created.length} missing item(s).`
+      ].join('\n');
+    }
+
+    case 'setup-codex': {
+      return formatSetupResult(await setupCodex());
+    }
+
+    case 'setup-claude': {
+      return formatSetupResult(await setupClaude());
+    }
+
+    case 'capture': {
+      const event = await captureEvent(root, {
+        eventType: flags['event-type'] || flags.eventType || 'task_summary',
+        userRequest: flags.request || flags.userRequest || '',
+        aiActionSummary: flags.summary || flags.aiActionSummary || '',
+        command: flags.command || '',
+        commandResult: flags['command-result'] || flags.commandResult || '',
+        changedFiles: parseChangedFiles(flags['changed-files'] || flags.changedFiles),
+        userFeedback: flags.feedback || flags.userFeedback || '',
+        technicalOutcome: flags['technical-outcome'] || flags.technicalOutcome,
+        userAcceptance: flags['user-acceptance'] || flags.userAcceptance,
+        finalOutcome: flags['final-outcome'] || flags.finalOutcome,
+        outcome: flags.outcome || 'unknown'
+      });
+      return `Captured event ${event.id}\nProject: ${event.projectId}\nGlobal store: ${getVibeBoxHome()}`;
+    }
+
+    case 'extract': {
+      let text = flags.text || '';
+      if (flags.file) {
+        text = await readFile(flags.file, 'utf8');
+      }
+      if (!text) {
+        text = await readStdin();
+      }
+      const candidates = await extractMemoryCandidates(root, {
+        structuredMemoryCandidates: await readCandidateInput(flags, ''),
+        eventId: flags.event,
+        fromLastEvent: flags['last-event'] || false,
+        manualReview: flags['manual-review'] || flags.review || false,
+        source: { kind: flags.event ? 'event' : 'cli_extract', id: flags.event || null }
+      });
+      const projectId = candidates.find((candidate) => candidate.projectId)?.projectId || 'global';
+      return `Extracted ${candidates.length} candidate(s).\nProject: ${projectId}`;
+    }
+
+    case 'review':
+      return reviewPending(root);
+
+    case 'approve': {
+      if (flags.safe || args[0] === '--safe' || args[0] === 'safe') {
+        const result = await approveSafeMemories(root);
+        return `Approved ${result.approved.length} safe candidate(s).\nSkipped ${result.skipped.length} candidate(s) requiring review.`;
+      }
+      const id = args[0];
+      if (!id) throw new Error('approve requires a candidate id.');
+      const memory = await approveMemory(root, id);
+      return `Approved ${memory.id}`;
+    }
+
+    case 'reject': {
+      const id = args[0];
+      if (!id) throw new Error('reject requires a candidate id.');
+      const memory = await rejectMemory(root, id, flags.reason || 'Rejected from CLI.');
+      return `Rejected ${memory.id}`;
+    }
+
+    case 'context': {
+      const task = flags.task || args.join(' ') || await readStdin();
+      return generateContextPack(root, { task, debug: Boolean(flags.debug) });
+    }
+
+    case 'pretask': {
+      const task = flags.task || args.join(' ') || await readStdin();
+      return generatePreTaskBrief(root, { task, debug: Boolean(flags.debug) });
+    }
+
+    case 'schema': {
+      const schema = structuredCandidateSchema({
+        locale: flags.locale || flags.language || 'en-US'
+      });
+      const format = String(flags.format || args[0] || 'json').toLowerCase();
+      if (format === 'text') {
+        return formatStructuredCandidateSchema(schema);
+      }
+      if (format !== 'json') {
+        throw new Error('schema --format must be json or text.');
+      }
+      return JSON.stringify(schema, null, 2);
+    }
+
+    case 'aftertask': {
+      let fileText = '';
+      if (flags['from-file']) {
+        fileText = await readFile(flags['from-file'], 'utf8');
+      }
+      if (!fileText && !process.stdin.isTTY) {
+        fileText = await readStdin();
+      }
+      const fileFields = parseAfterTaskFile(fileText);
+      const result = await afterTask(root, {
+        userRequest: flags.request || flags.userRequest || fileFields.userRequest || '',
+        aiActionSummary: flags.summary || flags.aiActionSummary || fileFields.summary || fileText,
+        changedFiles: parseList(flags.files || flags['changed-files'] || flags.changedFiles || fileFields.files),
+        commands: parseList(flags.commands || flags.command || fileFields.commands),
+        commandResults: parseList(flags['command-results'] || flags['command-result'] || flags.commandResult || fileFields.commandResults),
+        errors: parseList(flags.errors || flags.error || fileFields.errors),
+        structuredMemoryCandidates: await readCandidateInput(flags, fileFields.structuredMemoryCandidates || ''),
+        userFeedback: flags.feedback || flags.userFeedback || fileFields.feedback || '',
+        technicalOutcome: flags['technical-outcome'] || flags.technicalOutcome,
+        userAcceptance: flags['user-acceptance'] || flags.userAcceptance,
+        finalOutcome: flags['final-outcome'] || flags.finalOutcome,
+        outcome: flags.outcome || 'unknown',
+        manualReview: flags['manual-review'] || flags.review || false,
+        notes: flags.notes || fileFields.notes || ''
+      });
+      return result.message;
+    }
+
+    case 'report':
+      return generateReport(root, { locale: flags.locale });
+
+    case 'blackbox': {
+      return generateBlackboxReport(root, {
+        limit: flags.limit,
+        type: flags.type,
+        since: flags.since,
+        locale: flags.locale
+      });
+    }
+
+    case 'doctor': {
+      const report = await runDoctor(root);
+      const baseReport = formatDoctorReport(report, { locale: flags.locale });
+      const setupSections = await formatAgentDoctorSections(flags);
+      return [baseReport, ...setupSections].join('\n\n');
+    }
+
+    case 'backup': {
+      const result = await backupVibeBox(root, {
+        output: flags.output || flags.to || args[0],
+        includeLogs: flags['exclude-logs'] ? false : flags['include-logs'] !== false
+      });
+      return `VibeBox backup created at ${result.backupPath}`;
+    }
+
+    case 'restore': {
+      const result = await restoreVibeBox(root, {
+        from: flags.from || flags.path || args[0],
+        confirmReplace: Boolean(flags['confirm-replace'] || flags.yes),
+        yes: Boolean(flags.yes)
+      });
+      return [
+        `VibeBox store restored from ${result.restoredFrom}`,
+        `Store: ${result.storeRoot}`,
+        'Restore used destructive replace, not merge.'
+      ].join('\n');
+    }
+
+    case 'convert-lang': {
+      const from = args[0] || flags.from || '';
+      const to = args[1] || flags.to || flags.language || flags.target || '';
+      if (!to) throw new Error('convert-lang requires source and target canonical BCP 47 language tags.');
+      const result = await convertLanguage(root, {
+        from,
+        to,
+        localizedCandidates: await readCandidateInput(flags, ''),
+        displayTemplate: await readDisplayTemplateInput(flags)
+      });
+      return `VibeBox language converted to ${result.language} (${result.locale}). Raw logs were not changed.`;
+    }
+
+    case 'language': {
+      if (args[0] !== 'convert') {
+        throw new Error(`Unknown language command: ${args[0] || ''}\n\n${help()}`);
+      }
+      const to = args[2] || flags.to || flags.language || flags.target || '';
+      if (!to) throw new Error('language convert requires source and target canonical BCP 47 language tags.');
+      const result = await convertLanguage(root, {
+        from: args[1] || flags.from || '',
+        to,
+        localizedCandidates: await readCandidateInput(flags, ''),
+        displayTemplate: await readDisplayTemplateInput(flags)
+      });
+      return `VibeBox language converted to ${result.language} (${result.locale}). Raw logs were not changed.`;
+    }
+
+    case 'rebuild': {
+      const semanticData = await readCandidateInput(flags, '');
+      const result = await rebuildVibeBox(root, {
+        indexOnly: Boolean(flags['index-only']),
+        semantic: !flags['index-only'],
+        cleanup: flags.cleanup !== false,
+        agentSemanticData: flags['semantic-data'] || flags.semanticData || semanticData
+      });
+      return `VibeBox rebuild complete. semantic=${result.semantic}`;
+    }
+
+    case undefined:
+    case '-h':
+    case '--help':
+    case 'help':
+      return help();
+
+    default:
+      throw new Error(`Unknown command: ${command}\n\n${help()}`);
+  }
+}
+
+export async function main() {
+  try {
+    const output = await runCli();
+    if (output) {
+      process.stdout.write(`${output}\n`);
+    }
+  } catch (error) {
+    const { args } = parseArgs(process.argv.slice(2));
+    process.stderr.write(`${formatCliError(error, args[0] || '')}\n`);
+    process.exitCode = 1;
+  }
+}

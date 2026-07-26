@@ -1,6 +1,6 @@
 # VibeBox Claude Adapter
 
-This is a Claude Code and Claude-compatible guide for using the shared VibeBox skill with the local VibeBox CLI.
+This is a Claude Code and Claude-compatible guide for using the shared VibeBox skill with the bundled VibeBox CLI.
 
 VibeBox memory behavior comes from Core and the shared skill, not from an adapter-specific fork.
 
@@ -12,6 +12,8 @@ VibeBox ships Claude Code plugin metadata and hooks:
 - `.claude-plugin/marketplace.json`
 - `hooks/hooks.json`
 - `scripts/claude-vibebox-hook.mjs`
+- `bin/vibebox.mjs`
+- `src/`
 
 Install from the VibeBox repository marketplace inside Claude Code:
 
@@ -30,16 +32,11 @@ claude plugin install vibebox@boksajang
 
 The marketplace name is `boksajang`; the plugin name is `vibebox`, so the installed plugin identifier is `vibebox@boksajang`.
 
-After install, users should ask for normal coding work. They should not need to manually run `pretask`, `schema`, or `aftertask` during ordinary use.
+The marketplace source is the repository root, so Claude Code copies the hook, CLI, and Core runtime together into its plugin cache. A separate repository clone, `npm install`, `npm link`, or global `vibebox` command is not required.
 
-If Claude Code repeatedly asks for access to the VibeBox global store, run:
+After install, users should ask for normal coding work. On the first meaningful prompt, the bundled hook initializes `~/.vibebox` if needed and retries `pretask`. The aftertask checkpoint supplies the absolute bundled CLI path for `schema` and `aftertask`, so users should not need to run those commands manually during ordinary use.
 
-```bash
-vibebox setup-claude
-vibebox doctor --claude
-```
-
-`setup-claude` creates `~/.vibebox`, backs up `~/.claude/settings.json`, creates it if missing, and merges `permissions.additionalDirectories`, `Read(~/.vibebox/**)`, `Edit(~/.vibebox/**)`, and VibeBox `Bash(...)` allow rules without duplicate entries. Restart Claude Code after setup.
+Claude Code may ask the user to approve access to `~/.vibebox` or execution of the bundled CLI according to the user's permission policy. This is a host security prompt, not a requirement for a separately installed VibeBox CLI.
 
 ## Claude Code Hooks
 
