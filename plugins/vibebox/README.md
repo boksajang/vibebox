@@ -57,15 +57,39 @@ What each command does:
 - `codex plugin add vibebox@boksajang` installs and enables the VibeBox Codex plugin.
 - `codex plugin list` confirms that `vibebox@boksajang` is installed and enabled.
 
-The installed plugin bundles VibeBox Core. On the first meaningful prompt, the hook initializes `%USERPROFILE%\.vibebox` if needed and then runs `pretask`. The aftertask checkpoint supplies the installed CLI path for `schema` and `aftertask`, so a separate clone, `npm install`, `npm link`, or global `vibebox.cmd` command is not required.
+The installed plugin bundles VibeBox Core, so a separate clone, `npm install`, `npm link`, or global `vibebox.cmd` command is not required.
 
-You can also ask inside Codex App:
+You can ask Codex App to complete installation, permission setup, and initialization in one natural-language request:
 
 ```text
-boksajang/vibebox 플러그인을 설치하고 활성화해라.
+boksajang/vibebox 플러그인을 설치하고 활성화한 다음,
+설치된 번들 CLI로 setup-codex와 init도 같이 실행해줘.
+완료되면 Codex를 재시작해야 한다고 알려줘.
 ```
 
-Sandboxed hosts may still request approval before the bundled runtime can create or update `%USERPROFILE%\.vibebox`. This is a storage permission boundary, not a separate CLI installation requirement.
+### Required Codex Setup And Initialization
+
+Plugin installation only copies and enables the plugin package. It does not execute VibeBox Core, grant write access to `%USERPROFILE%\.vibebox`, or create the store's categories, indexes, and Wiki files.
+
+If you installed the plugin without the combined request above, start a new Codex task and ask:
+
+```text
+설치된 VibeBox 플러그인의 번들 CLI로 setup-codex를 실행해서
+%USERPROFILE%\.vibebox를 Codex writable_roots에 추가한 다음,
+같은 번들 CLI로 init을 실행해서 전역 저장소의 카테고리, 인덱스,
+Wiki 기본 파일을 생성해줘. 완료되면 Codex를 재시작해야 한다고 알려줘.
+```
+
+`setup-codex` backs up `%USERPROFILE%\.codex\config.toml`, adds `%USERPROFILE%\.vibebox` to `[sandbox_workspace_write].writable_roots`, and creates the global store directory when it is missing. `init` then creates all missing categories, indexes, registry files, logs, and Wiki pages without replacing existing user files.
+
+Restart Codex after both commands succeed, then start another new task so the updated permission and installed hooks are loaded. The first meaningful prompt runs `pretask`; the hook's automatic initialization remains a fallback for missing store files. The aftertask checkpoint supplies the installed CLI path for `schema` and `aftertask`.
+
+`doctor --codex` is optional and is only needed to verify the permission setup or diagnose a problem. You can ask Codex:
+
+```text
+설치된 VibeBox 플러그인의 번들 CLI로 doctor --codex를 실행해서
+전역 저장소 권한과 상태를 확인해줘.
+```
 
 ### Agent Plugin Or Skill Use
 
@@ -126,7 +150,7 @@ Codex App can read an installed plugin cache instead of your local checkout. A G
 Example cache placeholder:
 
 ```text
-%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.9\
+%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.10\
 ```
 
 VibeBox does not delete or rewrite Codex App plugin cache files automatically.

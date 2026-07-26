@@ -1,4 +1,6 @@
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -7,6 +9,7 @@ const MAX_CONTEXT_CHARS = 9000;
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || resolve(scriptDir, '..');
 const vibeboxCli = resolve(pluginRoot, 'bin', 'vibebox.mjs');
+const vibeboxStore = resolve(process.env.VIBEBOX_HOME || resolve(homedir(), '.vibebox'));
 
 function readStdin() {
   return new Promise((resolveInput) => {
@@ -84,9 +87,17 @@ if (eventName === 'UserPromptSubmit') {
     process.exit(0);
   }
 
-  let result = runVibeBox(['pretask', '--task', prompt], input.cwd);
+  let result;
+  if (!existsSync(resolve(vibeboxStore, 'config.json'))) {
+    const bootstrap = runVibeBox(['init'], input.cwd);
+    result = bootstrap.status === 0
+      ? runVibeBox(['pretask', '--task', prompt], input.cwd)
+      : bootstrap;
+  } else {
+    result = runVibeBox(['pretask', '--task', prompt], input.cwd);
+  }
   const pretaskFailure = `${result.stderr}${result.stdout}`;
-  if (result.status !== 0 && /global store not found/iu.test(pretaskFailure)) {
+  if (result.status !== 0 && /global store not found|ENOENT|no such file or directory/iu.test(pretaskFailure)) {
     const bootstrap = runVibeBox(['init'], input.cwd);
     if (bootstrap.status === 0) {
       result = runVibeBox(['pretask', '--task', prompt], input.cwd);

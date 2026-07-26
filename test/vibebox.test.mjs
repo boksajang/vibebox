@@ -5164,7 +5164,7 @@ test('universal agent skill package files exist and declare shared skill metadat
     assert.ok(content.trim().length > 0, `${relativePath} should not be empty`);
   }
 
-  const expectedVersion = '0.1.9';
+  const expectedVersion = '0.1.10';
   const packageJson = await loadJson(path.resolve('package.json'));
   const plugin = await loadJson(path.resolve('.codex-plugin/plugin.json'));
   assert.equal(plugin.name, 'vibebox');
@@ -5339,6 +5339,7 @@ test('packaged plugin bootstraps and uses its bundled CLI without a global VibeB
   const bundledCli = path.join(packageRoot, 'bin', 'vibebox.mjs');
   const workspace = await makeWorkspace();
   const isolatedStore = path.join(workspace, 'installed-plugin-store');
+  await mkdir(isolatedStore, { recursive: true });
   const env = {
     ...process.env,
     CLAUDE_PLUGIN_ROOT: packageRoot,
@@ -5494,6 +5495,14 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /\/plugin install vibebox@boksajang/i);
   assert.match(combined, /claude plugin marketplace add boksajang\/vibebox/i);
   assert.match(combined, /claude plugin install vibebox@boksajang/i);
+  assert.match(combined, /one natural-language request/i);
+  assert.match(combined, /설치하고 활성화한 다음/u);
+  assert.match(combined, /setup-codex와 init도 같이 실행해줘/u);
+  assert.match(combined, /번들 CLI로 setup-codex를 실행해서/u);
+  assert.match(combined, /Plugin installation only copies and enables the plugin package/i);
+  assert.match(combined, /같은 번들 CLI로 init을 실행해서/u);
+  assert.match(combined, /categories, indexes, registry files, logs, and Wiki pages/i);
+  assert.match(combined, /doctor --codex` is optional/i);
   assert.match(combined, /Do not create workspace-local memory snapshots/i);
   assert.match(combined, /original user request or faithful summary/i);
   assert.match(combined, /without (?:structured )?candidates, VibeBox records the event and warns|userRequest[\s\S]{0,120}structured candidates are missing/i);
@@ -5505,8 +5514,8 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /Reading `pretask` is not a complete VibeBox workflow|pretask[\s\S]{0,160}not a complete VibeBox workflow/i);
   assert.match(combined, /convert-lang[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}convert-lang/i);
   assert.match(combined, /rebuild[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}rebuild/i);
-  assert.match(combined, /0\.1\.9[\s\S]{0,180}cache-busting|cache-busting[\s\S]{0,180}0\.1\.9/i);
-  assert.match(combined, /plugins\\cache\\boksajang\\vibebox\\0\.1\.9/i);
+  assert.match(combined, /0\.1\.10[\s\S]{0,180}cache-busting|cache-busting[\s\S]{0,180}0\.1\.10/i);
+  assert.match(combined, /plugins\\cache\\boksajang\\vibebox\\0\.1\.10/i);
   assert.match(combined, /scope: "global"[\s\S]{0,220}user personal preferences|user personal preferences[\s\S]{0,220}scope: "global"/i);
   assert.match(combined, /scope: "global"[\s\S]{0,260}repeated procedural instructions|repeated procedural instructions[\s\S]{0,260}scope: "global"/i);
   assert.match(combined, /sourceProjectId[\s\S]{0,220}provenance|provenance[\s\S]{0,220}sourceProjectId/i);

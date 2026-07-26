@@ -290,10 +290,10 @@ Codex App can load installed plugin cache files instead of the current repositor
 Cache placeholder:
 
 ```text
-%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.9\
+%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.10\
 ```
 
-This is the cache-busting folder for `0.1.9`; stale plugin cache content can make Codex App behave as if older skill files are still installed. After updating or reinstalling, compare these files between `plugins/vibebox` and installed cache:
+This is the cache-busting folder for `0.1.10`; stale plugin cache content can make Codex App behave as if older skill files are still installed. After updating or reinstalling, compare these files between `plugins/vibebox` and installed cache:
 
 - `.codex-plugin/plugin.json`
 - `skills/vibebox/SKILL.md`
@@ -309,7 +309,7 @@ Example PowerShell:
 ```powershell
 $repo = (Get-Location).Path
 $package = "$repo\plugins\vibebox"
-$cache = "$env:USERPROFILE\.codex\plugins\cache\boksajang\vibebox\0.1.9"
+$cache = "$env:USERPROFILE\.codex\plugins\cache\boksajang\vibebox\0.1.10"
 Test-Path $cache
 Get-FileHash "$package\.codex-plugin\plugin.json", "$cache\.codex-plugin\plugin.json"
 Get-FileHash "$package\skills\vibebox\SKILL.md", "$cache\skills\vibebox\SKILL.md"
