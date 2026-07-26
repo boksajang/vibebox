@@ -177,13 +177,13 @@ Scoped exceptions can coexist with broader rules only when the condition is clea
 
 ## Language Policy
 
-Configured `memoryLanguage` controls Obsidian Wiki display text.
+Configured `memoryLanguage` controls Obsidian Wiki display text and must represent the user's actual conversation language.
 
 `memoryLanguage` must be a valid canonical BCP 47 language tag. Core validates the tag generically and does not keep hardcoded alias deny-lists or supported-language examples.
 
 For non-default initial languages and conversion targets, the AI Agent must provide a complete display template for the exact configured tag. Core stores it in `config.displayTemplates` and renders from that agent-provided template.
 
-The AI Agent writes `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage` in the configured language. VibeBox Core validates the BCP 47 tag and renders files from the agent-provided display fields. Core does not translate, summarize, or generate missing user-facing display text.
+The AI Agent writes `displayTitle`, `displaySummary`, and `displayRule` in the configured language and sets `displayLanguage` to the exact configured tag. Core rejects missing display fields or a mismatched tag before activation and Wiki rendering. It does not translate, summarize, generate, or silently replace missing user-facing text with English.
 
 `convert-lang` and semantic `rebuild` require an AI Agent runtime marker and agent-provided localized/semantic data.
 

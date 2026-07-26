@@ -47,7 +47,7 @@ The AI agent is responsible for user-facing semantic display text:
 - `displayRule`
 - `displayLanguage`
 
-For a store configured with a Korean language tag, these display fields should be Korean. Technical literals such as `npm.cmd test`, package names, paths, API names, and error codes may remain unchanged inside localized sentences.
+These display fields must use the user's configured language, whatever that language is, and `displayLanguage` must exactly match `memoryLanguage`. Technical literals such as `npm.cmd test`, package names, paths, API names, and error codes may remain unchanged inside localized sentences.
 
 Core validates canonical BCP 47 tags and renders the files. It does not translate, summarize, infer categories, or rewrite raw requests and action summaries into localized prose.
 

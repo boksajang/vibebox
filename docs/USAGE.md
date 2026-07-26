@@ -36,11 +36,14 @@ node bin/vibebox.mjs <command>
 
 ## Runtime Storage
 
-Initialize the single global user store:
+For agent-driven initialization, first request the schema for the user's actual conversation language, generate every required display-template value in that same language, and initialize the single global user store:
 
 ```bash
-vibebox init
+vibebox schema --format json --language <user-language-bcp47>
+vibebox init --language <user-language-bcp47> --display-template-file <agent-generated-template.json>
 ```
+
+English uses Core's base display template. Every other language requires a complete agent-generated template. Core rejects a missing template instead of creating English Wiki files under a non-English `memoryLanguage`.
 
 Default locations:
 
@@ -181,7 +184,7 @@ Example `structured-candidates.json`:
 ]
 ```
 
-Wiki display fields must match the configured `memoryLanguage`. Core validates canonical BCP 47 tags and does not translate missing display text.
+Wiki display fields must match the configured `memoryLanguage`. `displayTitle`, `displaySummary`, and `displayRule` are required for reusable memory, and `displayLanguage` must exactly match the configured tag. Core rejects violations before activation.
 
 ## From-File Capture
 
@@ -250,13 +253,13 @@ VIBEBOX_LANGUAGE=<canonical-bcp47> VIBEBOX_DISPLAY_TEMPLATE='<agent-template-jso
 vibebox init --language <canonical-bcp47> --display-template-file <agent-template.json>
 ```
 
-Configured `memoryLanguage` controls Obsidian Wiki display text. It must be a valid canonical BCP 47 language tag. Core validates the tag generically and does not keep a hardcoded alias deny-list or a hardcoded list of supported languages.
+Configured `memoryLanguage` controls Obsidian Wiki display text. It must represent the user's actual conversation language as a valid canonical BCP 47 tag. Core validates the tag generically and does not keep hardcoded language packs or a fixed list of supported languages.
 
 For non-default initial languages and conversion targets, the AI Agent must provide a full display template for the exact configured tag with `VIBEBOX_DISPLAY_TEMPLATE`, `--display-template`, or `--display-template-file`. Core stores it in `config.displayTemplates` and renders from that agent-provided template.
 
 The template JSON can be either a direct template pack for the selected tag or `{ "displayTemplates": { "<canonical-bcp47>": { "...key": "localized text" } } }`. Adapters can call `displayTemplateSchema()` from `src/core.mjs` to inspect the required template keys before asking the AI Agent to fill localized text.
 
-The AI Agent writes `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage` in the configured language. VibeBox Core validates the BCP 47 tag and renders files from the agent-provided display fields. Core does not translate, summarize, or generate missing user-facing display text.
+The AI Agent writes `displayTitle`, `displaySummary`, and `displayRule` in the configured language and sets `displayLanguage` to the exact configured tag. These fields are required. Core rejects missing fields or a mismatched tag before activation and Wiki rendering; it does not silently store or display English fallback text.
 
 `VIBEBOX_LOCALE` is only an environment hint and does not rewrite an existing store. To intentionally change Wiki display language, run conversion from an adapter runtime:
 
@@ -290,10 +293,10 @@ Codex App can load installed plugin cache files instead of the current repositor
 Cache placeholder:
 
 ```text
-%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.10\
+%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.11\
 ```
 
-This is the cache-busting folder for `0.1.10`; stale plugin cache content can make Codex App behave as if older skill files are still installed. After updating or reinstalling, compare these files between `plugins/vibebox` and installed cache:
+This is the cache-busting folder for `0.1.11`; stale plugin cache content can make Codex App behave as if older skill files are still installed. After updating or reinstalling, compare these files between `plugins/vibebox` and installed cache:
 
 - `.codex-plugin/plugin.json`
 - `skills/vibebox/SKILL.md`
@@ -309,7 +312,7 @@ Example PowerShell:
 ```powershell
 $repo = (Get-Location).Path
 $package = "$repo\plugins\vibebox"
-$cache = "$env:USERPROFILE\.codex\plugins\cache\boksajang\vibebox\0.1.10"
+$cache = "$env:USERPROFILE\.codex\plugins\cache\boksajang\vibebox\0.1.11"
 Test-Path $cache
 Get-FileHash "$package\.codex-plugin\plugin.json", "$cache\.codex-plugin\plugin.json"
 Get-FileHash "$package\skills\vibebox\SKILL.md", "$cache\skills\vibebox\SKILL.md"

@@ -14,11 +14,11 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 
-export const VIBEBOX_VERSION = '0.1.10';
+export const VIBEBOX_VERSION = '0.1.11';
 
 const WIKI_DOCS = [
-  { docKey: 'home', canonicalFileName: 'Home.md', titleKey: 'homeTitle', technicalName: true },
-  { docKey: 'global_index', canonicalFileName: 'Global.md', titleKey: 'globalStore', technicalName: true },
+  { docKey: 'home', canonicalFileName: 'Home.md', titleKey: 'homeTitle', fileNameKey: 'homeFileName' },
+  { docKey: 'global_index', canonicalFileName: 'Global.md', titleKey: 'globalStore', fileNameKey: 'globalFileName' },
   { docKey: 'user_preferences', canonicalFileName: 'User Preferences.md', titleKey: 'pageUserPreferences' },
   { docKey: 'user_patterns', canonicalFileName: 'User Patterns.md', titleKey: 'pageUserPatterns' },
   { docKey: 'design_philosophy', canonicalFileName: 'Design Philosophy.md', titleKey: 'pageDesignPhilosophy' },
@@ -298,6 +298,9 @@ const STRUCTURED_CANDIDATE_REQUIRED_FIELDS = [
   'primaryCategory',
   STRUCTURED_CANDIDATE_TITLE_FIELDS.join(' or '),
   STRUCTURED_CANDIDATE_SUMMARY_FIELDS.join(' or '),
+  'displayTitle',
+  'displaySummary',
+  'displayRule',
   'displayLanguage',
   'confidence',
   'sourceType'
@@ -305,9 +308,6 @@ const STRUCTURED_CANDIDATE_REQUIRED_FIELDS = [
 const STRUCTURED_CANDIDATE_RECOMMENDED_FIELDS = [
   'relatedCategories',
   'rule',
-  'displayTitle',
-  'displaySummary',
-  'displayRule',
   'evidence',
   'relationCandidates',
   'replaces',
@@ -895,6 +895,23 @@ function configuredMemoryLocale(config = {}) {
   return configuredMemoryLanguageTag(config);
 }
 
+export async function resolveStoreMemoryLanguage(root = process.cwd(), explicitLanguage = '') {
+  if (explicitLanguage) {
+    return normalizeConfigLanguageTag(explicitLanguage, BASE_MEMORY_LANGUAGE);
+  }
+  const configPath = vibeboxPath(root, 'config.json');
+  if (await exists(configPath)) {
+    const config = await loadJson(configPath, {});
+    if (Object.keys(config).length > 0) {
+      return configuredMemoryLocale(config);
+    }
+  }
+  return normalizeConfigLanguageTag(
+    process.env.VIBEBOX_LANGUAGE || process.env.VIBEBOX_LOCALE || detectSystemLocale() || BASE_MEMORY_LANGUAGE,
+    BASE_MEMORY_LANGUAGE
+  );
+}
+
 function countScript(text, regex) {
   return (String(text || '').match(regex) || []).length;
 }
@@ -974,6 +991,8 @@ function defaultConfig(options = {}) {
 }
 
 const BASE_DISPLAY_TEMPLATE = Object.freeze({
+  homeFileName: 'Home',
+  globalFileName: 'Global',
   homeTitle: 'VibeBox Home',
   contextTitle: 'VibeBox Context Pack',
   pretaskTitle: 'VibeBox Pre-Task Brief',
@@ -1161,6 +1180,7 @@ function structuredCandidateSkeleton(locale = 'en-US') {
 
 export function structuredCandidateSchema(options = {}) {
   const locale = options.locale || 'en-US';
+  const templateSchema = displayTemplateSchema();
   return {
     schemaName: 'vibebox.structuredMemoryCandidate',
     version: VIBEBOX_VERSION,
@@ -1188,6 +1208,13 @@ export function structuredCandidateSchema(options = {}) {
       sourceType: DEFAULT_AGENT_SOURCE_TYPE,
       status: 'active',
       displayLanguage: locale
+    },
+    configuredMemoryLanguage: locale,
+    initialization: {
+      targetLanguage: locale,
+      displayTemplateRequired: locale !== BASE_MEMORY_LANGUAGE,
+      displayTemplate: templateSchema,
+      instruction: `Generate every display template value in ${locale} from the baseTemplate meaning, without changing keys, then pass it to init. Do not use another language or a hardcoded locale-specific Core fallback.`
     },
     candidateSkeleton: structuredCandidateSkeleton(locale),
     noReusableMemoryCandidate: {
@@ -1382,7 +1409,7 @@ function localizedDocTitle(docKey, locale = 'en-US') {
 function localizedDocFileName(docKey, locale = 'en-US') {
   const doc = docDefinition(docKey);
   if (doc.technicalName) return doc.canonicalFileName;
-  return `${safeWikiPageName(localizedDocTitle(docKey, locale))}.md`;
+  return `${safeWikiPageName(t(locale, doc.fileNameKey || doc.titleKey))}.md`;
 }
 
 function currentWikiPages(locale = 'en-US') {
@@ -1849,16 +1876,42 @@ export async function initVibeBox(root = process.cwd(), options = {}) {
   const base = vibeboxPath(root);
   const created = [];
   const existingConfig = await loadJson(vibeboxPath(root, 'config.json'), {});
+  const previousWikiRegistry = await loadJson(vibeboxPath(root, 'registry/wiki-docs.json'), { docs: [] }).catch(() => ({ docs: [] }));
   const configOptions = { ...options };
   if (Object.keys(existingConfig).length > 0) {
+    const existingLocale = configuredMemoryLocale(existingConfig);
+    const requestedLocale = configOptions.language || configOptions.locale;
+    if (requestedLocale && normalizeConfigLanguageTag(requestedLocale, existingLocale) !== existingLocale) {
+      throw new Error(`init cannot change an existing store from ${existingLocale} to ${requestedLocale}. Use convert-lang with an AI-agent display template and localized memory candidates.`);
+    }
     if (!configOptions.locale && !configOptions.language) {
-      configOptions.locale = existingConfig.locale || existingConfig.memoryLanguage;
+      configOptions.locale = existingLocale;
     }
     if (configOptions.displayTemplates === undefined && configOptions.displayTemplate === undefined) {
       configOptions.displayTemplates = existingConfig.displayTemplates ?? existingConfig.displayTemplate;
     }
   }
-  const config = await createDefaultConfig({ ...configOptions, requireDisplayTemplate: false });
+  const generatedConfig = await createDefaultConfig({ ...configOptions, requireDisplayTemplate: true });
+  const config = Object.keys(existingConfig).length > 0
+    ? {
+      ...generatedConfig,
+      ...existingConfig,
+      displayTemplates: mergeDisplayTemplates(
+        normalizeAgentDisplayTemplates(
+          existingConfig.displayTemplates
+            ? { displayTemplates: existingConfig.displayTemplates }
+            : existingConfig.displayTemplate
+              ? { locale: configuredMemoryLocale(existingConfig), displayTemplate: existingConfig.displayTemplate }
+              : null,
+          configuredMemoryLocale(existingConfig),
+          'configured display template'
+        ),
+        generatedConfig.displayTemplates || {}
+      ),
+      updatedAt: nowIso()
+    }
+    : generatedConfig;
+  activateDisplayTemplates(config);
   const memoryLocale = configuredMemoryLocale(config);
 
   await ensureDir(vibeboxPath(root, 'registry'));
@@ -1912,6 +1965,9 @@ export async function initVibeBox(root = process.cwd(), options = {}) {
     }
   }
 
+  if (Object.keys(existingConfig).length > 0 && JSON.stringify(existingConfig) !== JSON.stringify(config)) {
+    await saveJson(vibeboxPath(root, 'config.json'), config);
+  }
   await ensureConfigFields(root);
   const actualConfig = await loadJson(vibeboxPath(root, 'config.json'), config);
   const actualLocale = configuredMemoryLocale(actualConfig);
@@ -1922,6 +1978,11 @@ export async function initVibeBox(root = process.cwd(), options = {}) {
   await rebuildIndexes(root, { syncNamespaceFiles: false });
   const registry = await loadJson(vibeboxPath(root, 'registry/projects.json'), defaultRegistry());
   await writeManagedWikiDoc(root, 'project_index', renderProjectIndexShell(actualLocale), renderProjectIndexManaged((registry.projects || []).filter(isRegistryProject), actualLocale), actualLocale);
+  await cleanupStaleLocalizedWikiDocs(
+    root,
+    actualLocale,
+    (previousWikiRegistry.docs || []).map((doc) => doc.fileName).filter(Boolean)
+  );
 
   return {
     root: path.resolve(root),
@@ -2483,14 +2544,10 @@ function normalizeStructuredMemoryCandidate(rawCandidate, context = {}) {
   const sourceType = requiredCandidateEnum(raw, 'sourceType', CANDIDATE_SOURCE_TYPE_VALUES, candidateLabel);
   const title = requiredCandidateStringAny(raw, STRUCTURED_CANDIDATE_TITLE_FIELDS, candidateLabel);
   const summary = requiredCandidateStringAny(raw, STRUCTURED_CANDIDATE_SUMMARY_FIELDS, candidateLabel);
-  const displayTitle = optionalCandidateString(raw, 'displayTitle');
-  const displaySummary = optionalCandidateString(raw, 'displaySummary');
-  const displayRule = optionalCandidateString(raw, 'displayRule');
-  const displayTextDiagnostics = [
-    displayTitle ? '' : 'displayTitle missing; Wiki will show display text missing diagnostic instead of canonical title.',
-    displaySummary ? '' : 'displaySummary missing; Wiki will show display text missing diagnostic instead of canonical summary.',
-    displayRule ? '' : 'displayRule missing; Wiki will show display text missing diagnostic instead of canonical rule.'
-  ].filter(Boolean);
+  const displayTitle = requiredCandidateString(raw, 'displayTitle', candidateLabel);
+  const displaySummary = requiredCandidateString(raw, 'displaySummary', candidateLabel);
+  const displayRule = requiredCandidateString(raw, 'displayRule', candidateLabel);
+  const displayTextDiagnostics = [];
   const rawPrimaryCategory = requiredCandidateString(raw, 'primaryCategory', candidateLabel);
   const rawStatus = raw.status ? requiredCandidateEnum(raw, 'status', CANDIDATE_STATUS_VALUES, candidateLabel) : 'active';
   const displayLanguage = assertSupportedMemoryLanguageTag(
@@ -2498,9 +2555,10 @@ function normalizeStructuredMemoryCandidate(rawCandidate, context = {}) {
     'structured candidate displayLanguage'
   );
   const configuredDisplayLanguage = context.locale ? assertSupportedMemoryLanguageTag(context.locale, 'configured memoryLanguage') : '';
-  const displayLanguageDiagnostics = configuredDisplayLanguage && displayLanguage !== configuredDisplayLanguage
-    ? [`displayLanguage ${displayLanguage} does not match configured memoryLanguage ${configuredDisplayLanguage}; AI Agent must provide display fields in ${configuredDisplayLanguage}.`]
-    : [];
+  if (configuredDisplayLanguage && displayLanguage !== configuredDisplayLanguage) {
+    throw new Error(`Structured memory candidate ${candidateLabel} uses displayLanguage ${displayLanguage}, but configured memoryLanguage is ${configuredDisplayLanguage}. AI Agent must regenerate displayTitle, displaySummary, and displayRule in ${configuredDisplayLanguage}.`);
+  }
+  const displayLanguageDiagnostics = [];
   const primaryCategory = normalizeCategoryDocKeys([rawPrimaryCategory])[0];
   if (!primaryCategory) {
     throw new Error(`Structured memory candidate ${candidateLabel} has invalid primaryCategory: ${rawPrimaryCategory}. Allowed primaryCategory values: ${CATEGORY_AXIS_DOC_KEYS.join(', ')}.`);

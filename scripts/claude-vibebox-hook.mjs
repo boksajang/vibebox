@@ -70,6 +70,17 @@ function runVibeBox(args, cwd) {
   };
 }
 
+function initializationGuidance() {
+  return [
+    'VibeBox global store is not initialized.',
+    'Before repository work, infer the user-facing language from the current user conversation and choose its exact canonical BCP 47 tag. Do not hardcode Korean, English, or the operating-system locale.',
+    `Run \`node "${vibeboxCli}" schema --format json --language <user-language-tag>\` and use initialization.displayTemplate to generate every required template value in that same user language.`,
+    `Then run \`node "${vibeboxCli}" init --language <user-language-tag> --display-template-file <generated-template.json>\`.`,
+    `After initialization succeeds, run \`node "${vibeboxCli}" pretask --task "<current user request>"\` before continuing.`,
+    'Do not run bare init for a non-English user language, and do not substitute English display text.'
+  ].join('\n');
+}
+
 const rawInput = await readStdin();
 let input = {};
 
@@ -87,23 +98,15 @@ if (eventName === 'UserPromptSubmit') {
     process.exit(0);
   }
 
-  let result;
   if (!existsSync(resolve(vibeboxStore, 'config.json'))) {
-    const bootstrap = runVibeBox(['init'], input.cwd);
-    result = bootstrap.status === 0
-      ? runVibeBox(['pretask', '--task', prompt], input.cwd)
-      : bootstrap;
-  } else {
-    result = runVibeBox(['pretask', '--task', prompt], input.cwd);
+    emitContext('UserPromptSubmit', initializationGuidance());
+    process.exit(0);
   }
+  const result = runVibeBox(['pretask', '--task', prompt], input.cwd);
   const pretaskFailure = `${result.stderr}${result.stdout}`;
   if (result.status !== 0 && /global store not found|ENOENT|no such file or directory/iu.test(pretaskFailure)) {
-    const bootstrap = runVibeBox(['init'], input.cwd);
-    if (bootstrap.status === 0) {
-      result = runVibeBox(['pretask', '--task', prompt], input.cwd);
-    } else {
-      result = bootstrap;
-    }
+    emitContext('UserPromptSubmit', initializationGuidance());
+    process.exit(0);
   }
   if (result.status === 0) {
     emitContext('UserPromptSubmit', [
@@ -135,6 +138,7 @@ if (eventName === 'Stop') {
     'Do not stop yet if this turn performed meaningful coding, documentation, packaging, review, validation, or debugging work and the user did not opt out.',
     `Run \`node "${vibeboxCli}" schema --format json\` before writing candidate JSON.`,
     `Then run \`node "${vibeboxCli}" aftertask --request "<original user request or faithful summary>" --summary "..." --candidates-file <structured-candidates.json> --technical-outcome success|failure|partial|unknown --user-acceptance accepted|rejected|mixed|unknown\`.`,
+    'The schema reads the configured memoryLanguage. Write displayTitle, displaySummary, and displayRule in that exact user language and set displayLanguage to the exact schema value; Core rejects missing or mismatched display fields.',
     'The AI agent must provide structured candidates for reusable memory. Core will not infer active memory from raw summaries.',
     'If no durable memory exists, submit no_reusable_memory_candidate with noCandidateReason instead of skipping the checkpoint.'
   ].join('\n'));

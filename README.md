@@ -63,7 +63,10 @@ You can ask Codex App to complete installation, permission setup, and initializa
 
 ```text
 boksajang/vibebox 플러그인을 설치하고 활성화한 다음,
-설치된 번들 CLI로 setup-codex와 init도 같이 실행해줘.
+설치된 번들 CLI로 setup-codex를 실행해줘.
+그 다음 이 대화에서 내가 사용하는 언어를 판별하고, schema의
+initialization.displayTemplate 전체를 그 언어로 생성해서
+같은 번들 CLI로 init까지 실행해줘.
 완료되면 Codex를 재시작해야 한다고 알려줘.
 ```
 
@@ -76,13 +79,16 @@ If you installed the plugin without the combined request above, start a new Code
 ```text
 설치된 VibeBox 플러그인의 번들 CLI로 setup-codex를 실행해서
 %USERPROFILE%\.vibebox를 Codex writable_roots에 추가한 다음,
-같은 번들 CLI로 init을 실행해서 전역 저장소의 카테고리, 인덱스,
-Wiki 기본 파일을 생성해줘. 완료되면 Codex를 재시작해야 한다고 알려줘.
+이 대화에서 내가 사용하는 언어의 정확한 BCP 47 태그로 schema를 읽고,
+initialization.displayTemplate의 모든 값을 같은 언어로 생성해줘.
+그 템플릿과 언어 태그를 같은 번들 CLI의 init에 전달해서 전역 저장소의
+카테고리, 인덱스, Wiki 기본 파일을 생성해줘.
+완료되면 Codex를 재시작해야 한다고 알려줘.
 ```
 
-`setup-codex` backs up `%USERPROFILE%\.codex\config.toml`, adds `%USERPROFILE%\.vibebox` to `[sandbox_workspace_write].writable_roots`, and creates the global store directory when it is missing. `init` then creates all missing categories, indexes, registry files, logs, and Wiki pages without replacing existing user files.
+`setup-codex` backs up `%USERPROFILE%\.codex\config.toml`, adds `%USERPROFILE%\.vibebox` to `[sandbox_workspace_write].writable_roots`, and creates the global store directory when it is missing. The agent determines the user's conversation language, generates the complete display template returned by `schema --language <canonical-bcp47>`, and passes both to `init`. Core does not contain Korean-only or other hardcoded translation packs.
 
-Restart Codex after both commands succeed, then start another new task so the updated permission and installed hooks are loaded. The first meaningful prompt runs `pretask`; the hook's automatic initialization remains a fallback for missing store files. The aftertask checkpoint supplies the installed CLI path for `schema` and `aftertask`.
+Restart Codex after both commands succeed, then start another new task so the updated permission and installed hooks are loaded. The first meaningful prompt runs `pretask`. If the store is still missing, the hook instructs the active AI agent to generate a complete template in the user's language before running `init`; it never creates an English fallback store. The aftertask checkpoint supplies the installed CLI path for `schema` and `aftertask`.
 
 `doctor --codex` is optional and is only needed to verify the permission setup or diagnose a problem. You can ask Codex:
 
@@ -115,7 +121,7 @@ vibebox setup-claude
 
 `setup-codex` backs up `~/.codex/config.toml`, creates it if missing, and adds `~/.vibebox` to `[sandbox_workspace_write].writable_roots`. `setup-claude` backs up `~/.claude/settings.json`, creates it if missing, and adds VibeBox file and command permissions. Use `vibebox doctor --codex`, `vibebox doctor --claude`, or `vibebox doctor --agent all` to inspect these settings.
 
-On first use, the agent or adapter should bootstrap the global store and provide any required localized display template for the configured `memoryLanguage`. Users should not need to craft VibeBox workflow commands or candidate JSON manually.
+On first use, the agent or adapter must identify the user's language from the conversation, request the schema for its canonical BCP 47 tag, generate every required display-template value in that language, and pass the template and tag to `init`. Users should not need to craft VibeBox workflow commands or candidate JSON manually.
 
 ### Local CLI Development
 
@@ -150,7 +156,7 @@ Codex App can read an installed plugin cache instead of your local checkout. A G
 Example cache placeholder:
 
 ```text
-%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.10\
+%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.11\
 ```
 
 VibeBox does not delete or rewrite Codex App plugin cache files automatically.
@@ -176,7 +182,7 @@ claude plugin install vibebox@boksajang
 
 When the plugin is enabled, the bundled Claude hooks support the normal VibeBox workflow:
 
-- `UserPromptSubmit` initializes `~/.vibebox` when needed, runs `pretask` for the submitted prompt, and adds the retrieved guidance to Claude context.
+- `UserPromptSubmit` runs `pretask` when the store exists. When it is missing, the hook instructs Claude to infer the user's language, generate the complete schema-defined display template in that language, initialize the store, and then run `pretask`.
 - `Stop` blocks once with an aftertask checkpoint and supplies the installed CLI's absolute path, so Claude cannot silently finish meaningful work without running `schema` and `aftertask` with AI-agent structured candidates.
 
 The hooks do not synthesize memory by themselves. Claude remains responsible for deciding whether reusable memory exists, reading the Core schema before candidate JSON, and submitting structured candidates or `no_reusable_memory_candidate`.
@@ -196,7 +202,7 @@ Default wiki locations:
 %USERPROFILE%\.vibebox\wiki
 ```
 
-Wiki filenames, titles, summaries, aliases, and link labels follow the configured `memoryLanguage`. `memoryLanguage` must be a valid canonical BCP 47 language tag. For non-default initial languages and language conversion targets, the AI Agent must provide a localized display template for the exact configured tag; Core stores and renders that agent-provided template instead of using hardcoded locale packs.
+Wiki filenames, titles, summaries, aliases, and link labels follow the configured `memoryLanguage`. `memoryLanguage` must be the user's actual language as a canonical BCP 47 tag. For every non-default initial language and conversion target, the AI Agent must generate the complete schema-defined display template in that exact language; Core rejects missing templates instead of silently falling back to English. Every recorded memory must also include `displayTitle`, `displaySummary`, and `displayRule` in that language with the matching `displayLanguage`, or Core rejects it before Wiki rendering.
 
 ## Runtime Store
 

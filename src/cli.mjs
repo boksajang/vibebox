@@ -19,6 +19,7 @@ import {
   initVibeBox,
   rejectMemory,
   rebuildVibeBox,
+  resolveStoreMemoryLanguage,
   setupClaude,
   setupCodex,
   restoreVibeBox,
@@ -359,7 +360,7 @@ Global store:
   If userRequest is present without candidates, aftertask stores the raw event, warns, and creates no active memory.
   If userRequest is captured with exactly one candidate, aftertask emits a contract warning unless the AI Agent includes whyOnlyOneCandidate.
   If no reusable memory exists, include a no_reusable_memory_candidate item with noCandidateReason so Core records the diagnostic without active memory.
-  Wiki display fields (displayTitle/displaySummary/displayRule/displayLanguage) should be written by the AI Agent in configured memoryLanguage; Core does not translate missing display text.
+  Wiki display fields (displayTitle/displaySummary/displayRule/displayLanguage) are required and must use the exact configured user memoryLanguage; Core rejects missing or mismatched display data.
   Semantic operations convert-lang and rebuild require VIBEBOX_AGENT_RUNTIME from an adapter.
 `;
 }
@@ -383,6 +384,7 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
   switch (command) {
     case 'init': {
       const result = await initVibeBox(root, {
+        language: flags.language || flags.locale,
         displayTemplate: await readDisplayTemplateInput(flags)
       });
       const projectId = result.projectId || '(none)';
@@ -470,8 +472,9 @@ export async function runCli(argv = process.argv.slice(2), root = process.cwd())
     }
 
     case 'schema': {
+      const locale = await resolveStoreMemoryLanguage(root, flags.locale || flags.language || '');
       const schema = structuredCandidateSchema({
-        locale: flags.locale || flags.language || 'en-US'
+        locale
       });
       const format = String(flags.format || args[0] || 'json').toLowerCase();
       if (format === 'text') {

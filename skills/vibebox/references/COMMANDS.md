@@ -68,13 +68,13 @@ VIBEBOX_LANGUAGE=<canonical-bcp47> VIBEBOX_DISPLAY_TEMPLATE='<agent-template-jso
 vibebox init --language <canonical-bcp47> --display-template-file <agent-template.json>
 ```
 
-Configured `memoryLanguage` controls Obsidian Wiki display text. It must be a valid canonical BCP 47 language tag. Core validates the tag generically and does not keep hardcoded alias deny-lists or supported-language examples.
+Configured `memoryLanguage` controls Obsidian Wiki display text. It must represent the user's actual conversation language as a valid canonical BCP 47 tag. Core validates the tag generically and does not keep hardcoded language packs or a fixed list of supported languages.
 
 For non-default initial languages and conversion targets, the AI Agent must provide a complete display template for the exact configured tag with `VIBEBOX_DISPLAY_TEMPLATE`, `--display-template`, or `--display-template-file`. Core stores it in `config.displayTemplates` and renders from that agent-provided template.
 
 The template JSON can be either a direct template pack for the selected tag or `{ "displayTemplates": { "<canonical-bcp47>": { "...key": "localized text" } } }`. Adapters can call `displayTemplateSchema()` from `src/core.mjs` to inspect the required keys before asking the AI Agent to fill localized text.
 
-`VIBEBOX_LOCALE` is only an environment hint. The AI Agent writes `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage` in the configured language. VibeBox Core validates the BCP 47 tag and renders files from the agent-provided display fields. Core does not translate, summarize, or generate missing user-facing display text.
+`VIBEBOX_LOCALE` is only an environment hint. For agent-driven initialization, infer the user's language from the conversation and run `schema --language <canonical-bcp47>` before generating the complete template. The AI Agent must write `displayTitle`, `displaySummary`, and `displayRule` in the configured language and set `displayLanguage` to the exact configured tag. Core rejects missing or mismatched display fields before activation and Wiki rendering.
 
 ## `vibebox init`
 
@@ -86,7 +86,7 @@ Example:
 vibebox init
 ```
 
-Notes: existing VibeBox files are preserved. VibeBox does not create project-local `.vibebox` folders, pointer files, or hidden metadata in work projects.
+Notes: for a non-English user language, `init` fails unless the AI Agent supplies a complete display template for the exact tag. Existing VibeBox files are preserved. Use `convert-lang` with agent-provided localized candidates to repair or intentionally convert an existing store; do not use `init` to change its language.
 
 ## `vibebox setup-codex`
 

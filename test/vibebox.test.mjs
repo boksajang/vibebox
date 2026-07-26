@@ -655,6 +655,13 @@ async function listMemoryNoteFiles(root) {
   return tagged;
 }
 
+async function readWikiDoc(root, docKey) {
+  const registry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+  const doc = registry.docs.find((item) => item.docKey === docKey);
+  assert.ok(doc?.fileName, `Missing wiki registry entry for ${docKey}`);
+  return readFile(storePath(root, 'wiki', doc.fileName), 'utf8');
+}
+
 const LANGUAGE_CONFIG_KEYS = ['locale', 'memoryLanguage', 'outputLanguage', 'wikiLanguage', 'reportLanguage', 'contextLanguage'];
 const TEST_BCP47_LANGUAGE_TAGS = ['ko', 'en-US', 'ja', 'zh-Hans', 'zh-Hant-TW', 'ar', 'fr-FR', 'de-DE'];
 
@@ -672,6 +679,8 @@ function agentDisplayTemplateInput(displayLanguage, overrides = {}) {
 }
 
 const KOREAN_DISPLAY_TEMPLATE_OVERRIDES = {
+  homeFileName: '홈',
+  globalFileName: '전역',
   homeTitle: 'VibeBox 홈',
   contextTitle: 'VibeBox 컨텍스트 팩',
   pretaskTitle: 'VibeBox 사전 작업 브리프',
@@ -1182,7 +1191,7 @@ test('init reuses existing display templates for a non-default configured langua
   assert.equal((await runDoctor(root)).errors.length, 0);
 });
 
-test('init creates default store files even when ko-KR has no display template', async () => {
+test('init rejects non-default user languages when the agent has not provided a display template', async () => {
   const root = await makeWorkspace();
   const previousLocale = process.env.VIBEBOX_LOCALE;
   const previousTemplate = process.env.VIBEBOX_DISPLAY_TEMPLATE;
@@ -1192,19 +1201,11 @@ test('init creates default store files even when ko-KR has no display template',
     delete process.env.VIBEBOX_DISPLAY_TEMPLATE;
     delete process.env.VIBEBOX_DISPLAY_TEMPLATES;
 
-    await initVibeBox(root);
-
-    const config = await loadJson(storePath(root, 'config.json'));
-    assertConfigLanguageTags(config, 'ko-KR');
-    await access(storePath(root, 'global'));
-    await access(storePath(root, 'projects'));
-    await access(storePath(root, 'wiki'));
-    await access(storePath(root, 'registry', 'projects.json'));
-    await access(storePath(root, 'registry', 'wiki-docs.json'));
-    await access(storePath(root, 'index', 'global-memory-index.json'));
-    await access(storePath(root, 'logs', 'events.jsonl'));
-    await access(storePath(root, 'pending', 'memory-candidates.jsonl'));
-    assert.equal((await runDoctor(root)).errors.length, 0);
+    await assert.rejects(
+      () => initVibeBox(root),
+      /requires an AI-agent display template.*without hardcoded locale packs/iu
+    );
+    await assert.rejects(() => access(storePath(root, 'config.json')), /ENOENT/);
   } finally {
     if (previousLocale === undefined) delete process.env.VIBEBOX_LOCALE;
     else process.env.VIBEBOX_LOCALE = previousLocale;
@@ -1213,6 +1214,36 @@ test('init creates default store files even when ko-KR has no display template',
     if (previousTemplates === undefined) delete process.env.VIBEBOX_DISPLAY_TEMPLATES;
     else process.env.VIBEBOX_DISPLAY_TEMPLATES = previousTemplates;
   }
+});
+
+test('init repairs an existing non-English store when the agent supplies the exact user-language template', async () => {
+  const root = await makeWorkspace();
+  await initVibeBox(root);
+  const configPath = storePath(root, 'config.json');
+  const config = await loadJson(configPath);
+  const brokenConfig = { ...config };
+  for (const key of LANGUAGE_CONFIG_KEYS) {
+    brokenConfig[key] = 'ko-KR';
+  }
+  delete brokenConfig.displayTemplate;
+  delete brokenConfig.displayTemplates;
+  await writeFile(configPath, `${JSON.stringify(brokenConfig, null, 2)}\n`, 'utf8');
+
+  await initVibeBox(root, {
+    language: 'ko-KR',
+    displayTemplate: JSON.stringify(agentDisplayTemplateInput('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES))
+  });
+
+  const repairedConfig = await loadJson(configPath);
+  assertConfigLanguageTags(repairedConfig, 'ko-KR');
+  assert.equal(repairedConfig.displayTemplates['ko-KR'].homeFileName, '홈');
+  const registry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
+  assert.equal(registry.docs.find((doc) => doc.docKey === 'home').fileName, '홈.md');
+  assert.equal(registry.docs.find((doc) => doc.docKey === 'global_index').fileName, '전역.md');
+  await readFile(storePath(root, 'wiki', '홈.md'), 'utf8');
+  await readFile(storePath(root, 'wiki', '전역.md'), 'utf8');
+  await assert.rejects(() => readFile(storePath(root, 'wiki', 'Home.md'), 'utf8'), /ENOENT/);
+  await assert.rejects(() => readFile(storePath(root, 'wiki', 'User Preferences.md'), 'utf8'), /ENOENT/);
 });
 
 test('project identity prefers git remote names and falls back to package or folder names', async () => {
@@ -2938,7 +2969,7 @@ test('memoryLanguage stores BCP 47 tags and applies language in the Obsidian dis
   assert.match(text, /Before coding|validation passed/i);
   assert.doesNotMatch(text, /User request|English file/i);
   assert.ok(memoryIndex.memories.some((memory) => memory.displayLanguage === 'ko-KR'));
-  const home = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
+  const home = await readWikiDoc(root, 'home');
   assert.match(home, /\uAD6C\uD604 \uC804\uC5D0|\uAC80\uC99D\uC744 \uD1B5\uACFC/);
   assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], 'summary'), true);
   assert.equal(Object.prototype.hasOwnProperty.call(memoryIndex.memories[0], '\uC694\uC57D'), false);
@@ -3025,7 +3056,7 @@ test('localized Obsidian doc registry uses Korean filenames and valid managed li
 
   const registry = await loadJson(storePath(root, 'registry', 'wiki-docs.json'));
   const processDoc = registry.docs.find((doc) => doc.docKey === 'process_patterns');
-  const home = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
+  const home = await readWikiDoc(root, 'home');
   assert.equal(processDoc.fileName, '처리 방식.md');
   assert.match(home, /\[\[처리 방식\]\]/);
   await readFile(storePath(root, 'wiki', processDoc.fileName), 'utf8');
@@ -3055,7 +3086,7 @@ test('Korean wiki display localizes recent active memory, AI failures, AI succes
   assert.ok(result.candidates.some((candidate) => candidate.memoryRole === 'ai_failure_memory'));
   assert.ok(result.candidates.some((candidate) => candidate.memoryRole === 'ai_successful_approach'));
 
-  const home = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
+  const home = await readWikiDoc(root, 'home');
   assert.match(home, /\uCD5C\uADFC \uD65C\uC131 \uBA54\uBAA8\uB9AC/);
   assert.match(home, /구현 전에 간결한 계획/);
   assert.match(home, /AI 실패 패턴|예방 규칙|Command failed/);
@@ -3122,7 +3153,7 @@ test('structured Korean userRequest extracts success criteria before action-summ
   assert.match(projectPage, /\[\[.*\|.*\]\]/);
   assert.doesNotMatch(projectPage, /Created a shared section-kicker style/);
 
-  const home = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
+  const home = await readWikiDoc(root, 'home');
   assert.match(home, /최근 활성 메모리/);
   assert.match(home, /키커 스타일|THE VISION|AI 성공 패턴/);
   assert.doesNotMatch(home, /Created a shared section-kicker style/);
@@ -3383,7 +3414,7 @@ test('category-based memory notes hide ids and link categories, source projects,
   assert.match(projectPage, new RegExp(`\\[\\[${notes.get(preventionMemory.id).target.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`));
   assert.match(projectPage, new RegExp(`\\[\\[${notes.get(successMemory.id).target.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`));
 
-  const home = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
+  const home = await readWikiDoc(root, 'home');
   assert.match(home, new RegExp(`\\[\\[${notes.get(processMemory.id).target.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}\\|`));
   assert.doesNotMatch(home, /\|[^|\]]*mem_/i);
   await assertWikiLinksResolve(root);
@@ -3984,6 +4015,8 @@ test('locale-specific wiki categories and memory display fields are generated fr
     {
       locale: 'ja-JP',
       templateOverrides: {
+        homeFileName: 'ホーム',
+        globalFileName: 'グローバル',
         homeTitle: 'VibeBox ホーム',
         pageUserPreferences: 'ユーザー設定',
         pageUserPatterns: 'ユーザーパターン',
@@ -4016,8 +4049,8 @@ test('locale-specific wiki categories and memory display fields are generated fr
         storagePendingCandidates: '保留中のメモリ候補は `../pending/memory-candidates.jsonl` に保存される。'
       },
       expectedFiles: [
-        'Home.md',
-        'Global.md',
+        'ホーム.md',
+        'グローバル.md',
         'ユーザー設定.md',
         'ユーザーパターン.md',
         '設計思想.md',
@@ -4045,8 +4078,8 @@ test('locale-specific wiki categories and memory display fields are generated fr
       locale: 'ko-KR',
       templateOverrides: KOREAN_DISPLAY_TEMPLATE_OVERRIDES,
       expectedFiles: [
-        'Home.md',
-        'Global.md',
+        '홈.md',
+        '전역.md',
         '사용자 성향.md',
         '사용자 패턴.md',
         '설계 철학.md',
@@ -4135,7 +4168,7 @@ test('locale-specific wiki categories and memory display fields are generated fr
   }
 });
 
-test('missing candidate display summary renders a diagnostic instead of canonical summary', async () => {
+test('missing candidate display text is rejected before active memory or wiki rendering', async () => {
   const root = await makeWorkspace();
   process.env.VIBEBOX_LANGUAGE = 'ko-KR';
   setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
@@ -4158,28 +4191,23 @@ test('missing candidate display summary renders a diagnostic instead of canonica
   });
   delete candidate.displaySummary;
 
-  await afterTask(root, {
+  await assert.rejects(() => afterTask(root, {
     userRequest: '표시 요약이 빠진 후보를 진단한다.',
     aiActionSummary: 'Captured a candidate with missing displaySummary.',
     structuredMemoryCandidates: [candidate]
-  });
-
-  const noteTexts = await Promise.all((await listMemoryNoteFiles(root)).map((file) => readFile(file, 'utf8')));
-  const combined = noteTexts.join('\n');
-  assert.match(combined, /표시 문구 누락/);
-  assert.doesNotMatch(combined, /Canonical English fallback should not appear/);
+  }), /missing required field displaySummary/u);
   const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
-  assert.equal(memoryIndex.memories.some((memory) => (memory.displayTextDiagnostics || []).some((item) => item.includes('displaySummary missing'))), true);
+  assert.equal(memoryIndex.memories.some((memory) => memory.id === 'missing-display-summary'), false);
 });
 
-test('displayLanguage mismatch records diagnostics and does not translate or show mismatched display text', async () => {
+test('displayLanguage mismatch is rejected before active memory or wiki rendering', async () => {
   const root = await makeWorkspace();
   process.env.VIBEBOX_LANGUAGE = 'ko-KR';
   setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   process.env.VIBEBOX_LOCALE = 'ko-KR';
   setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
   await initVibeBox(root);
-  await afterTask(root, {
+  await assert.rejects(() => afterTask(root, {
     userRequest: '한국어 위키에는 한국어 표시 문구가 필요하다.',
     aiActionSummary: 'Captured an English display candidate for mismatch diagnostics.',
     structuredMemoryCandidates: [candidateFixture({
@@ -4196,18 +4224,13 @@ test('displayLanguage mismatch records diagnostics and does not translate or sho
       displayRule: 'English display rule should not appear in the Korean wiki.',
       displayLanguage: 'en-US'
     })]
-  });
+  }), /uses displayLanguage en-US, but configured memoryLanguage is ko-KR/u);
 
   const memoryIndex = await loadJson(storePath(root, 'index', 'global-memory-index.json'));
-  assert.equal(memoryIndex.memories.some((memory) => (memory.displayLanguageDiagnostics || []).some((item) => item.includes('does not match configured memoryLanguage ko-KR'))), true);
-  const noteTexts = await Promise.all((await listMemoryNoteFiles(root)).map((file) => readFile(file, 'utf8')));
-  const combined = noteTexts.join('\n');
-  assert.match(combined, /표시 문구 누락/);
-  assert.doesNotMatch(combined, /English display summary should not appear/);
-  assert.doesNotMatch(combined, /Canonical English summary should not be translated/);
+  assert.equal(memoryIndex.memories.some((memory) => memory.id === 'display-language-mismatch'), false);
 });
 
-test('template phrase canonical summaries do not leak into wiki when display text is missing', async () => {
+test('missing localized display fields cannot leak canonical template phrases into wiki', async () => {
   const root = await makeWorkspace();
   process.env.VIBEBOX_LANGUAGE = 'ko-KR';
   setAgentDisplayTemplateEnv('ko-KR', KOREAN_DISPLAY_TEMPLATE_OVERRIDES);
@@ -4232,17 +4255,14 @@ test('template phrase canonical summaries do not leak into wiki when display tex
   });
   delete candidate.displaySummary;
   delete candidate.displayRule;
-  await afterTask(root, {
+  await assert.rejects(() => afterTask(root, {
     userRequest: '템플릿 문구가 위키에 노출되지 않도록 확인한다.',
     aiActionSummary: 'Captured a template phrase candidate.',
     structuredMemoryCandidates: [candidate]
-  });
-
+  }), /missing required field displaySummary/u);
   const noteTexts = await Promise.all((await listMemoryNoteFiles(root)).map((file) => readFile(file, 'utf8')));
   const combined = noteTexts.join('\n');
-  assert.match(combined, /표시 문구 누락/);
-  assert.doesNotMatch(combined, /Agent succeeded by/);
-  assert.doesNotMatch(combined, /This approach worked/);
+  assert.doesNotMatch(combined, /Agent succeeded by|This approach worked/u);
 });
 
 test('technical failure evidence is raw-only without an agent candidate and active with one', async () => {
@@ -4694,7 +4714,7 @@ test('convert-lang and rebuild are agent-required and preserve raw logs on succe
   await readFile(storePath(root, 'wiki', rebuiltProcessDoc.fileName), 'utf8');
   await assert.rejects(() => readFile(storePath(root, 'wiki', 'Process Patterns.md'), 'utf8'), /ENOENT/);
   assert.notEqual(rebuiltProcessDoc.fileName, 'Process Patterns.md');
-  const rebuiltHome = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
+  const rebuiltHome = await readWikiDoc(root, 'home');
   assert.match(rebuiltHome, /\uCD5C\uADFC \uD65C\uC131 \uBA54\uBAA8\uB9AC/);
   const rebuiltMemoryNotes = await listMemoryNoteFiles(root);
   assert.ok(rebuiltMemoryNotes.some((file) => wikiRelative(root, file).startsWith(`${path.basename(rebuiltProcessDoc.fileName, '.md')}/`)));
@@ -4985,7 +5005,7 @@ test('BCP 47 language tags drive distinct Obsidian Wiki display packs through re
     assert.equal(registry.languageTag, target);
     const expectedDoc = target === 'en-US' ? 'User Patterns.md' : `${target} User Patterns Page.md`;
     assert.equal(registry.docs.find((doc) => doc.docKey === 'user_patterns').fileName, expectedDoc);
-    const home = await readFile(storePath(root, 'wiki', 'Home.md'), 'utf8');
+    const home = await readWikiDoc(root, 'home');
     assert.match(home, target === 'en-US' ? /Recent Active Memory/u : new RegExp(`${target} Recent Active Memory`, 'u'));
     const userPatternsPage = await readFile(storePath(root, 'wiki', expectedDoc), 'utf8');
     if (target !== 'en-US') {
@@ -5164,7 +5184,7 @@ test('universal agent skill package files exist and declare shared skill metadat
     assert.ok(content.trim().length > 0, `${relativePath} should not be empty`);
   }
 
-  const expectedVersion = '0.1.10';
+  const expectedVersion = '0.1.11';
   const packageJson = await loadJson(path.resolve('package.json'));
   const plugin = await loadJson(path.resolve('.codex-plugin/plugin.json'));
   assert.equal(plugin.name, 'vibebox');
@@ -5237,6 +5257,12 @@ test('schema command exposes structured candidate enums from core without touchi
   assert.deepEqual(schema.enums, direct.enums);
   assert.deepEqual(schema.categoryModel, direct.categoryModel);
   assert.equal(schema.defaults.sourceType, 'agent_semantic_extraction');
+  assert.equal(schema.configuredMemoryLanguage, 'en-US');
+  assert.equal(schema.initialization.targetLanguage, 'en-US');
+  assert.ok(schema.initialization.displayTemplate.requiredKeys.includes('homeFileName'));
+  assert.ok(schema.requiredFields.includes('displayTitle'));
+  assert.ok(schema.requiredFields.includes('displaySummary'));
+  assert.ok(schema.requiredFields.includes('displayRule'));
   assert.equal(schema.candidateSkeleton.sourceType, schema.defaults.sourceType);
   assert.ok(schema.enums.type.includes(schema.candidateSkeleton.type));
   assert.ok(schema.enums.modelClass.includes(schema.candidateSkeleton.modelClass));
@@ -5279,6 +5305,7 @@ test('Claude Stop hook blocks once for the aftertask checkpoint', async () => {
   assert.match(payload.reason, /no_reusable_memory_candidate/);
   assert.equal(payload.hookSpecificOutput.hookEventName, 'Stop');
   assert.match(payload.hookSpecificOutput.additionalContext, /schema --format json/);
+  assert.match(payload.hookSpecificOutput.additionalContext, /exact user language/i);
 
   const recursiveStop = spawnSync(process.execPath, [hookPath], {
     input: JSON.stringify({
@@ -5294,7 +5321,7 @@ test('Claude Stop hook blocks once for the aftertask checkpoint', async () => {
   assert.equal(recursiveStop.stdout, '');
 });
 
-test('Claude marketplace root bootstraps the global store with only its bundled runtime', async () => {
+test('Claude marketplace root requests user-language initialization without creating an English store', async () => {
   const marketplaceRoot = path.resolve('.');
   const marketplace = await loadJson(path.join(marketplaceRoot, '.claude-plugin', 'marketplace.json'));
   const pluginEntry = marketplace.plugins.find((entry) => entry.name === 'vibebox');
@@ -5328,24 +5355,34 @@ test('Claude marketplace root bootstraps the global store with only its bundled 
 
   assert.equal(pretask.status, 0);
   const payload = JSON.parse(pretask.stdout);
-  assert.match(payload.hookSpecificOutput.additionalContext, /pretask retrieved active memory/i);
-  await readFile(path.join(isolatedStore, 'config.json'), 'utf8');
-  await readFile(path.join(isolatedStore, 'wiki', 'Global.md'), 'utf8');
+  assert.match(payload.hookSpecificOutput.additionalContext, /infer the user-facing language/i);
+  assert.match(payload.hookSpecificOutput.additionalContext, /schema --format json --language <user-language-tag>/i);
+  assert.match(payload.hookSpecificOutput.additionalContext, /display-template-file/i);
+  await assert.rejects(() => access(path.join(isolatedStore, 'config.json')), /ENOENT/);
 });
 
-test('packaged plugin bootstraps and uses its bundled CLI without a global VibeBox command', async () => {
+test('packaged plugin initializes in an arbitrary user language without a global VibeBox command', async () => {
   const packageRoot = path.resolve('plugins/vibebox');
   const hookPath = path.join(packageRoot, 'scripts', 'claude-vibebox-hook.mjs');
   const bundledCli = path.join(packageRoot, 'bin', 'vibebox.mjs');
   const workspace = await makeWorkspace();
   const isolatedStore = path.join(workspace, 'installed-plugin-store');
   await mkdir(isolatedStore, { recursive: true });
+  const templatePath = path.join(workspace, 'fr-display-template.json');
+  await writeFile(templatePath, JSON.stringify(agentDisplayTemplateInput('fr-FR', {
+    homeFileName: 'Accueil',
+    globalFileName: 'Global',
+    homeTitle: 'Accueil VibeBox',
+    globalStore: 'Mémoire globale',
+    pageValidationPatterns: 'Méthodes de validation',
+    pageUserPreferences: 'Préférences utilisateur'
+  })), 'utf8');
   const env = {
     ...process.env,
     CLAUDE_PLUGIN_ROOT: packageRoot,
     VIBEBOX_HOME: isolatedStore,
-    VIBEBOX_LANGUAGE: 'en-US',
-    VIBEBOX_LOCALE: 'en-US',
+    VIBEBOX_LANGUAGE: 'fr-FR',
+    VIBEBOX_LOCALE: 'fr-FR',
     PATH: ''
   };
 
@@ -5361,9 +5398,38 @@ test('packaged plugin bootstraps and uses its bundled CLI without a global VibeB
 
   assert.equal(pretask.status, 0);
   const pretaskPayload = JSON.parse(pretask.stdout);
-  assert.match(pretaskPayload.hookSpecificOutput.additionalContext, /pretask retrieved active memory/i);
+  assert.match(pretaskPayload.hookSpecificOutput.additionalContext, /infer the user-facing language/i);
+  await assert.rejects(() => access(path.join(isolatedStore, 'config.json')), /ENOENT/);
+
+  const init = spawnSync(process.execPath, [
+    bundledCli,
+    'init',
+    '--language',
+    'fr-FR',
+    '--display-template-file',
+    templatePath
+  ], {
+    cwd: workspace,
+    encoding: 'utf8',
+    env
+  });
+  assert.equal(init.status, 0, init.stderr);
+
+  const secondPretask = spawnSync(process.execPath, [hookPath], {
+    input: JSON.stringify({
+      hook_event_name: 'UserPromptSubmit',
+      prompt: 'Inspect the repository before editing.',
+      cwd: workspace
+    }),
+    encoding: 'utf8',
+    env
+  });
+  assert.equal(secondPretask.status, 0);
+  assert.match(JSON.parse(secondPretask.stdout).hookSpecificOutput.additionalContext, /pretask retrieved active memory/i);
   await readFile(path.join(isolatedStore, 'config.json'), 'utf8');
-  await readFile(path.join(isolatedStore, 'wiki', 'Global.md'), 'utf8');
+  await readFile(path.join(isolatedStore, 'wiki', 'Accueil.md'), 'utf8');
+  const packagedRegistry = await loadJson(path.join(isolatedStore, 'registry', 'wiki-docs.json'));
+  assert.equal(packagedRegistry.languageTag, 'fr-FR');
 
   const schema = spawnSync(process.execPath, [bundledCli, 'schema', '--format', 'json'], {
     cwd: workspace,
@@ -5371,7 +5437,10 @@ test('packaged plugin bootstraps and uses its bundled CLI without a global VibeB
     env
   });
   assert.equal(schema.status, 0);
-  assert.equal(JSON.parse(schema.stdout).version, VIBEBOX_VERSION);
+  const packagedSchema = JSON.parse(schema.stdout);
+  assert.equal(packagedSchema.version, VIBEBOX_VERSION);
+  assert.equal(packagedSchema.configuredMemoryLanguage, 'fr-FR');
+  assert.equal(packagedSchema.defaults.displayLanguage, 'fr-FR');
 
   const aftertask = spawnSync(process.execPath, [
     bundledCli,
@@ -5497,11 +5566,15 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /claude plugin install vibebox@boksajang/i);
   assert.match(combined, /one natural-language request/i);
   assert.match(combined, /설치하고 활성화한 다음/u);
-  assert.match(combined, /setup-codex와 init도 같이 실행해줘/u);
+  assert.match(combined, /setup-codex를 실행해줘/u);
+  assert.match(combined, /내가 사용하는 언어를 판별하고/u);
+  assert.match(combined, /initialization\.displayTemplate 전체를 그 언어로 생성해서/u);
   assert.match(combined, /번들 CLI로 setup-codex를 실행해서/u);
   assert.match(combined, /Plugin installation only copies and enables the plugin package/i);
-  assert.match(combined, /같은 번들 CLI로 init을 실행해서/u);
-  assert.match(combined, /categories, indexes, registry files, logs, and Wiki pages/i);
+  assert.match(combined, /언어 태그를 같은 번들 CLI의 init에 전달해서/u);
+  assert.match(combined, /categories, indexes, and Wiki|카테고리, 인덱스, Wiki/iu);
+  assert.match(combined, /rejects missing templates instead of silently falling back to English/i);
+  assert.match(combined, /rejects missing or mismatched display fields/i);
   assert.match(combined, /doctor --codex` is optional/i);
   assert.match(combined, /Do not create workspace-local memory snapshots/i);
   assert.match(combined, /original user request or faithful summary/i);
@@ -5514,8 +5587,8 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /Reading `pretask` is not a complete VibeBox workflow|pretask[\s\S]{0,160}not a complete VibeBox workflow/i);
   assert.match(combined, /convert-lang[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}convert-lang/i);
   assert.match(combined, /rebuild[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}rebuild/i);
-  assert.match(combined, /0\.1\.10[\s\S]{0,180}cache-busting|cache-busting[\s\S]{0,180}0\.1\.10/i);
-  assert.match(combined, /plugins\\cache\\boksajang\\vibebox\\0\.1\.10/i);
+  assert.match(combined, /0\.1\.11[\s\S]{0,180}cache-busting|cache-busting[\s\S]{0,180}0\.1\.11/i);
+  assert.match(combined, /plugins\\cache\\boksajang\\vibebox\\0\.1\.11/i);
   assert.match(combined, /scope: "global"[\s\S]{0,220}user personal preferences|user personal preferences[\s\S]{0,220}scope: "global"/i);
   assert.match(combined, /scope: "global"[\s\S]{0,260}repeated procedural instructions|repeated procedural instructions[\s\S]{0,260}scope: "global"/i);
   assert.match(combined, /sourceProjectId[\s\S]{0,220}provenance|provenance[\s\S]{0,220}sourceProjectId/i);

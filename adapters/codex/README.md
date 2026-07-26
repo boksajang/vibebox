@@ -52,15 +52,15 @@ Codex App can read installed plugin cache files instead of the repository workin
 Cache placeholder:
 
 ```text
-%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.10\
+%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.11\
 ```
 
-This `0.1.10` folder is the cache-busting installed version. Stale plugin cache content can make Codex App behave as if older skill files are still installed. After `git pull`, reinstall, or source updates, compare the installed cache against the repository:
+This `0.1.11` folder is the cache-busting installed version. Stale plugin cache content can make Codex App behave as if older skill files are still installed. After `git pull`, reinstall, or source updates, compare the installed cache against the repository:
 
 ```powershell
 $repo = (Get-Location).Path
 $package = "$repo\plugins\vibebox"
-$cache = "$env:USERPROFILE\.codex\plugins\cache\boksajang\vibebox\0.1.10"
+$cache = "$env:USERPROFILE\.codex\plugins\cache\boksajang\vibebox\0.1.11"
 Test-Path $cache
 Get-FileHash "$package\.codex-plugin\plugin.json", "$cache\.codex-plugin\plugin.json"
 Get-FileHash "$package\skills\vibebox\SKILL.md", "$cache\skills\vibebox\SKILL.md"
@@ -142,7 +142,7 @@ The schema command is the single source of truth for candidate enum values and t
 
 If a complex request produces one candidate, include `whyOnlyOneCandidate`. If no reusable memory exists, submit `no_reusable_memory_candidate` with `noCandidateReason`.
 
-Wiki display fields must follow configured `memoryLanguage`. `memoryLanguage` must be a valid canonical BCP 47 language tag. For non-default initial languages and conversion targets, Codex must pass an AI-agent localized display template for the exact configured tag; Core renders that template instead of using hardcoded locale packs. In a store configured with a Korean language tag, `displayTitle`, `displaySummary`, and `displayRule` should be Korean, and `displayLanguage` should match the configured tag.
+Wiki display fields must follow configured `memoryLanguage`, which must represent the user's actual conversation language as a canonical BCP 47 tag. For non-default initial languages and conversion targets, Codex must generate the complete schema-defined display template in that exact language and pass it to `init`. Every reusable candidate must include `displayTitle`, `displaySummary`, and `displayRule` in the configured language plus an exactly matching `displayLanguage`; Core rejects missing or mismatched display fields.
 
 Core validates, stores, dedupes, safely replaces, indexes, links, and renders. It does not translate missing display text or backfill semantic memory from raw summaries. Without candidates, VibeBox records the event and warns instead of creating active memory.
 

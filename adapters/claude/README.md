@@ -34,7 +34,7 @@ The marketplace name is `boksajang`; the plugin name is `vibebox`, so the instal
 
 The marketplace source is the repository root, so Claude Code copies the hook, CLI, and Core runtime together into its plugin cache. A separate repository clone, `npm install`, `npm link`, or global `vibebox` command is not required.
 
-After install, users should ask for normal coding work. On the first meaningful prompt, the bundled hook initializes `~/.vibebox` if needed and retries `pretask`. The aftertask checkpoint supplies the absolute bundled CLI path for `schema` and `aftertask`, so users should not need to run those commands manually during ordinary use.
+After install, users should ask for normal coding work. On the first meaningful prompt, the bundled hook runs `pretask` when the store exists. If it is missing, the hook instructs Claude to infer the user's conversation language, generate every schema-defined display-template value in that language, initialize the store, and then run `pretask`. The aftertask checkpoint supplies the absolute bundled CLI path for `schema` and `aftertask`.
 
 Claude Code may ask the user to approve access to `~/.vibebox` or execution of the bundled CLI according to the user's permission policy. This is a host security prompt, not a requirement for a separately installed VibeBox CLI.
 
@@ -42,7 +42,7 @@ Claude Code may ask the user to approve access to `~/.vibebox` or execution of t
 
 The plugin hook file is `hooks/hooks.json`.
 
-- `UserPromptSubmit` runs the bundled VibeBox CLI with `pretask --task <submitted prompt>` and injects the active memory brief into Claude context before Claude plans or edits.
+- `UserPromptSubmit` runs the bundled VibeBox CLI with `pretask --task <submitted prompt>` when initialized. Otherwise it injects the required agent-driven, user-language initialization procedure and does not create an English fallback store.
 - `Stop` blocks once with an aftertask checkpoint. If meaningful work occurred, Claude must continue, run `schema --format json`, create structured candidates, and run `aftertask`.
 
 The hook does not invent semantic memory. Claude remains the semantic authority: it decides whether reusable memory exists, reads the Core schema before candidate JSON, and submits either structured candidates or `no_reusable_memory_candidate`.
@@ -110,7 +110,7 @@ Claude-compatible agents must choose candidate `scope` semantically. Prefer `sco
 
 If a complex request produces only one candidate, include `whyOnlyOneCandidate`. If no reusable memory exists, submit `no_reusable_memory_candidate` with `noCandidateReason`.
 
-Display fields should follow configured `memoryLanguage`. `memoryLanguage` must be a valid canonical BCP 47 language tag. For non-default initial languages and conversion targets, Claude must pass an AI-agent localized display template for the exact configured tag; Core renders that template instead of using hardcoded locale packs. A store configured with a Korean language tag needs Korean `displayTitle`, `displaySummary`, and `displayRule`, plus matching `displayLanguage`.
+Display fields must follow the configured `memoryLanguage`, which must represent the user's actual conversation language as a canonical BCP 47 tag. For non-default initial languages and conversion targets, Claude must generate and pass the complete schema-defined template in that exact language. Every reusable candidate must include `displayTitle`, `displaySummary`, and `displayRule` in the configured language plus an exactly matching `displayLanguage`; Core rejects missing or mismatched display fields.
 
 Core validates, stores, dedupes, safely replaces, indexes, links, and renders. It does not infer memory from raw user requests, keywords, headings, bullets, action summaries, command output, or missing display text.
 

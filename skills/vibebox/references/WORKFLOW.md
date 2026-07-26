@@ -136,7 +136,7 @@ Do not collapse separate validation, reporting, preservation, and failure-avoida
 
 If VibeBox rejects a candidate for a missing required field or invalid enum, rerun `vibebox schema --format json`, rebuild the object from `candidateSkeleton` or `noReusableMemoryCandidate`, and resubmit once. Repeated guessing is a contract failure.
 
-The agent must write Wiki display fields in configured `memoryLanguage`. Core validates BCP 47 tags and renders files; it does not translate missing display text.
+The agent must write `displayTitle`, `displaySummary`, and `displayRule` in the exact configured `memoryLanguage` and set `displayLanguage` to that same tag. Core rejects missing or mismatched fields before activation and Wiki rendering.
 
 ## Manual Debug And Override
 

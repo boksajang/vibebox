@@ -25,7 +25,7 @@ Pending memory must not be treated as active memory.
 - `aftertask` must include `userRequest` plus structured candidates when active memory should be created.
 - If no reusable memory exists, submit `no_reusable_memory_candidate` with `noCandidateReason`.
 - If one candidate represents a complex request, include `whyOnlyOneCandidate`.
-- Wiki display fields must follow configured `memoryLanguage`; Core does not translate missing display text.
+- Wiki display fields must follow configured `memoryLanguage`; Core rejects missing fields and mismatched `displayLanguage` instead of translating or showing English fallback text.
 - User-centered memory is first-priority semantic work for the agent. Personal preferences, recurring feedback, answer/reporting style, correction style, question style, collaboration habits, and repeated user patterns must be considered before technical workflow, validation, or prevention categories. The current explicit request still wins, but durable user-centered signals should not be buried only under project or process categories.
 
 ## Strict Recording Gate
@@ -45,6 +45,7 @@ Treat the schema output as the contract for the current runtime. Do not write ca
 - Do not invent role or outcome labels such as `project_outcome`, `project_result`, `memory`, `outcome`, `success_memory`, or `project_memory`.
 - Start from `candidateSkeleton` or `noReusableMemoryCandidate`, then replace placeholder text with the actual semantic memory.
 - A reusable candidate must include every `requiredFields` entry and localized `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage`.
+- `schema` reads the initialized store's `memoryLanguage`. Write every display field in that exact user language; do not copy the canonical English fields into display fields for a non-English store.
 - If exactly one candidate is submitted for a non-trivial user request, include `whyOnlyOneCandidate` in the candidate or envelope.
 - If no durable reusable memory exists, submit only `no_reusable_memory_candidate` with `noCandidateReason`; do not force a fake `task_context`.
 - If Core rejects a candidate for missing fields or invalid enum values, stop guessing, rerun schema, rebuild the candidate from the skeleton, and retry once.
@@ -132,7 +133,7 @@ After meaningful coding, design, documentation, packaging, or review work:
 7. Do not mark `no_reusable_memory_candidate` until the user-centered and scope audits above have been performed. Repeated user wording such as "always", "prefer", "do not", "next time", "again", corrections after dissatisfaction, and recurring final-answer requirements should normally produce a user-centered candidate unless it is clearly one-off.
 8. Before writing candidate JSON, run `vibebox.cmd schema --format json` or `vibebox schema --format json` and use the returned Core enum values, category model, defaults, and skeleton. Do not invent `memoryRole`, `type`, `modelClass`, `scope`, `sourceType`, `primaryCategory`, or `relatedCategories` values from prose.
 9. Include fields such as `memoryRole`, `type`, `modelClass`, `modelSubClass`, `scope`, `primaryCategory`, `relatedCategories`, `title`, `summary`, `rule`, `displayTitle`, `displaySummary`, `displayRule`, `displayLanguage`, `evidence`, `confidence`, `sourceType`, `relationCandidates`, and `replaces` when applicable.
-10. Write display fields in configured `memoryLanguage`; for a Korean configured tag, write Korean display text.
+10. Write every display field in the exact configured `memoryLanguage`, whatever the user's language is. Do not hardcode Korean, English, or the operating-system locale.
 11. Use `--candidates-file` or `--structured-candidates-file` for long JSON, especially on Windows shells.
 12. Run:
 
@@ -167,13 +168,13 @@ Do not call aftertask with only an AI action summary. Summary-only `aftertask` a
 
 VibeBox uses one global store as the single source of truth. Project memory lives under `projects/{projectId}/`; user-wide rules live under `global/`; Wiki, index, logs, pending/debug records, and registry data live under the global store.
 
-The Obsidian-compatible Wiki is a display layer for user review. Filenames, headings, summaries, aliases, and link labels follow configured `memoryLanguage`. `memoryLanguage` must be a valid canonical BCP 47 language tag. For non-default initial languages and conversion targets, the AI Agent must provide a complete localized display template for the exact configured tag; Core renders that template instead of using hardcoded locale packs, alias deny-lists, or supported-language examples.
+The Obsidian-compatible Wiki is a display layer for user review. Filenames, headings, summaries, aliases, and link labels follow configured `memoryLanguage`, which represents the user's actual conversation language as a canonical BCP 47 tag. On first initialization, infer that language from the conversation, run `schema --language <tag>`, generate every `initialization.displayTemplate` value in that language, and pass it with the tag to `init`. Core contains no language-specific translation packs and rejects a missing non-English template.
 
 Language conversion and semantic rebuild require an adapter-provided runtime marker such as `VIBEBOX_AGENT_RUNTIME` and agent-provided localized/semantic data. Core does not translate, summarize, or generate missing user-facing display text.
 
 ## Codex Cache Note
 
-Codex App can load an installed plugin cache instead of the repository checkout. A GitHub push alone does not refresh the installed cache. After local plugin source updates, run `git pull` or reinstall/update the plugin, then verify the cache under `%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.10\`. The installed package includes `bin/vibebox.mjs` and `src/`; VibeBox does not delete or rewrite Codex App plugin cache files automatically.
+Codex App can load an installed plugin cache instead of the repository checkout. A GitHub push alone does not refresh the installed cache. After local plugin source updates, run `git pull` or reinstall/update the plugin, then verify the cache under `%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.11\`. The installed package includes `bin/vibebox.mjs` and `src/`; VibeBox does not delete or rewrite Codex App plugin cache files automatically.
 
 ## Sensitive Data
 

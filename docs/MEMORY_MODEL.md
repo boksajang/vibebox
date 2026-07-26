@@ -183,13 +183,13 @@ Validated reusable methods can become AI successful approaches when the agent pr
 
 ## Language Policy
 
-Configured `memoryLanguage` controls Obsidian Wiki display text.
+Configured `memoryLanguage` controls Obsidian Wiki display text and represents the user's actual conversation language.
 
 `memoryLanguage` must be a valid canonical BCP 47 language tag. Core validates the tag generically and does not keep a hardcoded alias deny-list or a hardcoded supported-language list.
 
 For non-default initial languages and conversion targets, the AI Agent must provide a complete display template for the exact configured tag. Core stores the template in `config.displayTemplates` and renders from it; Core does not translate or synthesize localized template text.
 
-The AI Agent writes `displayTitle`, `displaySummary`, `displayRule`, and `displayLanguage` in the configured language. VibeBox Core validates the BCP 47 tag and renders files from the agent-provided display fields. Core does not translate, summarize, or generate missing user-facing display text.
+The AI Agent writes `displayTitle`, `displaySummary`, and `displayRule` in the configured language and sets `displayLanguage` to the exact configured tag. VibeBox Core rejects missing or mismatched display fields before activation and rendering. Core does not translate, summarize, generate, or silently replace missing user-facing text with English.
 
 ## Relation Index
 
