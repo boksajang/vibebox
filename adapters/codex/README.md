@@ -52,15 +52,15 @@ Codex App can read installed plugin cache files instead of the repository workin
 Cache placeholder:
 
 ```text
-%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.12\
+%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.13\
 ```
 
-This `0.1.12` folder is the cache-busting installed version. Stale plugin cache content can make Codex App behave as if older skill files are still installed. After `git pull`, reinstall, or source updates, compare the installed cache against the repository:
+This `0.1.13` folder is the cache-busting installed version. Stale plugin cache content can make Codex App behave as if older skill files are still installed. After `git pull`, reinstall, or source updates, compare the installed cache against the repository:
 
 ```powershell
 $repo = (Get-Location).Path
 $package = "$repo\plugins\vibebox"
-$cache = "$env:USERPROFILE\.codex\plugins\cache\boksajang\vibebox\0.1.12"
+$cache = "$env:USERPROFILE\.codex\plugins\cache\boksajang\vibebox\0.1.13"
 Test-Path $cache
 Get-FileHash "$package\.codex-plugin\plugin.json", "$cache\.codex-plugin\plugin.json"
 Get-FileHash "$package\skills\vibebox\SKILL.md", "$cache\skills\vibebox\SKILL.md"
@@ -75,17 +75,15 @@ Select-String -Path "$cache\skills\vibebox\SKILL.md" -Pattern "whyOnlyOneCandida
 
 If hashes differ, expected contract phrases are missing, or stale plugin cache content is still loaded, reinstall/update the plugin or refresh the Codex App plugin cache. VibeBox does not delete or rewrite Codex App plugin cache files automatically.
 
-## Command Fallback
+## Bundled Command
 
-Codex on Windows should prefer direct command invocation:
+Codex must resolve the plugin root from the loaded `skills/vibebox/SKILL.md` source and invoke the bundled CLI directly:
 
 ```bash
-vibebox.cmd <command>
-vibebox <command>
-node bin/vibebox.mjs <command>
+node "<vibebox-plugin-root>/bin/vibebox.mjs" <command>
 ```
 
-Do not use `powershell.exe -Command` as a default VibeBox workflow example. Shell wrappers can look riskier to host approval layers than direct commands.
+Do not probe `vibebox.cmd`, `vibebox`, the current project's `bin` directory, or whether the repository was cloned. Those checks are unrelated to the self-contained installed plugin.
 
 ## Sandbox And Global Store Access
 
@@ -122,7 +120,7 @@ If hooks are configured manually, use the current `[features].hooks` setting. Le
 Before non-trivial work:
 
 ```bash
-vibebox.cmd pretask --task "<task description>"
+node "<vibebox-plugin-root>/bin/vibebox.mjs" pretask --task "<task description>"
 ```
 
 Codex must read and apply `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` before planning or editing. Reading `pretask` is not a complete VibeBox workflow by itself.
@@ -131,8 +129,8 @@ Codex must read and apply `User Success Criteria`, `AI Failure Avoidance`, and `
 After meaningful work:
 
 ```bash
-vibebox.cmd schema --format json
-vibebox.cmd aftertask --request "<original user request or faithful summary>" --summary "..." --candidates-file structured-candidates.json --technical-outcome success --user-acceptance unknown
+node "<vibebox-plugin-root>/bin/vibebox.mjs" schema --format json
+node "<vibebox-plugin-root>/bin/vibebox.mjs" aftertask --request "<original user request or faithful summary>" --summary "..." --candidates-file structured-candidates.json --technical-outcome success --user-acceptance unknown
 ```
 
 Codex is the semantic authority. It must decompose reusable meaning into structured candidates for success criteria, validation rules, reporting preferences, preservation rules, project/domain/user patterns, AI failure-prevention rules, successful approaches, task context, categories, relations, replacements, and localized display text.

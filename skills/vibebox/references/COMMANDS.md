@@ -2,21 +2,13 @@
 
 This reference documents the current CLI surface.
 
-Preferred installed command:
+Preferred plugin command:
 
 ```bash
-vibebox <command>
+node "<vibebox-plugin-root>/bin/vibebox.mjs" <command>
 ```
 
-Windows/Codex command order:
-
-```bash
-vibebox.cmd <command>
-vibebox <command>
-node bin/vibebox.mjs <command>
-```
-
-Do not use `powershell.exe -Command` as a default VibeBox example. Use it only when direct invocation is unavailable.
+Resolve `<vibebox-plugin-root>` from the loaded `skills/vibebox/SKILL.md` source by moving two directories up. Installed plugin sessions must use this bundled path directly. Do not probe global `vibebox.cmd`/`vibebox`, the current project's `bin` directory, or a repository clone. Global commands remain a manual-development option only.
 
 Global store override:
 
@@ -121,9 +113,7 @@ Purpose: generate an agent-ready Pre-Task Brief from active memory.
 Examples:
 
 ```bash
-vibebox.cmd pretask --task "Fix dashboard table scrolling"
-vibebox pretask --task "Fix dashboard table scrolling"
-vibebox pretask "Fix dashboard table scrolling"
+node "<vibebox-plugin-root>/bin/vibebox.mjs" pretask --task "Fix dashboard table scrolling"
 ```
 
 Notes: read-only retrieval. It should not modify repository files, but it needs read access to the global store. Agents should apply `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` in their actual work. Active global user-profile baselines are included even without lexical overlap, and localized display fields participate in matching. The full `report` is an audit command, not a required fallback before normal work.
@@ -135,8 +125,7 @@ Purpose: generate a compact Context Pack.
 Examples:
 
 ```bash
-vibebox.cmd context --task "Update dependency handling"
-vibebox context --task "Update dependency handling"
+node "<vibebox-plugin-root>/bin/vibebox.mjs" context --task "Update dependency handling"
 ```
 
 Notes: read-only retrieval. `pretask` is usually better before acting because it includes direct agent instructions.
@@ -148,8 +137,7 @@ Purpose: capture task completion details and ingest AI-agent structured memory c
 Examples:
 
 ```bash
-vibebox.cmd aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-level scrolling" --files "src/table.mjs" --commands "npm.cmd test" --candidates-file structured-candidates.json --technical-outcome success --user-acceptance unknown
-vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-level scrolling" --structured-candidates-file structured-candidates.json
+node "<vibebox-plugin-root>/bin/vibebox.mjs" aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-level scrolling" --files "src/table.mjs" --commands "npm.cmd test" --candidates-file structured-candidates.json --technical-outcome success --user-acceptance unknown
 ```
 
 Supported candidate inputs:
@@ -179,9 +167,7 @@ Purpose: print the structured candidate schema generated from VibeBox Core enum 
 Examples:
 
 ```bash
-vibebox.cmd schema --format json
-vibebox schema --format json
-vibebox schema --format text
+node "<vibebox-plugin-root>/bin/vibebox.mjs" schema --format json
 ```
 
 Notes: this command does not read or write the global store. Agents should use it before creating `--candidates-file` JSON instead of copying enum lists into prompts or guessing `type`, `modelClass`, `sourceType`, `primaryCategory`, or `relatedCategories`.

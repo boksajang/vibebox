@@ -6,7 +6,7 @@ This reference describes the standard agent workflow. It applies to Codex, Claud
 
 1. Receive the user task.
 2. Decide whether prior memory could affect meaningful repository work.
-3. Check VibeBox availability and global store access.
+3. Resolve the bundled CLI from the loaded `skills/vibebox/SKILL.md` source and check global store access.
 4. Run read-only `pretask` before planning or editing when memory could matter.
 5. Read `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`.
 6. Apply relevant guidance while inspecting and editing the repository.
@@ -51,25 +51,13 @@ Recommended wording: `VibeBox uses one global store as the single source of trut
 
 ## Pre-Task Retrieval
 
-Windows/Codex:
+Installed plugin:
 
 ```bash
-vibebox.cmd pretask --task "Fix dashboard table scrolling"
+node "<vibebox-plugin-root>/bin/vibebox.mjs" pretask --task "Fix dashboard table scrolling"
 ```
 
-Installed command:
-
-```bash
-vibebox pretask --task "Fix dashboard table scrolling"
-```
-
-Repository fallback:
-
-```bash
-node bin/vibebox.mjs pretask --task "Fix dashboard table scrolling"
-```
-
-Do not use `powershell.exe -Command` as a normal workflow example. If a wrapper-style attempt is blocked, retry direct `vibebox.cmd`, then `vibebox`, then the Node fallback.
+`<vibebox-plugin-root>` is two directories above the loaded `skills/vibebox/SKILL.md`. Do not probe global commands, the current project, or repository clones in an installed plugin session.
 
 The brief has been consumed only when it changes the agent's plan, implementation, validation, or reporting.
 
@@ -78,13 +66,7 @@ The brief has been consumed only when it changes the agent's plan, implementatio
 Use aftertask after meaningful work with the original user request or faithful summary:
 
 ```bash
-vibebox aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-level scrolling and ran tests." --files "src/table.mjs" --commands "npm.cmd test" --candidates-file structured-candidates.json --technical-outcome success --user-acceptance unknown
-```
-
-Windows/Codex:
-
-```bash
-vibebox.cmd aftertask --request "Fix dashboard table scrolling" --summary "Updated table scrolling." --candidates-file structured-candidates.json
+node "<vibebox-plugin-root>/bin/vibebox.mjs" aftertask --request "Fix dashboard table scrolling" --summary "Used wrapper-level scrolling and ran tests." --files "src/table.mjs" --commands "npm.cmd test" --candidates-file structured-candidates.json --technical-outcome success --user-acceptance unknown
 ```
 
 For long records:
@@ -113,8 +95,7 @@ Before capture, scan the request and outcome for:
 Before writing candidate JSON, run:
 
 ```bash
-vibebox.cmd schema --format json
-vibebox schema --format json
+node "<vibebox-plugin-root>/bin/vibebox.mjs" schema --format json
 ```
 
 Use the schema output as the single source of truth for `memoryRole`, `type`, `modelClass`, `scope`, `sourceType`, `primaryCategory`, `relatedCategories`, defaults, and the candidate skeleton. Do not copy enum lists into agent prompts or invent values from prose.
@@ -156,7 +137,7 @@ Safe approval skips candidates with direct conflicts, supersedes, exceptions, du
 Use `context` when compact retrieval is enough:
 
 ```bash
-vibebox.cmd context --task "Update dashboard dependency handling"
+node "<vibebox-plugin-root>/bin/vibebox.mjs" context --task "Update dashboard dependency handling"
 ```
 
 `context` is read-only and should not modify repository files, but it still needs global-store read access.

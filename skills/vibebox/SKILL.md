@@ -33,11 +33,10 @@ Pending memory must not be treated as active memory.
 Before creating or submitting any `aftertask` candidate file, run:
 
 ```bash
-vibebox.cmd schema --format json
-vibebox schema --format json
+node "<vibebox-plugin-root>/bin/vibebox.mjs" schema --format json
 ```
 
-When an installed plugin hook provides an absolute bundled CLI path, use that path for `schema` and `aftertask`; a separate global `vibebox` command is not required.
+Resolve `<vibebox-plugin-root>` from this loaded `SKILL.md` source: it is two directories above `skills/vibebox/SKILL.md`. Use that bundled CLI path for every command. A separate global `vibebox` command is not required.
 
 Treat the schema output as the contract for the current runtime. Do not write candidate JSON from memory, prose, screenshots, prior examples, or guessed field names.
 
@@ -71,20 +70,18 @@ Do not use it for simple answers unrelated to a repository, or when the user exp
 
 ## Pre-Task Workflow
 
-1. Check whether VibeBox is available and the current directory is a usable project workspace.
+1. Resolve the VibeBox plugin root from this loaded `SKILL.md` source by moving up from `skills/vibebox/SKILL.md` to the package root. Confirm `<vibebox-plugin-root>/bin/vibebox.mjs` exists.
 2. Remember that VibeBox uses one global store as the single source of truth, normally `<USER_HOME>/.vibebox`, `%USERPROFILE%\.vibebox`, or `VIBEBOX_HOME`.
 3. Run read-only retrieval before planning or editing:
 
 ```bash
-vibebox.cmd pretask --task "<task description>"
-vibebox pretask --task "<task description>"
-node bin/vibebox.mjs pretask --task "<task description>"
+node "<vibebox-plugin-root>/bin/vibebox.mjs" pretask --task "<task description>"
 ```
 
-4. Prefer `vibebox.cmd` on Windows/Codex. Do not wrap normal retrieval in `powershell.exe -Command` unless direct invocation is unavailable.
+4. In an installed plugin session, do not probe `vibebox.cmd`, `vibebox`, npm global installation, the current project's `bin/`, or whether the VibeBox repository has been cloned. Those checks are unrelated to the bundled plugin runtime and create noisy startup messages in every new project.
 5. If a sandbox blocks global store access, request approved read-only global VibeBox store access for `pretask` or `context`.
 6. If aftertask write access is blocked, request approved global VibeBox store write access.
-7. If the same sandbox repeatedly asks for default `~/.vibebox` access, use or recommend `vibebox setup-codex` or `vibebox setup-claude`, then restart that host and verify with `vibebox doctor --codex`, `vibebox doctor --claude`, or `vibebox doctor --agent all`.
+7. If the same sandbox repeatedly asks for default `~/.vibebox` access, run the bundled CLI with `setup-codex` or `setup-claude`, then restart that host and verify with the bundled CLI's `doctor --codex`, `doctor --claude`, or `doctor --agent all` command.
 8. Do not create workspace-local memory snapshots, copied stores, project-local `.vibebox` folders, pointer files, or hidden metadata as a workaround.
 9. Read `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches`.
 10. Apply relevant guidance in the actual plan and implementation.
@@ -133,18 +130,18 @@ After meaningful coding, design, documentation, packaging, or review work:
    - keep `sourceProjectId`/`sourceProjectRoot` as provenance for global memories learned during a project; do not set `projectId` just because the memory was observed in a project.
    - if uncertain between global and project for a user-centered preference, prefer global with project-specific evidence unless the user or repository context clearly narrows it.
 7. Do not mark `no_reusable_memory_candidate` until the user-centered and scope audits above have been performed. Repeated user wording such as "always", "prefer", "do not", "next time", "again", corrections after dissatisfaction, and recurring final-answer requirements should normally produce a user-centered candidate unless it is clearly one-off.
-8. Before writing candidate JSON, run `vibebox.cmd schema --format json` or `vibebox schema --format json` and use the returned Core enum values, category model, defaults, and skeleton. Do not invent `memoryRole`, `type`, `modelClass`, `scope`, `sourceType`, `primaryCategory`, or `relatedCategories` values from prose.
+8. Before writing candidate JSON, run `node "<vibebox-plugin-root>/bin/vibebox.mjs" schema --format json` and use the returned Core enum values, category model, defaults, and skeleton. Do not invent `memoryRole`, `type`, `modelClass`, `scope`, `sourceType`, `primaryCategory`, or `relatedCategories` values from prose.
 9. Include fields such as `memoryRole`, `type`, `modelClass`, `modelSubClass`, `scope`, `primaryCategory`, `relatedCategories`, `title`, `summary`, `rule`, `displayTitle`, `displaySummary`, `displayRule`, `displayLanguage`, `evidence`, `confidence`, `sourceType`, `relationCandidates`, and `replaces` when applicable.
 10. Write every display field in the exact configured `memoryLanguage`, whatever the user's language is. Do not hardcode Korean, English, or the operating-system locale.
 11. Use `--candidates-file` or `--structured-candidates-file` for long JSON, especially on Windows shells.
 12. Run:
 
 ```bash
-vibebox.cmd aftertask --request "<request>" --summary "..." --candidates-file structured-candidates.json --technical-outcome success --user-acceptance unknown
+node "<vibebox-plugin-root>/bin/vibebox.mjs" aftertask --request "<request>" --summary "..." --candidates-file structured-candidates.json --technical-outcome success --user-acceptance unknown
 ```
 
 13. If aftertask write access is blocked, request approved global VibeBox store write access or report that capture, project registration, active memory, and wiki updates were not completed.
-14. If VibeBox rejects a candidate for a missing required field or invalid enum, rerun `vibebox schema --format json`, rebuild from `candidateSkeleton` or `noReusableMemoryCandidate`, and resubmit once. Do not repeatedly guess values.
+14. If VibeBox rejects a candidate for a missing required field or invalid enum, rerun the bundled CLI's `schema --format json`, rebuild from `candidateSkeleton` or `noReusableMemoryCandidate`, and resubmit once. Do not repeatedly guess values.
 15. If VibeBox warns that candidates are missing or `whyOnlyOneCandidate` is missing, rewrite the capture input and rerun when reusable memory should be stored.
 
 `aftertask` is a global-store write/capture operation.
@@ -176,7 +173,7 @@ Language conversion and semantic rebuild require an adapter-provided runtime mar
 
 ## Codex Cache Note
 
-Codex App can load an installed plugin cache instead of the repository checkout. A GitHub push alone does not refresh the installed cache. After local plugin source updates, run `git pull` or reinstall/update the plugin, then verify the cache under `%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.12\`. The installed package includes `bin/vibebox.mjs` and `src/`; VibeBox does not delete or rewrite Codex App plugin cache files automatically.
+Codex App can load an installed plugin cache instead of the repository checkout. A GitHub push alone does not refresh the installed cache. After local plugin source updates, run `git pull` or reinstall/update the plugin, then verify the cache under `%USERPROFILE%\.codex\plugins\cache\boksajang\vibebox\0.1.13\`. The installed package includes `bin/vibebox.mjs` and `src/`; VibeBox does not delete or rewrite Codex App plugin cache files automatically.
 
 ## Sensitive Data
 

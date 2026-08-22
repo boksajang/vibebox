@@ -5248,6 +5248,11 @@ test('universal agent skill package files exist and declare shared skill metadat
   assert.match(skill, /VibeBox Core is a local CLI/i);
   assert.match(skill, /Past memory is context, not authority/i);
   assert.match(skill, /Pending memory must not be treated as active memory/i);
+  assert.match(skill, /two directories above `skills\/vibebox\/SKILL\.md`/i);
+  assert.match(skill, /node "<vibebox-plugin-root>\/bin\/vibebox\.mjs" pretask/i);
+  assert.match(skill, /do not probe `vibebox\.cmd`[\s\S]{0,160}current project's `bin\/`/i);
+  assert.doesNotMatch(skill, /Prefer `vibebox\.cmd`/i);
+  assert.doesNotMatch(skill, /^vibebox\.cmd pretask/gm);
   assert.doesNotMatch(skill, /Codex-only|Claude-only|Codex 전용|Claude 전용/i);
 
   for (const relativePath of [
@@ -5267,7 +5272,7 @@ test('universal agent skill package files exist and declare shared skill metadat
     assert.ok(content.trim().length > 0, `${relativePath} should not be empty`);
   }
 
-  const expectedVersion = '0.1.12';
+  const expectedVersion = '0.1.13';
   const packageJson = await loadJson(path.resolve('package.json'));
   const plugin = await loadJson(path.resolve('.codex-plugin/plugin.json'));
   assert.equal(plugin.name, 'vibebox');
@@ -5280,6 +5285,8 @@ test('universal agent skill package files exist and declare shared skill metadat
   assert.equal(plugin.interface.defaultPrompt.some((line) => /Before creating any VibeBox candidate file[\s\S]+schema[\s\S]+candidateSkeleton/i.test(line)), true);
   assert.equal(plugin.interface.defaultPrompt.some((line) => /Never guess memoryRole[\s\S]+project_outcome/i.test(line)), true);
   assert.equal(plugin.interface.defaultPrompt.some((line) => /Prefer scope global[\s\S]+user personal preferences/i.test(line)), true);
+  assert.equal(plugin.interface.defaultPrompt.some((line) => /Resolve the VibeBox plugin root[\s\S]+skills\/vibebox\/SKILL\.md/i.test(line)), true);
+  assert.equal(plugin.interface.defaultPrompt.some((line) => /Do not probe for a global vibebox\.cmd[\s\S]+current project's bin directory/i.test(line)), true);
   assert.equal(plugin.interface.brandColor, '#0891B2');
   assert.equal(plugin.interface.composerIcon, './assets/icon.png');
   assert.equal(plugin.interface.logo, './assets/logo.png');
@@ -5572,7 +5579,7 @@ test('structured candidate enum errors include allowed values from core schema',
   );
 });
 
-test('agent packaging docs list real CLI commands and fallback strategy without overclaiming distribution', async () => {
+test('agent packaging docs list real CLI commands and bundled plugin strategy without overclaiming distribution', async () => {
   const commandReference = await readFile(path.resolve('skills/vibebox/references/COMMANDS.md'), 'utf8');
   for (const command of [
     'init',
@@ -5670,8 +5677,8 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /Reading `pretask` is not a complete VibeBox workflow|pretask[\s\S]{0,160}not a complete VibeBox workflow/i);
   assert.match(combined, /convert-lang[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}convert-lang/i);
   assert.match(combined, /rebuild[\s\S]{0,220}agent runtime marker|agent runtime marker[\s\S]{0,220}rebuild/i);
-  assert.match(combined, /0\.1\.12[\s\S]{0,180}cache-busting|cache-busting[\s\S]{0,180}0\.1\.12/i);
-  assert.match(combined, /plugins\\cache\\boksajang\\vibebox\\0\.1\.12/i);
+  assert.match(combined, /0\.1\.13[\s\S]{0,180}cache-busting|cache-busting[\s\S]{0,180}0\.1\.13/i);
+  assert.match(combined, /plugins\\cache\\boksajang\\vibebox\\0\.1\.13/i);
   assert.match(combined, /global user-profile baselines[\s\S]{0,220}(?:lexical overlap|match score)|(?:lexical overlap|match score)[\s\S]{0,220}global user-profile baselines/i);
   assert.match(combined, /report[\s\S]{0,160}(?:audit|not a required fallback)|(?:audit|not a required fallback)[\s\S]{0,160}report/i);
   assert.match(combined, /scope: "global"[\s\S]{0,220}user personal preferences|user personal preferences[\s\S]{0,220}scope: "global"/i);
@@ -5689,7 +5696,7 @@ test('agent packaging docs list real CLI commands and fallback strategy without 
   assert.match(combined, /Legacy \/ Manual Debugging Only/i);
   const codeBlocks = [...combined.matchAll(/```(?:\w+)?\n([\s\S]*?)```/gu)].map((match) => match[1]);
   assert.equal(codeBlocks.some((block) => /powershell(?:\.exe)?\s+-Command/iu.test(block)), false);
-  assert.match(combined, /Do not (?:use|wrap)[^.]{0,160}powershell(?:\.exe)? -Command/i);
+  assert.match(combined, /Do not probe[\s\S]{0,180}vibebox\.cmd[\s\S]{0,220}current project/i);
   assert.doesNotMatch(combined, /Codex-only|Claude-only|Codex 전용|Claude 전용/i);
   assert.doesNotMatch(combined, /marketplace distribution is available|official Claude install is available|cloud install is available/i);
   assert.doesNotMatch(combined, /fallback to (?:a )?(?:workspace-local|project-local|copied) memory/i);

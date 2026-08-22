@@ -1,6 +1,6 @@
 {
   "name": "vibebox",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "Universal local-first memory middleware where AI agents provide structured memory candidates and Core manages them.",
   "author": {
     "name": "Boksajang"
@@ -30,9 +30,11 @@
       "Before meaningful work in Codex App, check whether VibeBox global store read/write access may need approval.",
       "If Codex repeatedly asks for global-store approval, run or recommend vibebox setup-codex and then restart Codex.",
       "If the global store is missing, infer the user's language from the conversation, run the bundled schema command with --language set to its canonical BCP 47 tag, generate every initialization.displayTemplate value in that language, and pass both to init; never run bare init for a non-English user language.",
-      "Generate a VibeBox pre-task brief.",
+      "Resolve the VibeBox plugin root from the loaded skills/vibebox/SKILL.md source, then use node <plugin-root>/bin/vibebox.mjs for every VibeBox command.",
+      "Do not probe for a global vibebox.cmd or vibebox command, do not inspect the current project's bin directory, and do not check whether the VibeBox repository was cloned; plugin installation is self-contained.",
+      "Generate a VibeBox pre-task brief with the bundled CLI.",
       "Treat global user-profile baselines surfaced by pretask as active guidance even when their lexical match score is zero; do not require a full report scan before normal work.",
-      "Before creating any VibeBox candidate file, run vibebox.cmd schema --format json, use only the returned schema enums and candidateSkeleton, and write every required display field in schema.configuredMemoryLanguage.",
+      "Before creating any VibeBox candidate file, run the bundled CLI schema --format json, use only the returned schema enums and candidateSkeleton, and write every required display field in schema.configuredMemoryLanguage.",
       "Set displayLanguage to the exact schema.configuredMemoryLanguage value; never copy canonical English text into displayTitle, displaySummary, or displayRule for a user configured in another language.",
       "Never guess memoryRole, type, modelClass, scope, primaryCategory, relatedCategories, confidence, or sourceType; do not invent labels such as project_outcome or project_result.",
       "Prefer scope global for user personal preferences, repeated procedures, tool, validation, and response/reporting preferences unless they are clearly project-bound.",

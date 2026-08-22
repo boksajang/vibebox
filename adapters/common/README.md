@@ -16,7 +16,7 @@ Reference files:
 
 The adapter or agent must:
 
-1. Locate VibeBox through `vibebox.cmd`, `vibebox`, or `node bin/vibebox.mjs`.
+1. For an installed plugin, resolve its root from the loaded `skills/vibebox/SKILL.md` source and invoke `node "<vibebox-plugin-root>/bin/vibebox.mjs"`. Do not probe global commands or the current project.
 2. Run read-only `pretask` before meaningful repository work when memory could matter.
 3. Apply `User Success Criteria`, `AI Failure Avoidance`, and `AI Successful Approaches` while planning and editing.
 4. Inspect the repository; VibeBox memory does not replace codebase reality.
@@ -61,22 +61,13 @@ Restart the host after setup. If `VIBEBOX_HOME` points somewhere other than `~/.
 
 ## Command Preference
 
-Windows/Codex:
+Installed plugin on every host:
 
 ```bash
-vibebox.cmd <command>
-vibebox <command>
-node bin/vibebox.mjs <command>
+node "<vibebox-plugin-root>/bin/vibebox.mjs" <command>
 ```
 
-Other environments:
-
-```bash
-vibebox <command>
-node bin/vibebox.mjs <command>
-```
-
-Do not wrap VibeBox commands in `powershell.exe -Command` as the normal adapter path. If a wrapper attempt is blocked, retry direct commands before proceeding without guidance.
+The plugin root is two directories above its loaded `skills/vibebox/SKILL.md`. A global command is optional for manual development only and must not be probed during normal plugin startup.
 
 ## Capture Contract
 
